@@ -1,15 +1,17 @@
 import os, json, datetime
 from flask import Flask, request, redirect
 
-app = Flask(__name__)
-
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(TOKEN_DIR, exist_ok=True)
+os.environ["GARMINTOKENS"] = TOKEN_DIR  # Bibliothek speichert Tokens automatisch hierhin
+
+app = Flask(__name__)
 
 def is_logged_in():
-    return os.path.isdir(TOKEN_DIR) and len(os.listdir(TOKEN_DIR)) > 0
+    return len(os.listdir(TOKEN_DIR)) > 0
 
 def get_client():
     from garminconnect import Garmin
@@ -55,8 +57,6 @@ def login():
     try:
         client = Garmin(email, password)
         client.login()
-        os.makedirs(TOKEN_DIR, exist_ok=True)
-        client.garth.dump(TOKEN_DIR)
         return redirect(".")
     except Exception as e:
         return f"<p>Login fehlgeschlagen: {e}</p><a href='.'>Zurück</a>"
