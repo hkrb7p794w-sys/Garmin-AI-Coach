@@ -29,7 +29,7 @@ def home():
     <html><body style="font-family:sans-serif;padding:2rem;">
     <h1>Garmin AI Coach</h1>
     <p>Verbunden mit Garmin ✅</p>
-    <p><a href="/sync">Jetzt synchronisieren</a></p>
+    <p><a href="sync">Jetzt synchronisieren</a></p>
     <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
     </body></html>
     """
@@ -39,7 +39,7 @@ LOGIN_FORM = """
 <h1>Garmin AI Coach – Login</h1>
 <p>Deine Zugangsdaten werden nur einmalig verwendet, um ein Login-Token zu erzeugen.
 Passwort wird nirgends gespeichert.</p>
-<form method="post" action="/login">
+<form method="post" action="login">
   E-Mail: <input type="email" name="email" required><br><br>
   Passwort: <input type="password" name="password" required><br><br>
   <button type="submit">Einloggen</button>
@@ -57,14 +57,14 @@ def login():
         client.login()
         os.makedirs(TOKEN_DIR, exist_ok=True)
         client.garth.dump(TOKEN_DIR)
-        return redirect("/")
+        return redirect(".")
     except Exception as e:
-        return f"<p>Login fehlgeschlagen: {e}</p><a href='/'>Zurück</a>"
+        return f"<p>Login fehlgeschlagen: {e}</p><a href='.'>Zurück</a>"
 
 @app.route("/sync")
 def sync():
     if not is_logged_in():
-        return redirect("/")
+        return redirect(".")
     client = get_client()
     today = datetime.date.today().isoformat()
     wellness = {
@@ -75,7 +75,7 @@ def sync():
     }
     with open(DATA_FILE, "w") as f:
         json.dump(wellness, f, indent=2, ensure_ascii=False, default=str)
-    return redirect("/")
+    return redirect(".")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8099)
