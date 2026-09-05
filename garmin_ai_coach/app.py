@@ -1,12 +1,14 @@
 import os, json, datetime
 from flask import Flask, request, redirect
+from ha_publish import publish_discovery, publish_state
+from ai_coach import generate_coaching_note
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
-os.environ["GARMINTOKENS"] = TOKEN_DIR  # Bibliothek speichert Tokens automatisch hierhin
+os.environ["GARMINTOKENS"] = TOKEN_DIR
 
 app = Flask(__name__)
 
@@ -76,6 +78,13 @@ def sync():
     with open(DATA_FILE, "w") as f:
         json.dump(wellness, f, indent=2, ensure_ascii=False, default=str)
     return redirect(".")
+
+    publish_discovery()
+    try:
+        note = generate_coaching_note(wellness)
+    except Exception as e:
+        note = f"Coaching-Tipp nicht verfügbar: {e}"
+    publish_state(wellness, coaching_note=note)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8099)

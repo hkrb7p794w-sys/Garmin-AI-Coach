@@ -12,6 +12,8 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:watch-variant
 panel_title: "Garmin Coach"
+services:
+  - mqtt:want
 options:
   garmin_email: ""
   sync_hour: 6
