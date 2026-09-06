@@ -32,6 +32,19 @@ def get_client():
 MIN_SYNC_INTERVAL = datetime.timedelta(minutes=15)
 _last_sync_attempt = None
 
+
+def _safe_fetch(label, fn):
+    """Ruft eine einzelne Garmin-Metrik ab; loggt Fehler statt den ganzen Sync
+    abzubrechen. Jede zusaetzliche Metrik ist ein eigener HTTPS-Call an Garmin,
+    daher soll ein einzelner fehlschlagender Endpoint (z.B. weil ein Geraet
+    einen Sensor nicht unterstuetzt) nicht den kompletten Sync killen."""
+    try:
+        return fn()
+    except Exception as e:
+        print(f"[sync] Metrik '{label}' fehlgeschlagen: {e}")
+        return None
+
+
 def do_sync(force: bool = False):
     """Holt aktuelle Garmin-Daten, speichert sie lokal und published sie
     (inkl. KI-Coaching-Notiz) nach MQTT/Home Assistant.
@@ -55,12 +68,37 @@ def do_sync(force: bool = False):
     try:
         client = get_client()
         today = datetime.date.today().isoformat()
+
         wellness = {
             "date": today,
+            # bereits vorhanden (v0.3.0)
             "resting_hr": client.get_rhr_day(today),
             "steps": client.get_steps_data(today),
             "training_readiness": client.get_training_readiness(today),
+
+            # neu: Erholung / Belastung - fuer Uebertrainings-Fruehwarnung
+            "training_status": _safe_fetch("training_status", lambda: client.get_training_status(today)),
+            "hrv": _safe_fetch("hrv", lambda: client.get_hrv_data(today)),
+            "body_battery": _safe_fetch("body_battery", lambda: client.get_body_battery(today, today)),
+            "stress": _safe_fetch("stress", lambda: client.get_all_day_stress(today)),
+            "respiration": _safe_fetch("respiration", lambda: client.get_respiration_data(today)),
+            "spo2": _safe_fetch("spo2", lambda: client.get_spo2_data(today)),
+            "sleep": _safe_fetch("sleep", lambda: client.get_sleep_data(today)),
+
+            # neu: Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
+            "max_metrics": _safe_fetch("max_metrics", lambda: client.get_max_metrics(today)),  # VO2max, Fitness-Age
         }
+
+        # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
+        # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
+        # damit das Rate-Limit-Risiko nicht unnoetig zu erhoehen.
+        if datetime.date.today().weekday() == 0:  # Montag
+            week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+            wellness["endurance_score"] = _safe_fetch(
+                "endurance_score", lambda: client.get_endurance_score(week_ago, today)
+            )
+            wellness["race_predictions"] = _safe_fetch("race_predictions", client.get_race_predictions)
+
         with open(DATA_FILE, "w") as f:
             json.dump(wellness, f, indent=2, ensure_ascii=False, default=str)
 
