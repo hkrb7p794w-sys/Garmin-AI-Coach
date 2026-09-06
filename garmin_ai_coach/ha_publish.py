@@ -14,6 +14,13 @@ DEVICE = {
 }
 
 client = mqtt.Client(client_id="garmin_ai_coach")
+# Diagnose: zeigt beim Start, ob Supervisor die MQTT-Zugangsdaten ueberhaupt
+# als Umgebungsvariablen injiziert hat (Passwort wird NICHT geloggt, nur ob
+# gesetzt) - hilft bei "not authorised"-Fehlern in core_mosquitto zu klaeren,
+# ob es an fehlenden Credentials oder an falschen Credentials liegt.
+print(f"[mqtt debug] host={MQTT_HOST} port={MQTT_PORT} "
+      f"user_set={'yes (' + MQTT_USER + ')' if MQTT_USER else 'NO - env var MQTT_USERNAME is empty/unset'} "
+      f"pass_set={'yes' if MQTT_PASS else 'NO - env var MQTT_PASSWORD is empty/unset'}")
 if MQTT_USER:
     client.username_pw_set(MQTT_USER, MQTT_PASS)
 # connect_async + loop_start (statt eines blockierenden connect()) laesst den
