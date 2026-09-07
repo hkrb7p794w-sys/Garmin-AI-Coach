@@ -146,11 +146,16 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:calendar-clock",
     },
+    "weekly_report": {
+        "name": "Garmin Wochenreport",
+        "unit": None,
+        "icon": "mdi:calendar-check",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
-ATTRIBUTE_SENSORS = {"coaching_note", "training_readiness", "training_status"}
+ATTRIBUTE_SENSORS = {"coaching_note", "training_readiness", "training_status", "weekly_report"}
 
 
 def publish_discovery():
@@ -274,22 +279,38 @@ def extract_metrics(data: dict) -> dict:
     except (AttributeError, StopIteration):
         pass
 
-    # VO2max: get_max_metrics() -> Liste, i.d.R. ein Eintrag mit
-    # "generic": {"vo2MaxPreciseValue": ...} (Fallback: "vo2MaxValue")
+    # VO2max: Liste von Tageseintraegen mit "generic": {"vo2MaxPreciseValue": ...}.
+    # Garmin berechnet VO2max nur nach qualifizierenden Einheiten, viele Tage sind
+    # daher leer - deshalb den JUENGSTEN Eintrag mit Wert nehmen statt einfach [0]
+    # (das war der Grund, warum der Sensor dauerhaft "unbekannt" blieb).
     vo2max = None
     try:
-        metrics_list = data.get("max_metrics") or []
-        if metrics_list:
-            generic = metrics_list[0].get("generic") or {}
-            vo2max = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
-    except (AttributeError, IndexError):
+        newest_date = None
+        for entry in data.get("max_metrics") or []:
+            if not isinstance(entry, dict):
+                continue
+            generic = entry.get("generic") or {}
+            value = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
+            if value is None:
+                continue
+            day = str(entry.get("calendarDate") or generic.get("calendarDate") or "")
+            if newest_date is None or day >= newest_date:
+                newest_date, vo2max = day, value
+    except (AttributeError, IndexError, TypeError):
         pass
 
-    # Endurance Score: get_endurance_score() -> {"overallScore": ...}
-    # (wird in app.py nur montags abgerufen, daher an den meisten Tagen None)
+    # Endurance Score: die Einzeltag-Abfrage liefert "overallScore", die Zeitraum-
+    # Variante stattdessen avg/max/groupMap. Frueher wurde der Zeitraum abgefragt,
+    # aber nach "overallScore" gesucht - der Sensor konnte also nie einen Wert
+    # bekommen. Jetzt werden beide Antwortformen unterstuetzt.
     endurance_score = None
     try:
-        endurance_score = (data.get("endurance_score") or {}).get("overallScore")
+        es = data.get("endurance_score") or {}
+        endurance_score = es.get("overallScore")
+        if endurance_score is None:
+            endurance_score = (es.get("enduranceScoreDTO") or {}).get("overallScore")
+        if endurance_score is None:
+            endurance_score = es.get("avg") or es.get("max")
     except AttributeError:
         pass
 
@@ -401,6 +422,24 @@ def publish_coaching_note(note: str):
     client.publish("garmin_ai_coach/coaching_note/state", short, retain=True)
     client.publish("garmin_ai_coach/coaching_note/attributes",
                    json.dumps({"full_text": note}), retain=True)
+
+
+def publish_weekly_report(text: str, summary: dict = None):
+    """Publiziert den Wochenreport plus die zugehoerigen Kennzahlen als Attribute.
+
+    Die Kennzahlen wandern bewusst in die Attribute statt in je einen eigenen Sensor:
+    sie werden nur woechentlich aktualisiert und gehoeren inhaltlich zusammen, das
+    haelt die Entity-Liste in Home Assistant uebersichtlich."""
+    if not text:
+        return
+    short = text[:250] + ("…" if len(text) > 250 else "")
+    client.publish("garmin_ai_coach/weekly_report/state", short, retain=True)
+    attributes = {"full_text": text}
+    for key, value in (summary or {}).items():
+        if isinstance(value, (int, float, str)) or value is None:
+            attributes[key] = value
+    client.publish("garmin_ai_coach/weekly_report/attributes",
+                   json.dumps(attributes, ensure_ascii=False), retain=True)
 
 
 def publish_sync_status(ok: bool, detail: str = ""):

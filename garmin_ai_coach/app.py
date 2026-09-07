@@ -5,12 +5,17 @@ from ha_publish import (
     publish_state,
     publish_sync_status,
     publish_coaching_note,
+    publish_weekly_report,
+    extract_metrics,
 )
-from ai_coach import generate_coaching_note
+from ai_coach import generate_coaching_note, generate_weekly_report
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
+# Rollierende Tages-Historie fuer Wochentrends (Ruhepuls, HRV, Schlaf, Readiness).
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+HISTORY_DAYS = 60
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
@@ -78,35 +83,198 @@ def _safe_fetch(label, fn):
         return None
 
 
-def _weekly_volumes(activities):
-    """Fasst Aktivitaeten der letzten 7 Tage zu Wochenvolumen je Disziplin zusammen (km/Minuten)."""
+def _volumes_in_window(activities, days_from: int = 0, days_to: int = 7):
+    """Summiert Aktivitaeten in einem Zeitfenster je Disziplin (km/Minuten).
+
+    `days_from`/`days_to` sind Tage zurueck ab jetzt: (0, 7) = laufende Woche,
+    (7, 14) = Vorwoche. Damit laesst sich der Wochenreport ohne zusaetzliche
+    Garmin-Abfragen aus denselben Aktivitaetsdaten bauen."""
     totals = {"swim_km": 0.0, "bike_km": 0.0, "run_km": 0.0,
-              "swim_min": 0.0, "bike_min": 0.0, "run_min": 0.0}
+              "swim_min": 0.0, "bike_min": 0.0, "run_min": 0.0, "strength_min": 0.0,
+              # Einheiten-Zaehler: Der Wochenplan ist in Einheiten pro Woche gedacht
+              # (1x Schwimmen, 2x Laufen, ...), nicht in Kilometern - der Soll/Ist-
+              # Vergleich im Wochenreport braucht daher beides.
+              "swim_sessions": 0, "bike_sessions": 0, "run_sessions": 0,
+              "strength_sessions": 0}
     if not activities:
         return totals
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=7)
+    now = datetime.datetime.now()
+    window_start = now - datetime.timedelta(days=days_to)
+    window_end = now - datetime.timedelta(days=days_from)
     for act in activities:
         try:
             start_str = act.get("startTimeLocal")
-            if start_str:
-                start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-                if start_dt < cutoff:
-                    continue
-            type_key = (act.get("activityType") or {}).get("typeKey", "") or ""
+            if not start_str:
+                continue
+            start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+            if not (window_start <= start_dt < window_end):
+                continue
+            type_key = ((act.get("activityType") or {}).get("typeKey", "") or "").lower()
             distance_km = (act.get("distance") or 0) / 1000.0
             duration_min = (act.get("duration") or 0) / 60.0
             if "swim" in type_key:
                 totals["swim_km"] += distance_km
                 totals["swim_min"] += duration_min
+                totals["swim_sessions"] += 1
             elif "bik" in type_key or "cycl" in type_key or "ride" in type_key:
                 totals["bike_km"] += distance_km
                 totals["bike_min"] += duration_min
+                totals["bike_sessions"] += 1
             elif "run" in type_key:
                 totals["run_km"] += distance_km
                 totals["run_min"] += duration_min
+                totals["run_sessions"] += 1
+            elif "strength" in type_key or "weight" in type_key or "gym" in type_key:
+                # Krafttraining (Beine, Push/Pull) - fuer die Belastungsbilanz relevant,
+                # auch wenn es keine Distanz hat.
+                totals["strength_min"] += duration_min
+                totals["strength_sessions"] += 1
         except Exception as e:
             print(f"[sync] Aktivitaet konnte nicht ausgewertet werden: {e}")
-    return {k: round(v, 1) for k, v in totals.items()}
+    return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in totals.items()}
+
+
+def _fetch_max_metrics(client, today_date):
+    """Holt VO2max ueber ein 14-Tage-Fenster statt nur fuer heute.
+
+    Garmin berechnet VO2max nur nach qualifizierenden Einheiten, der Tageseintrag
+    fuer 'heute' ist deshalb meistens leer - genau daran lag es, dass der VO2max-
+    Sensor dauerhaft 'unbekannt' blieb. Die Bibliothek fragt fest cdate/cdate ab,
+    der Endpunkt kann aber einen Zeitraum: ein Request statt 14 einzelner (schont
+    das Garmin-Rate-Limit)."""
+    start = (today_date - datetime.timedelta(days=13)).isoformat()
+    end = today_date.isoformat()
+    try:
+        return client.connectapi(f"/metrics-service/metrics/maxmet/daily/{start}/{end}")
+    except Exception as e:
+        print(f"[sync] VO2max-Zeitraumabfrage fehlgeschlagen ({e}), nutze Einzeltag")
+        return _safe_fetch("max_metrics", lambda: client.get_max_metrics(end))
+
+
+def _update_history(wellness):
+    """Fuehrt eine rollierende Tages-Historie in /data/history.json.
+
+    Damit kann der Wochenreport Trends (Ruhepuls, HRV, Schlaf, Readiness) ueber
+    mehrere Tage bilden, ohne fuer jeden Tag erneut bei Garmin anzufragen."""
+    metrics = extract_metrics(wellness)
+    entry = {
+        "date": wellness.get("date"),
+        "resting_hr": metrics["resting_hr"],
+        "hrv_avg": metrics["hrv_avg"],
+        "body_battery": metrics["body_battery"],
+        "sleep_hours": metrics["sleep_hours"],
+        "sleep_score": metrics["sleep_score"],
+        "readiness": metrics["training_readiness_score"],
+        "stress_avg": metrics["stress_avg"],
+        "steps": metrics["steps_today"],
+    }
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE) as f:
+                history = json.load(f) or []
+        except Exception as e:
+            print(f"[history] nicht lesbar, starte neu: {e}")
+            history = []
+    history = [h for h in history if h.get("date") != entry["date"]]
+    history.append(entry)
+    history = sorted(history, key=lambda h: str(h.get("date") or ""))[-HISTORY_DAYS:]
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[history] konnte nicht geschrieben werden: {e}")
+    return history
+
+
+def _history_avg(history, key, offset_from: int, offset_to: int, today=None):
+    """Mittelwert eines Feldes ueber Tage mit Abstand offset_from..offset_to zu heute."""
+    today = today or datetime.date.today()
+    values = []
+    for entry in history or []:
+        try:
+            day = datetime.date.fromisoformat(str(entry.get("date")))
+        except (TypeError, ValueError):
+            continue
+        if offset_from <= (today - day).days <= offset_to:
+            value = entry.get(key)
+            if isinstance(value, (int, float)):
+                values.append(value)
+    return round(sum(values) / len(values), 1) if values else None
+
+
+def _pct_change(current, previous):
+    """Prozentuale Veraenderung; None wenn die Vorwoche keine Basis hergibt."""
+    if not previous or current is None:
+        return None
+    return round((current - previous) / previous * 100)
+
+
+def build_weekly_summary(wellness: dict, history: list) -> dict:
+    """Stellt die Kennzahlen des Wochenreports zusammen (laufende Woche vs. Vorwoche).
+
+    Bewusst eine flache Struktur aus Zahlen: so laesst sie sich 1:1 als
+    MQTT-Attribute mitschicken und im Dashboard direkt anzeigen."""
+    cur = wellness.get("weekly_volumes") or {}
+    prev = wellness.get("weekly_volumes_prev") or {}
+    total_min = round(sum(cur.get(k, 0) or 0 for k in
+                          ("swim_min", "bike_min", "run_min", "strength_min")))
+    total_min_prev = round(sum(prev.get(k, 0) or 0 for k in
+                               ("swim_min", "bike_min", "run_min", "strength_min")))
+    summary = {
+        "swim_km": cur.get("swim_km"), "bike_km": cur.get("bike_km"), "run_km": cur.get("run_km"),
+        "swim_km_prev": prev.get("swim_km"), "bike_km_prev": prev.get("bike_km"),
+        "run_km_prev": prev.get("run_km"),
+        "swim_sessions": cur.get("swim_sessions"), "bike_sessions": cur.get("bike_sessions"),
+        "run_sessions": cur.get("run_sessions"), "strength_sessions": cur.get("strength_sessions"),
+        "swim_sessions_prev": prev.get("swim_sessions"),
+        "bike_sessions_prev": prev.get("bike_sessions"),
+        "run_sessions_prev": prev.get("run_sessions"),
+        "strength_sessions_prev": prev.get("strength_sessions"),
+        "total_min": total_min, "total_min_prev": total_min_prev,
+        "volume_change_pct": _pct_change(total_min, total_min_prev),
+        "resting_hr_avg": _history_avg(history, "resting_hr", 0, 6),
+        "resting_hr_avg_prev": _history_avg(history, "resting_hr", 7, 13),
+        "hrv_avg": _history_avg(history, "hrv_avg", 0, 6),
+        "hrv_avg_prev": _history_avg(history, "hrv_avg", 7, 13),
+        "sleep_hours_avg": _history_avg(history, "sleep_hours", 0, 6),
+        "sleep_hours_avg_prev": _history_avg(history, "sleep_hours", 7, 13),
+        "readiness_avg": _history_avg(history, "readiness", 0, 6),
+        "readiness_avg_prev": _history_avg(history, "readiness", 7, 13),
+        # Wie viele Tage die Historie ueberhaupt schon abdeckt - der Report soll
+        # nicht so tun, als waeren Trends belastbar, wenn erst 2 Tage erfasst sind.
+        "history_days": len(history or []),
+    }
+    return summary
+
+
+def do_weekly_report(wellness: dict = None, history: list = None) -> str:
+    """Erzeugt den KI-Wochenreport und published ihn nach Home Assistant."""
+    if wellness is None:
+        if not os.path.exists(DATA_FILE):
+            print("[weekly] noch keine Sync-Daten vorhanden")
+            return None
+        with open(DATA_FILE) as f:
+            wellness = json.load(f)
+    if history is None:
+        history = []
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE) as f:
+                    history = json.load(f) or []
+            except Exception as e:
+                print(f"[weekly] Historie nicht lesbar: {e}")
+
+    summary = build_weekly_summary(wellness, history)
+    try:
+        if not os.environ.get("GEMINI_API_KEY"):
+            raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
+        text = generate_weekly_report(wellness, summary)
+    except Exception as e:
+        print(f"[weekly] Wochenreport fehlgeschlagen: {e}")
+        text = "Wochenreport aktuell nicht verfuegbar - Kennzahlen siehe Attribute."
+    publish_weekly_report(text, summary)
+    return text
 
 
 def do_sync(force: bool = False):
@@ -151,7 +319,7 @@ def do_sync(force: bool = False):
             "sleep": _safe_fetch("sleep", lambda: client.get_sleep_data(today)),
 
             # Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
-            "max_metrics": _safe_fetch("max_metrics", lambda: client.get_max_metrics(today)),  # VO2max
+            "max_metrics": _fetch_max_metrics(client, today_date),  # VO2max (14-Tage-Fenster)
 
             # Rennvorbereitung / Periodisierung (siehe claude/status-und-plan.md)
             "days_to_race": days_to_race(today_date),
@@ -159,15 +327,21 @@ def do_sync(force: bool = False):
         }
 
         recent_activities = _safe_fetch("activities", lambda: client.get_activities(0, 50)) or []
-        wellness["weekly_volumes"] = _weekly_volumes(recent_activities)
+        wellness["weekly_volumes"] = _volumes_in_window(recent_activities, 0, 7)
+        # Vorwoche aus denselben Aktivitaetsdaten - Basis fuer den Soll/Ist-Vergleich
+        # im Wochenreport, ohne einen einzigen zusaetzlichen Garmin-Request.
+        wellness["weekly_volumes_prev"] = _volumes_in_window(recent_activities, 7, 14)
 
         # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
         # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
         # damit das Rate-Limit-Risiko nicht unnoetig zu erhoehen.
         if today_date.weekday() == 0:  # Montag
-            week_ago = (today_date - datetime.timedelta(days=7)).isoformat()
+            # Einzeltag-Abfrage: liefert "overallScore" direkt. Die frueher genutzte
+            # Zeitraum-Variante liefert stattdessen avg/max/groupMap - deren Feld
+            # "overallScore" gibt es dort gar nicht, der Sensor konnte also nie
+            # einen Wert bekommen.
             wellness["endurance_score"] = _safe_fetch(
-                "endurance_score", lambda: client.get_endurance_score(week_ago, today)
+                "endurance_score", lambda: client.get_endurance_score(today)
             )
             wellness["race_predictions"] = _safe_fetch("race_predictions", client.get_race_predictions)
 
@@ -192,6 +366,12 @@ def do_sync(force: bool = False):
             print(f"[ai_coach] Coaching-Notiz fehlgeschlagen: {e}")
             note = "Coaching-Tipp aktuell nicht verfuegbar - Werte wurden trotzdem synchronisiert."
         publish_coaching_note(note)
+
+        history = _update_history(wellness)
+        # Wochenreport montags automatisch (Rueckblick auf die abgeschlossene Woche);
+        # jederzeit manuell ueber /weekly ausloesbar.
+        if today_date.weekday() == 0:
+            do_weekly_report(wellness, history)
         return wellness
     except Exception as e:
         print(f"[sync] Sync fehlgeschlagen: {e}")
@@ -211,7 +391,7 @@ def home():
     <html><body style="font-family:sans-serif;padding:2rem;">
     <h1>Garmin AI Coach</h1>
     <p>Verbunden mit Garmin ✅</p>
-    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a></p>
+    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a> &nbsp;|&nbsp; <a href="weekly">Wochenreport erzeugen</a></p>
     <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
     </body></html>
     """
@@ -249,6 +429,16 @@ def sync():
     if not is_logged_in():
         return redirect(".")
     do_sync(force=request.args.get("force") == "1")
+    return redirect(".")
+
+
+@app.route("/weekly")
+def weekly():
+    """Wochenreport manuell ausloesen (laeuft sonst automatisch montags).
+    Nutzt die zuletzt gesyncten Daten, loest also KEINE Garmin-Abfrage aus."""
+    if not is_logged_in():
+        return redirect(".")
+    do_weekly_report()
     return redirect(".")
 
 

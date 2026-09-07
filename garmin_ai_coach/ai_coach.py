@@ -1,5 +1,6 @@
 import os
 import re
+import datetime
 import requests
 from ha_publish import extract_metrics
 
@@ -17,6 +18,33 @@ GEMINI_TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", 120))
 GEMINI_URL_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
+
+# Rennziel - per Add-on-Option aenderbar.
+RACE_GOAL = os.environ.get("RACE_GOAL", "Finish in 5:30-6:00 h")
+
+# Realer Wochenrahmen des Athleten (von ihm selbst vorgegeben). Der Coach soll
+# INNERHALB dieses Rahmens optimieren und niemals einfach "mehr Zeit" fordern.
+ATHLETE_PROFILE = """Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar):
+- Dienstag + Donnerstag sind Buerotage: dort passen 1x Schwimmen und 1x Beintraining,
+  jeweils vor der Arbeit.
+- An den uebrigen Werktagen Homeoffice mit eigenem Home-Gym: dort laufen die
+  Push/Pull-Krafteinheiten (zusammen 3-4x pro Woche).
+- Laufen: mindestens 1x lockerer Zone-2-Lauf (gemeinsam mit der Freundin) und
+  1x Intervall- oder Schwellenlauf.
+- Wochenende: NUR wenn Zeit bleibt, entweder ein Longrun ODER eine laengere
+  Zwift-Ausfahrt auf dem Rad.
+- Der Athlet will bewusst nicht mehr Zeit investieren. Diese Struktur ist der Idealfall
+  und laesst sich in der Realitaet oft nicht vollstaendig umsetzen - fehlende Einheiten
+  sind normal und kein Anlass fuer Vorwuerfe.
+
+Coaching-Regeln daraus:
+- Niemals mehr Gesamtzeit oder zusaetzliche Einheiten fordern. Wenn etwas fehlt, sage
+  was innerhalb des bestehenden Rahmens umgeschichtet werden sollte (Prioritaeten setzen).
+- Beruecksichtige den Wochentag: Schwimmen und Beine sind an Buerotagen (Di/Do) machbar,
+  Push/Pull an Homeoffice-Tagen, laengere Rad-/Laufeinheiten am Wochenende.
+- Das Rad ist beim 70.3 der groesste Zeitblock des Rennens. Wenn das Radvolumen dauerhaft
+  sehr niedrig ist, benenne das klar als groesstes Risiko fuers Zeitziel - und schlage die
+  Umschichtung aus einer Krafteinheit vor, statt zusaetzliche Zeit zu verlangen."""
 
 # Fokus je Trainingsphase (siehe claude/status-und-plan.md im Projekt).
 PHASE_FOCUS = {
@@ -84,9 +112,14 @@ def generate_coaching_note(data: dict) -> str:
     focus = PHASE_FOCUS.get(phase, "")
     wv = data.get("weekly_volumes") or {}
 
+    weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    today_name = weekdays[datetime.date.today().weekday()]
+
     prompt = (
         "Du bist ein Ausdauersport-Coach fuer einen Age-Group-Athleten in der Vorbereitung "
-        "auf einen Ironman 70.3 am 29.08.2027.\n\n"
+        f"auf einen Ironman 70.3 am 29.08.2027. Zielzeit: {RACE_GOAL}.\n\n"
+        f"{ATHLETE_PROFILE}\n\n"
+        f"Heute ist {today_name}.\n"
         f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}). "
         f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n\n"
         "Heutige Werte:\n"
@@ -105,8 +138,9 @@ def generate_coaching_note(data: dict) -> str:
         f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
         f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
         "Gib mir einen kurzen, ehrlichen Coaching-Tipp fuer heute (max. 3-4 Saetze, Deutsch): "
-        "1) kurze Einschaetzung der Erholungslage, 2) eine konkrete Trainingsempfehlung fuer heute "
-        "passend zur aktuellen Phase. Wenn Erholungswerte (Readiness, HRV, Body Battery, Schlaf) auf "
+        "1) kurze Einschaetzung der Erholungslage, 2) eine konkrete Trainingsempfehlung fuer heute, "
+        "die zur aktuellen Phase UND zum heutigen Wochentag passt (siehe Wochenstruktur oben). "
+        "Wenn Erholungswerte (Readiness, HRV, Body Battery, Schlaf) auf "
         "Uebertraining oder unzureichende Erholung hindeuten, empfiehl explizit leichteres Training "
         "oder einen Ruhetag statt eines harten Reizes. Nenne nicht jeden einzelnen Wert einzeln, "
         "sondern ziehe eine klare, direkt umsetzbare Schlussfolgerung."
@@ -148,5 +182,98 @@ def generate_coaching_note(data: dict) -> str:
             f"Gemini ({model}) hat leeren Text geliefert "
             f"(finishReason: {candidate.get('finishReason')}, "
             f"usageMetadata: {body.get('usageMetadata')})"
+        )
+    return text
+
+
+def _trend(current, previous, unit="", better="hoch"):
+    """Formatiert 'Wert (Vorwoche: X)' fuer den Wochenreport."""
+    if current is None:
+        return "keine Daten"
+    if previous is None:
+        return f"{current}{unit} (keine Vorwochendaten)"
+    delta = round(current - previous, 1)
+    sign = "+" if delta > 0 else ""
+    return f"{current}{unit} (Vorwoche {previous}{unit}, {sign}{delta})"
+
+
+def generate_weekly_report(data: dict, summary: dict) -> str:
+    """Woechentlicher Rueckblick: Soll/Ist der Wochenstruktur, Trends, Fokus fuer die
+    kommende Woche. Nutzt dieselbe Gemini-Anbindung wie die Tagesnotiz."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
+
+    s = summary or {}
+    phase = data.get("phase") or "unbekannt"
+    focus = PHASE_FOCUS.get(phase, "")
+    days_left = data.get("days_to_race")
+
+    # Belastbarkeit der Trenddaten ehrlich benennen: die Historie fuellt sich erst
+    # ueber die ersten Tage, vorher waeren "Trends" reine Behauptung.
+    history_days = s.get("history_days") or 0
+    trend_note = (
+        "Die Trenddaten sind belastbar."
+        if history_days >= 10 else
+        f"ACHTUNG: Es liegen erst {history_days} Tage Historie vor - Trendaussagen zu "
+        "Ruhepuls/HRV/Schlaf sind noch NICHT belastbar, sag das offen statt sie zu deuten."
+    )
+
+    prompt = (
+        "Du bist ein Ausdauersport-Coach und schreibst den woechentlichen Rueckblick fuer "
+        f"einen Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am 29.08.2027. "
+        f"Zielzeit: {RACE_GOAL}.\n\n"
+        f"{ATHLETE_PROFILE}\n\n"
+        f"Trainingsphase: {phase} (Fokus: {focus}). Noch {_fmt(days_left, ' Tage')} bis zum Rennen.\n\n"
+        "SOLL laut Wochenstruktur: 1x Schwimmen, 2x Laufen (1x Zone 2, 1x Intervall/Schwelle), "
+        "4-5x Kraft (1x Beine + 3-4x Push/Pull), Rad optional am Wochenende.\n\n"
+        "IST der letzten 7 Tage (Vorwoche in Klammern):\n"
+        f"- Schwimmen: {_fmt(s.get('swim_sessions'))} Einheiten "
+        f"({_fmt(s.get('swim_sessions_prev'))}), {_fmt(s.get('swim_km'), ' km')} "
+        f"(Vorwoche {_fmt(s.get('swim_km_prev'), ' km')})\n"
+        f"- Rad: {_fmt(s.get('bike_sessions'))} Einheiten ({_fmt(s.get('bike_sessions_prev'))}), "
+        f"{_fmt(s.get('bike_km'), ' km')} (Vorwoche {_fmt(s.get('bike_km_prev'), ' km')})\n"
+        f"- Laufen: {_fmt(s.get('run_sessions'))} Einheiten ({_fmt(s.get('run_sessions_prev'))}), "
+        f"{_fmt(s.get('run_km'), ' km')} (Vorwoche {_fmt(s.get('run_km_prev'), ' km')})\n"
+        f"- Kraft: {_fmt(s.get('strength_sessions'))} Einheiten "
+        f"({_fmt(s.get('strength_sessions_prev'))})\n"
+        f"- Gesamtbelastung: {_fmt(s.get('total_min'), ' min')} "
+        f"(Vorwoche {_fmt(s.get('total_min_prev'), ' min')}, "
+        f"Veraenderung {_fmt(s.get('volume_change_pct'), '%')})\n\n"
+        "Erholung im Wochenmittel:\n"
+        f"- Ruhepuls: {_trend(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), ' bpm')}\n"
+        f"- HRV: {_trend(s.get('hrv_avg'), s.get('hrv_avg_prev'), ' ms')}\n"
+        f"- Schlaf: {_trend(s.get('sleep_hours_avg'), s.get('sleep_hours_avg_prev'), ' h')}\n"
+        f"- Training Readiness: {_trend(s.get('readiness_avg'), s.get('readiness_avg_prev'))}\n"
+        f"{trend_note}\n\n"
+        "Schreibe einen ehrlichen Wochenrueckblick auf Deutsch (5-7 Saetze, Fliesstext, keine "
+        "Aufzaehlung jedes Einzelwerts):\n"
+        "1) Wie war die Woche im Vergleich zur Wochenstruktur und zur Vorwoche?\n"
+        "2) Was sagen Belastung und Erholung zusammen - passt die Progression (Faustregel: "
+        "Steigerung der Gesamtbelastung um mehr als ~10% pro Woche ist riskant)?\n"
+        "3) EIN konkreter Fokus fuer die kommende Woche, umsetzbar im bestehenden Zeitrahmen.\n"
+        "Sei realistisch und ohne Vorwuerfe: verpasste Einheiten sind eingeplant. Wenn das "
+        "Zeitziel durch zu wenig Radtraining gefaehrdet ist, benenne das klar."
+    )
+
+    resp = _call_gemini(GEMINI_MODEL, prompt)
+    if resp.status_code == 404:
+        successor = _model_from_404(resp.text, GEMINI_MODEL)
+        if successor:
+            print(f"[weekly] Modell nicht verfuegbar, wechsle auf '{successor}'")
+            resp = _call_gemini(successor, prompt)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:400]}")
+
+    body = resp.json()
+    candidates = body.get("candidates") or []
+    if not candidates:
+        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
+        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError(
+            f"Gemini hat leeren Text geliefert "
+            f"(finishReason: {candidates[0].get('finishReason')})"
         )
     return text

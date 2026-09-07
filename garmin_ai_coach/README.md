@@ -20,6 +20,30 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.8.0
+- **Neuer Wochenreport** (`sensor.…_garmin_wochenreport`): KI-Rückblick auf die vergangene Woche mit
+  Soll/Ist-Vergleich der Wochenstruktur, Vorwochenvergleich je Disziplin und Erholungstrends. Läuft
+  automatisch montags, jederzeit manuell über `/weekly` auslösbar (nutzt die zuletzt gesyncten
+  Daten, löst also keine zusätzliche Garmin-Abfrage aus). Alle Kennzahlen hängen als Attribute am
+  Sensor statt als eigene Entities.
+- **Athletenprofil im Prompt:** Coach kennt jetzt die reale Wochenstruktur (Di/Do Bürotage mit
+  Schwimmen + Beinen, Push/Pull im Home-Gym an Homeoffice-Tagen, 1x Zone-2-Lauf, 1x Intervall/
+  Schwelle, Wochenende optional Longrun oder Zwift) sowie die Zielzeit (neue Option `race_goal`).
+  Er darf explizit **nicht** mehr Zeit fordern, sondern nur innerhalb dieses Rahmens umschichten,
+  und berücksichtigt den heutigen Wochentag.
+- **Einheiten-Zähler + Krafttraining:** Aktivitäten werden jetzt auch als Anzahl Einheiten je
+  Disziplin erfasst (der Plan ist in Einheiten/Woche gedacht), Krafttraining wird mitgezählt.
+- **Rollierende Tages-Historie** (`/data/history.json`, 60 Tage) für Wochentrends bei Ruhepuls, HRV,
+  Schlaf und Readiness – ohne zusätzliche Garmin-Requests. Der Report weist offen darauf hin,
+  solange noch zu wenige Tage für belastbare Trends vorliegen.
+- **Bugfix VO2max:** `get_max_metrics(today)` fragt nur den heutigen Tag ab, Garmin berechnet VO2max
+  aber nur nach qualifizierenden Einheiten – der Tageseintrag ist meist leer, der Sensor blieb
+  deshalb dauerhaft „unbekannt". Jetzt wird ein 14-Tage-Fenster in **einem** Request abgefragt und
+  der jüngste Eintrag mit Wert genommen.
+- **Bugfix Endurance Score:** Es wurde die Zeitraum-Variante abgefragt (liefert `avg`/`max`/
+  `groupMap`), aber nach `overallScore` gesucht – das Feld gibt es dort gar nicht, der Sensor konnte
+  nie einen Wert bekommen. Jetzt Einzeltag-Abfrage plus Unterstützung beider Antwortformen.
+
 ### 0.7.3
 - **Timeout erhöht (30s → 120s, per `GEMINI_TIMEOUT` änderbar):** `gemini-3.6-flash` brauchte für
   den Coaching-Prompt länger als 30 Sekunden, der Aufruf lief in `Read timed out`.
