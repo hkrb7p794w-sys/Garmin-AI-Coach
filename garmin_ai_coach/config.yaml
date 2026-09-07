@@ -1,5 +1,9 @@
 name: "Garmin AI Coach"
+<<<<<<< HEAD
 version: "0.5.0"
+=======
+version: "0.4.1"
+>>>>>>> e6144c40b4d98bf6dd43f9d6ab4e0d30872d235e
 slug: "garmin_ai_coach"
 description: "Garmin Trainings-/Recovery-Daten plus KI-Coaching-Notiz für die Ironman-70.3-Vorbereitung"
 arch:
