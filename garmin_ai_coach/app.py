@@ -171,8 +171,8 @@ def do_sync(force: bool = False):
 
         publish_discovery()
         try:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                raise RuntimeError("Kein Anthropic API Key in der Add-on-Konfiguration hinterlegt")
+            if not os.environ.get("GEMINI_API_KEY"):
+                raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
             note = generate_coaching_note(wellness)
         except Exception as e:
             # Technischen Fehler nur ins Log schreiben, nicht in die Notiz, die

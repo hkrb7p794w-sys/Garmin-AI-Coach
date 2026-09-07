@@ -2,7 +2,13 @@ import os
 import requests
 from ha_publish import extract_metrics
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")  # kommt aus den Add-on-Optionen
+# Google Gemini API - kostenloses Kontingent (Stand 09/2026: keine Kreditkarte noetig,
+# siehe https://ai.google.dev/gemini-api/docs/pricing). Key kommt aus den Add-on-Optionen.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_URL = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+)
 
 # Fokus je Trainingsphase (siehe claude/status-und-plan.md im Projekt).
 PHASE_FOCUS = {
@@ -24,8 +30,8 @@ def _fmt(value, unit=""):
 
 
 def generate_coaching_note(data: dict) -> str:
-    if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY ist nicht gesetzt")
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
     metrics = extract_metrics(data)
     phase = data.get("phase") or "unbekannt"
@@ -61,19 +67,24 @@ def generate_coaching_note(data: dict) -> str:
     )
 
     resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
+        GEMINI_URL,
         headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
+            "x-goog-api-key": GEMINI_API_KEY,
             "content-type": "application/json",
         },
         json={
-            "model": "claude-sonnet-5",
-            "max_tokens": 300,
-            "messages": [{"role": "user", "content": prompt}],
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 300},
         },
         timeout=20,
     )
     resp.raise_for_status()
-    content = resp.json()["content"]
-    return "".join(b["text"] for b in content if b["type"] == "text").strip()
+    body = resp.json()
+    candidates = body.get("candidates") or []
+    if not candidates:
+        # Gemini liefert bei Safety-Blocks o.ae. leere candidates statt eines Fehlers -
+        # dann lieber eine klare Meldung als ein KeyError.
+        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
+        raise RuntimeError(f"Gemini hat keinen Text geliefert (Grund: {reason})")
+    parts = candidates[0].get("content", {}).get("parts") or []
+    return "".join(p.get("text", "") for p in parts).strip()
