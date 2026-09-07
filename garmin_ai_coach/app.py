@@ -1,29 +1,21 @@
 import os, json, datetime, threading, time
 from flask import Flask, request, redirect
-<<<<<<< HEAD
-from ha_publish import publish_discovery, publish_state, publish_sync_meta
-=======
 from ha_publish import publish_discovery, publish_state, publish_sync_status
->>>>>>> e6144c40b4d98bf6dd43f9d6ab4e0d30872d235e
 from ai_coach import generate_coaching_note
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
-STATE_FILE = os.path.join(DATA_DIR, "sync_state.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
 
-<<<<<<< HEAD
-MIN_SYNC_INTERVAL_SECONDS = 15 * 60  # Schutz vor erneuter Garmin-Kontosperre (jeder Sync loggt sich neu ein)
+# Stunde (0-23, lokale Zeit des Containers), zu der automatisch synchronisiert wird.
+# Wird von run.sh aus der Add-on-Option "sync_hour" befuellt.
+SYNC_HOUR = int(os.environ.get("SYNC_HOUR", 6))
 RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
-try:
-    SYNC_HOUR = int(os.environ.get("SYNC_HOUR", "6"))
-except ValueError:
-    SYNC_HOUR = 6
 
-# Periodisierung Ironman 70.3 (siehe claude/status-und-plan.md im Projekt) – grobe Monats-Phasen.
+# Periodisierung Ironman 70.3 (siehe claude/status-und-plan.md im Projekt) - grobe Monats-Phasen.
 PHASES = [
     (datetime.date(2026, 9, 1), datetime.date(2026, 12, 31), "Grundlagenausdauer"),
     (datetime.date(2027, 1, 1), datetime.date(2027, 3, 31), "Aufbau 1"),
@@ -31,14 +23,8 @@ PHASES = [
     (datetime.date(2027, 7, 1), datetime.date(2027, 7, 31), "Peak"),
     (datetime.date(2027, 8, 1), datetime.date(2027, 12, 31), "Taper/Rennwoche"),
 ]
-=======
-# Stunde (0-23, lokale Zeit des Containers), zu der automatisch synchronisiert wird.
-# Wird von run.sh aus der Add-on-Option "sync_hour" befuellt.
-SYNC_HOUR = int(os.environ.get("SYNC_HOUR", 6))
->>>>>>> e6144c40b4d98bf6dd43f9d6ab4e0d30872d235e
 
 app = Flask(__name__)
-_sync_lock = threading.Lock()
 
 
 def is_logged_in():
@@ -51,7 +37,6 @@ def get_client():
     client.login(TOKEN_DIR)
     return client
 
-<<<<<<< HEAD
 
 def current_phase(today: datetime.date) -> str:
     for start, end, name in PHASES:
@@ -68,19 +53,28 @@ def days_to_race(today: datetime.date) -> int:
     return (race - today).days
 
 
-def _safe(fn, *a, **kw):
-    """Ruft eine Garmin-API-Methode auf; loggt Fehler und gibt None zurück, statt den ganzen
-    Sync abzubrechen (z.B. wenn HRV/Body-Battery von der aktuellen Uhr nicht unterstützt wird)."""
-    name = getattr(fn, "__name__", str(fn))
+# Garmin sperrt Konten zeitweise nach zu vielen Login-Versuchen in kurzer Zeit
+# (das war vermutlich die Ursache des vorherigen "Garmin-Sperre"-Ausfalls).
+# do_sync() loggt sich bei jedem Aufruf neu ein, daher hier eine Mindestpause
+# zwischen zwei Versuchen - auch fuer den manuellen "Jetzt synchronisieren"-Button.
+MIN_SYNC_INTERVAL = datetime.timedelta(minutes=15)
+_last_sync_attempt = None
+
+
+def _safe_fetch(label, fn):
+    """Ruft eine einzelne Garmin-Metrik ab; loggt Fehler statt den ganzen Sync
+    abzubrechen. Jede zusaetzliche Metrik ist ein eigener HTTPS-Call an Garmin,
+    daher soll ein einzelner fehlschlagender Endpoint (z.B. weil ein Geraet
+    einen Sensor nicht unterstuetzt) nicht den kompletten Sync killen."""
     try:
-        return fn(*a, **kw)
+        return fn()
     except Exception as e:
-        print(f"[garmin-ai-coach] Warnung: {name} fehlgeschlagen: {e}")
+        print(f"[sync] Metrik '{label}' fehlgeschlagen: {e}")
         return None
 
 
 def _weekly_volumes(activities):
-    """Fasst Aktivitäten der letzten 7 Tage zu Wochenvolumen je Disziplin zusammen (km/Minuten)."""
+    """Fasst Aktivitaeten der letzten 7 Tage zu Wochenvolumen je Disziplin zusammen (km/Minuten)."""
     totals = {"swim_km": 0.0, "bike_km": 0.0, "run_km": 0.0,
               "swim_min": 0.0, "bike_min": 0.0, "run_min": 0.0}
     if not activities:
@@ -106,100 +100,8 @@ def _weekly_volumes(activities):
                 totals["run_km"] += distance_km
                 totals["run_min"] += duration_min
         except Exception as e:
-            print(f"[garmin-ai-coach] Warnung: Aktivität konnte nicht ausgewertet werden: {e}")
+            print(f"[sync] Aktivitaet konnte nicht ausgewertet werden: {e}")
     return {k: round(v, 1) for k, v in totals.items()}
-
-
-def do_sync():
-    client = get_client()
-    today = datetime.date.today()
-    today_iso = today.isoformat()
-
-    recent_activities = _safe(client.get_activities, 0, 50) or []
-
-    wellness = {
-        "date": today_iso,
-        "resting_hr": _safe(client.get_rhr_day, today_iso),
-        "steps": _safe(client.get_steps_data, today_iso),
-        "training_readiness": _safe(client.get_training_readiness, today_iso),
-        "training_status": _safe(client.get_training_status, today_iso),
-        "hrv": _safe(client.get_hrv_data, today_iso),
-        "body_battery": _safe(client.get_body_battery, today_iso, today_iso),
-        "sleep": _safe(client.get_sleep_data, today_iso),
-        "max_metrics": _safe(client.get_max_metrics, today_iso),
-        "weekly_volumes": _weekly_volumes(recent_activities),
-        "days_to_race": days_to_race(today),
-        "phase": current_phase(today),
-    }
-
-    with open(DATA_FILE, "w") as f:
-        json.dump(wellness, f, indent=2, ensure_ascii=False, default=str)
-
-    publish_discovery()
-
-    try:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise RuntimeError("Kein Anthropic API Key in der Add-on-Konfiguration hinterlegt")
-        note = generate_coaching_note(wellness)
-    except Exception as e:
-        print(f"[garmin-ai-coach] Coaching-Notiz fehlgeschlagen: {e}")
-        note = "Coaching-Tipp aktuell nicht verfügbar (Details im Add-on-Log)."
-
-    publish_state(wellness, coaching_note=note)
-    return wellness
-
-
-def _read_state():
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def _write_state(ts, status):
-    with open(STATE_FILE, "w") as f:
-        json.dump({"last_sync_ts": ts, "status": status}, f)
-
-
-def _run_sync_and_record():
-    """Führt do_sync() aus und schreibt in jedem Fall last_sync/sync_status (auch bei Fehlern),
-    damit im Dashboard sichtbar ist, wenn ein Sync fehlgeschlagen ist, statt nur zu 'verschwinden'."""
-    ts = time.time()
-    try:
-        do_sync()
-        _write_state(ts, "ok")
-        publish_sync_meta(ts, "ok")
-    except Exception as e:
-        status = f"error: {type(e).__name__}"
-        print(f"[garmin-ai-coach] Sync fehlgeschlagen: {e}")
-        _write_state(ts, status)
-        try:
-            publish_sync_meta(ts, status)
-        except Exception as mqtt_err:
-            print(f"[garmin-ai-coach] Konnte sync_status nicht publizieren: {mqtt_err}")
-
-=======
-# Garmin sperrt Konten zeitweise nach zu vielen Login-Versuchen in kurzer Zeit
-# (das war vermutlich die Ursache des vorherigen "Garmin-Sperre"-Ausfalls).
-# do_sync() loggt sich bei jedem Aufruf neu ein, daher hier eine Mindestpause
-# zwischen zwei Versuchen - auch fuer den manuellen "Jetzt synchronisieren"-Button.
-MIN_SYNC_INTERVAL = datetime.timedelta(minutes=15)
-_last_sync_attempt = None
-
-
-def _safe_fetch(label, fn):
-    """Ruft eine einzelne Garmin-Metrik ab; loggt Fehler statt den ganzen Sync
-    abzubrechen. Jede zusaetzliche Metrik ist ein eigener HTTPS-Call an Garmin,
-    daher soll ein einzelner fehlschlagender Endpoint (z.B. weil ein Geraet
-    einen Sensor nicht unterstuetzt) nicht den kompletten Sync killen."""
-    try:
-        return fn()
-    except Exception as e:
-        print(f"[sync] Metrik '{label}' fehlgeschlagen: {e}")
-        return None
 
 
 def do_sync(force: bool = False):
@@ -224,7 +126,8 @@ def do_sync(force: bool = False):
 
     try:
         client = get_client()
-        today = datetime.date.today().isoformat()
+        today_date = datetime.date.today()
+        today = today_date.isoformat()
 
         wellness = {
             "date": today,
@@ -233,7 +136,7 @@ def do_sync(force: bool = False):
             "steps": client.get_steps_data(today),
             "training_readiness": client.get_training_readiness(today),
 
-            # neu: Erholung / Belastung - fuer Uebertrainings-Fruehwarnung
+            # Erholung / Belastung - fuer Uebertrainings-Fruehwarnung
             "training_status": _safe_fetch("training_status", lambda: client.get_training_status(today)),
             "hrv": _safe_fetch("hrv", lambda: client.get_hrv_data(today)),
             "body_battery": _safe_fetch("body_battery", lambda: client.get_body_battery(today, today)),
@@ -242,15 +145,22 @@ def do_sync(force: bool = False):
             "spo2": _safe_fetch("spo2", lambda: client.get_spo2_data(today)),
             "sleep": _safe_fetch("sleep", lambda: client.get_sleep_data(today)),
 
-            # neu: Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
-            "max_metrics": _safe_fetch("max_metrics", lambda: client.get_max_metrics(today)),  # VO2max, Fitness-Age
+            # Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
+            "max_metrics": _safe_fetch("max_metrics", lambda: client.get_max_metrics(today)),  # VO2max
+
+            # Rennvorbereitung / Periodisierung (siehe claude/status-und-plan.md)
+            "days_to_race": days_to_race(today_date),
+            "phase": current_phase(today_date),
         }
+
+        recent_activities = _safe_fetch("activities", lambda: client.get_activities(0, 50)) or []
+        wellness["weekly_volumes"] = _weekly_volumes(recent_activities)
 
         # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
         # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
         # damit das Rate-Limit-Risiko nicht unnoetig zu erhoehen.
-        if datetime.date.today().weekday() == 0:  # Montag
-            week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+        if today_date.weekday() == 0:  # Montag
+            week_ago = (today_date - datetime.timedelta(days=7)).isoformat()
             wellness["endurance_score"] = _safe_fetch(
                 "endurance_score", lambda: client.get_endurance_score(week_ago, today)
             )
@@ -261,6 +171,8 @@ def do_sync(force: bool = False):
 
         publish_discovery()
         try:
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                raise RuntimeError("Kein Anthropic API Key in der Add-on-Konfiguration hinterlegt")
             note = generate_coaching_note(wellness)
         except Exception as e:
             # Technischen Fehler nur ins Log schreiben, nicht in die Notiz, die
@@ -275,6 +187,7 @@ def do_sync(force: bool = False):
         publish_sync_status(ok=False, detail=str(e))
         return None
 
+
 @app.route("/")
 def home():
     if not is_logged_in():
@@ -287,11 +200,11 @@ def home():
     <html><body style="font-family:sans-serif;padding:2rem;">
     <h1>Garmin AI Coach</h1>
     <p>Verbunden mit Garmin ✅</p>
-    <p><a href="sync">Jetzt synchronisieren</a></p>
+    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a></p>
     <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
     </body></html>
     """
->>>>>>> e6144c40b4d98bf6dd43f9d6ab4e0d30872d235e
+
 
 LOGIN_FORM = """
 <html><body style="font-family:sans-serif;padding:2rem;">
@@ -305,28 +218,6 @@ Passwort wird nirgends gespeichert.</p>
 </form>
 </body></html>
 """
-
-
-@app.route("/")
-def home():
-    if not is_logged_in():
-        return LOGIN_FORM
-    latest = {}
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE) as f:
-            latest = json.load(f)
-    state = _read_state()
-    last_ts = state.get("last_sync_ts")
-    last_str = (datetime.datetime.fromtimestamp(last_ts).strftime("%d.%m.%Y %H:%M")
-                if last_ts else "noch nie")
-    return f"""
-    <html><body style="font-family:sans-serif;padding:2rem;">
-    <h1>Garmin AI Coach</h1>
-    <p>Verbunden mit Garmin ✅ &nbsp;|&nbsp; Letzter Sync: {last_str} ({state.get('status', '-')})</p>
-    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a></p>
-    <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
-    </body></html>
-    """
 
 
 @app.route("/login", methods=["POST"])
@@ -346,48 +237,9 @@ def login():
 def sync():
     if not is_logged_in():
         return redirect(".")
-<<<<<<< HEAD
-    force = request.args.get("force") == "1"
-    state = _read_state()
-    last_ts = state.get("last_sync_ts")
-    now_ts = time.time()
-    if not force and last_ts and (now_ts - last_ts) < MIN_SYNC_INTERVAL_SECONDS:
-        wait_min = int((MIN_SYNC_INTERVAL_SECONDS - (now_ts - last_ts)) // 60) + 1
-        return (f"<p>Letzter Sync ist erst {int((now_ts - last_ts) // 60)} Min. her. "
-                f"Bitte {wait_min} Min. warten oder <a href='sync?force=1'>Sync erzwingen</a>.</p>"
-                f"<a href='.'>Zurück</a>")
-    with _sync_lock:
-        _run_sync_and_record()
-    return redirect(".")
-
-
-def _scheduler_loop():
-    last_auto_date = None
-    while True:
-        try:
-            now = datetime.datetime.now()
-            if now.hour == SYNC_HOUR and last_auto_date != now.date() and is_logged_in():
-                print("[garmin-ai-coach] Automatischer Tages-Sync gestartet.")
-                with _sync_lock:
-                    _run_sync_and_record()
-                last_auto_date = now.date()
-        except Exception as e:
-            print(f"[garmin-ai-coach] Scheduler-Fehler: {e}")
-        time.sleep(60)
-
-
-if __name__ == "__main__":
-    # Discovery immer beim Start publizieren, damit alle Sensoren (inkl. last_sync/sync_status)
-    # in HA existieren, auch bevor der erste Sync erfolgreich durchgelaufen ist.
-    try:
-        publish_discovery()
-    except Exception as e:
-        print(f"[garmin-ai-coach] MQTT-Discovery beim Start fehlgeschlagen: {e}")
-    threading.Thread(target=_scheduler_loop, daemon=True).start()
-    app.run(host="0.0.0.0", port=8099)
-=======
     do_sync(force=request.args.get("force") == "1")
     return redirect(".")
+
 
 def _seconds_until_next_run(hour: int) -> float:
     now = datetime.datetime.now()
@@ -395,6 +247,7 @@ def _seconds_until_next_run(hour: int) -> float:
     if target <= now:
         target += datetime.timedelta(days=1)
     return (target - now).total_seconds()
+
 
 def _scheduler_loop():
     """Laeuft im Hintergrund und ruft do_sync() einmal taeglich um SYNC_HOUR auf,
@@ -406,7 +259,7 @@ def _scheduler_loop():
         except Exception as e:
             print(f"[scheduler] Automatischer Sync fehlgeschlagen: {e}")
 
+
 if __name__ == "__main__":
     threading.Thread(target=_scheduler_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=8099)
->>>>>>> e6144c40b4d98bf6dd43f9d6ab4e0d30872d235e

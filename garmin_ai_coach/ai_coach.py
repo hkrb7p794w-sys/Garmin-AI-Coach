@@ -4,18 +4,22 @@ from ha_publish import extract_metrics
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")  # kommt aus den Add-on-Optionen
 
+# Fokus je Trainingsphase (siehe claude/status-und-plan.md im Projekt).
 PHASE_FOCUS = {
     "Grundlagenausdauer": "aerobe Basis (Zone 1-2), Schwimmtechnik, 3x/Woche je Disziplin, 2x Kraft",
     "Aufbau 1": "Schwellentraining, erste Bricks, Rad-Grundkraft",
     "Aufbau 2 (spezifisch)": "Wettkampftempo, lange Einheiten (Rad 90-100km, Lauf 18-20km)",
-    "Peak": "höchstes Volumen, Formtest",
-    "Taper/Rennwoche": "Volumen -40 bis -60%, Intensität halten, Rennwoche",
+    "Peak": "hoechstes Volumen, Formtest",
+    "Taper/Rennwoche": "Volumen -40 bis -60%, Intensitaet halten, Rennwoche",
 }
 
 
 def _fmt(value, unit=""):
+    """Formatiert einen Metrikwert fuer den Prompt; gibt 'keine Daten' zurueck,
+    wenn Garmin den Wert (noch) nicht geliefert hat, statt 'None' in den
+    Prompt zu schreiben."""
     if value is None:
-        return "unbekannt"
+        return "keine Daten"
     return f"{value}{unit}"
 
 
@@ -26,29 +30,34 @@ def generate_coaching_note(data: dict) -> str:
     metrics = extract_metrics(data)
     phase = data.get("phase") or "unbekannt"
     focus = PHASE_FOCUS.get(phase, "")
+    wv = data.get("weekly_volumes") or {}
 
     prompt = (
-        "Du bist Personal-Trainer für einen Age-Group-Athleten in der Vorbereitung auf einen "
-        "Ironman 70.3 (29.08.2027). Hier sind die heutigen Garmin-Daten:\n"
-        f"- Ruhepuls: {_fmt(metrics.get('resting_hr'), ' bpm')}\n"
-        f"- Schritte heute: {_fmt(metrics.get('steps_today'))}\n"
-        f"- Training Readiness: {_fmt(metrics.get('training_readiness_score'))} "
-        f"({_fmt(metrics.get('training_readiness_level'))})\n"
-        f"- Trainingsstatus: {_fmt(metrics.get('training_status'))}\n"
-        f"- HRV letzte Nacht: {_fmt(metrics.get('hrv_last_night_avg'), ' ms')} "
-        f"(Status: {_fmt(metrics.get('hrv_status'))})\n"
-        f"- Body Battery: {_fmt(metrics.get('body_battery'))}\n"
-        f"- Schlaf-Score: {_fmt(metrics.get('sleep_score'))}\n"
-        f"- VO2max: {_fmt(metrics.get('vo2max'))}\n"
-        f"- Wochenvolumen bisher: Schwimmen {_fmt(metrics.get('weekly_swim_km'), 'km')}, "
-        f"Rad {_fmt(metrics.get('weekly_bike_km'), 'km')}, Lauf {_fmt(metrics.get('weekly_run_km'), 'km')}\n"
-        f"- Trainingsphase: {phase} (Fokus: {focus})\n"
-        f"- Tage bis zum Rennen: {_fmt(metrics.get('days_to_race'))}\n\n"
-        "Gib einen kurzen, ehrlichen Coaching-Tipp für heute auf Deutsch (max. 4 Sätze): "
-        "1) kurze Einschätzung der Erholungslage, 2) konkrete Trainingsempfehlung für heute passend "
-        "zur aktuellen Phase, 3) falls Readiness/HRV/Schlaf auf Übertraining oder Krankheit hindeuten, "
-        "das explizit als Warnung benennen und zu einem Ruhetag raten. Keine Floskeln, keine Wiederholung "
-        "der reinen Zahlen, direkt umsetzbar."
+        "Du bist ein Ausdauersport-Coach fuer einen Age-Group-Athleten in der Vorbereitung "
+        "auf einen Ironman 70.3 am 29.08.2027.\n\n"
+        f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}). "
+        f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n\n"
+        "Heutige Werte:\n"
+        f"- Ruhepuls: {_fmt(metrics['resting_hr'], ' bpm')}\n"
+        f"- Schritte bisher: {_fmt(metrics['steps_today'])}\n"
+        f"- Training Readiness: {_fmt(metrics['training_readiness_score'], '%')} "
+        f"({_fmt(metrics['training_readiness_level'])})\n"
+        f"- Training Status: {_fmt(metrics['training_status_phrase'])}\n"
+        f"- HRV letzte Nacht: {_fmt(metrics['hrv_avg'], ' ms')} ({_fmt(metrics['hrv_status'])})\n"
+        f"- Body Battery: {_fmt(metrics['body_battery'], '%')}\n"
+        f"- Stresslevel: {_fmt(metrics['stress_avg'])}\n"
+        f"- Atemfrequenz: {_fmt(metrics['respiration_avg'], ' brpm')}\n"
+        f"- SpO2: {_fmt(metrics['spo2_avg'], '%')}\n"
+        f"- Schlaf: {_fmt(metrics['sleep_hours'], ' h')}, Score {_fmt(metrics['sleep_score'])}\n"
+        f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}\n"
+        f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
+        f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
+        "Gib mir einen kurzen, ehrlichen Coaching-Tipp fuer heute (max. 3-4 Saetze, Deutsch): "
+        "1) kurze Einschaetzung der Erholungslage, 2) eine konkrete Trainingsempfehlung fuer heute "
+        "passend zur aktuellen Phase. Wenn Erholungswerte (Readiness, HRV, Body Battery, Schlaf) auf "
+        "Uebertraining oder unzureichende Erholung hindeuten, empfiehl explizit leichteres Training "
+        "oder einen Ruhetag statt eines harten Reizes. Nenne nicht jeden einzelnen Wert einzeln, "
+        "sondern ziehe eine klare, direkt umsetzbare Schlussfolgerung."
     )
 
     resp = requests.post(
