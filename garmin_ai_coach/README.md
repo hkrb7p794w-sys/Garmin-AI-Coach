@@ -5,6 +5,17 @@ erzeugt eine KI-Coaching-Notiz (Anthropic Claude) zur Vorbereitung auf einen Iro
 
 ## Changelog
 
+### 0.6.1
+- **Kritischer Bugfix:** `services: - mqtt:want` in `config.yaml` injiziert die MQTT-Zugangsdaten
+  entgegen der Annahme NICHT automatisch als Umgebungsvariablen - das deklariert nur die
+  Abhängigkeit. `run.sh` hat `MQTT_USERNAME`/`MQTT_PASSWORD` nie gesetzt bekommen, wodurch sich
+  der Client anonym bei core-mosquitto verbunden hat und dort mit "not authorised" abgelehnt
+  wurde. Jeder Sync-Lauf lief technisch fehlerfrei durch, aber praktisch kein einziger Sensor-Wert
+  kam in Home Assistant an (die drei alten Sensoren zeigten nur noch eingefrorene, monatealte
+  MQTT-Retained-Werte). Fix: `run.sh` fragt die Zugangsdaten jetzt explizit über
+  `bashio::services mqtt "host"/"port"/"username"/"password"` ab, wie von den Home-Assistant-
+  Entwickler-Docs für App-Kommunikation vorgesehen.
+
 ### 0.5.0
 - **Kritischer Bugfix:** `/sync` hatte ein `return redirect(".")` vor den Zeilen, die den
   MQTT-Publish und die KI-Coaching-Notiz auslösen — dieser Code wurde nie erreicht, es kam nie
