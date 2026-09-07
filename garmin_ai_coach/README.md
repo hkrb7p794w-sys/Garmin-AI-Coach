@@ -20,6 +20,27 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.9.0
+- **Coaching-Notiz und Wochenreport jetzt als Stichpunkte:** Beide Gemini-Prompts fordern jetzt
+  explizit Markdown-Bulletpoints statt Fliesstext an (2-3 bzw. 3-4 kurze Punkte, je 1-2 Saetze,
+  keine Wiederholung der reinen Zahlen aus der Tabelle) - auf Wunsch besser scanbar als ein
+  Textabsatz.
+- **Bugfix/Klarstellung Wochenreport-Zeitraum:** Die Tabelle im Dashboard nannte die beiden
+  7-Tage-Fenster "Diese Woche"/"Vorwoche". Da der Report montags automatisch ueber die gerade
+  abgeschlossene Woche laeuft (und `/weekly` jederzeit manuell ausloesbar ist), war das
+  irrefuehrend - die als "Diese Woche" bezeichneten Einheiten waren faktisch die der zuletzt
+  abgeschlossenen Woche. Fix: `build_weekly_summary()` berechnet jetzt konkrete Datumsbereiche
+  (`period_label`/`period_prev_label`, z.B. "01.09.–07.09."), Tabelle und KI-Prompt nennen jetzt
+  das echte Datum statt einer relativen Wochenbezeichnung.
+- **Dashboard-Feinschliff:** Die kleinen bubble-card-Kacheln waren auf schmalen Bildschirmen
+  (4 pro Zeile) so eng, dass Name und Wert abgeschnitten wurden. Auf 2 pro Zeile verbreitert plus
+  Text darf jetzt umbrechen statt abgeschnitten zu werden. Training Readiness, Body Battery und
+  Schritte heute laufen jetzt zusaetzlich als Gauge-Karten (0-100 % bzw. 0-12.000 Schritte mit
+  Farbzonen, Schritte-Ziel 8.000 gruen markiert) - fest begrenzte Skala, damit ein Wert visuell nie
+  wie "ueber 100 %" aussehen kann (der reine History-Graph hatte hier automatisch eine y-Achse bis
+  160 gewaehlt, obwohl der Messwert selbst korrekt bei 97 % lag - eine reine Grafikskalierung, kein
+  Datenfehler).
+
 ### 0.8.0
 - **Neuer Wochenreport** (`sensor.…_garmin_wochenreport`): KI-Rückblick auf die vergangene Woche mit
   Soll/Ist-Vergleich der Wochenstruktur, Vorwochenvergleich je Disziplin und Erholungstrends. Läuft

@@ -210,6 +210,10 @@ def _pct_change(current, previous):
     return round((current - previous) / previous * 100)
 
 
+def _fmt_dm(d: datetime.date) -> str:
+    return d.strftime("%d.%m.")
+
+
 def build_weekly_summary(wellness: dict, history: list) -> dict:
     """Stellt die Kennzahlen des Wochenreports zusammen (laufende Woche vs. Vorwoche).
 
@@ -221,7 +225,25 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
                           ("swim_min", "bike_min", "run_min", "strength_min")))
     total_min_prev = round(sum(prev.get(k, 0) or 0 for k in
                                ("swim_min", "bike_min", "run_min", "strength_min")))
+
+    # Datumsbereiche der beiden Fenster als Klartext - die Tabelle im Dashboard nannte
+    # diese Fenster bisher "Diese Woche"/"Vorwoche", was auf den Kopf zeigt, wenn der
+    # Report (wie vorgesehen) montags ueber die gerade abgeschlossene Woche laeuft:
+    # dann ist "diese Woche" fuer den Betrachter eigentlich schon "letzte Woche". Ein
+    # konkretes Datum statt einer relativen Woche-Bezeichnung raeumt die Verwirrung aus,
+    # unabhaengig davon, an welchem Wochentag der Report erzeugt wird (auch /weekly
+    # kann jederzeit manuell ausgeloest werden, nicht nur montags).
+    try:
+        today = datetime.date.fromisoformat(wellness.get("date")) if wellness.get("date") else datetime.date.today()
+    except ValueError:
+        today = datetime.date.today()
+    period_from = today - datetime.timedelta(days=6)
+    period_prev_from = today - datetime.timedelta(days=13)
+    period_prev_to = today - datetime.timedelta(days=7)
+
     summary = {
+        "period_label": f"{_fmt_dm(period_from)}–{_fmt_dm(today)}",
+        "period_prev_label": f"{_fmt_dm(period_prev_from)}–{_fmt_dm(period_prev_to)}",
         "swim_km": cur.get("swim_km"), "bike_km": cur.get("bike_km"), "run_km": cur.get("run_km"),
         "swim_km_prev": prev.get("swim_km"), "bike_km_prev": prev.get("bike_km"),
         "run_km_prev": prev.get("run_km"),
