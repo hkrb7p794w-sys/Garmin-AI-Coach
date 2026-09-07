@@ -1,13 +1,20 @@
 import os
+import re
 import requests
 from ha_publish import extract_metrics
 
 # Google Gemini API - kostenloses Kontingent (Stand 09/2026: keine Kreditkarte noetig,
 # siehe https://ai.google.dev/gemini-api/docs/pricing). Key kommt aus den Add-on-Optionen.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+# gemini-2.5-flash liefert fuer neue Accounts nur noch HTTP 404 ("no longer available to
+# new users"). Google nennt in dieser Fehlermeldung selbst das aktuelle Nachfolgemodell -
+# wir starten daher mit dem empfohlenen Modell und ziehen bei einem 404 automatisch das
+# in der Antwort genannte nach (siehe _model_from_404), damit ein kuenftiger Modellwechsel
+# bei Google nicht wieder ein manuelles Update erzwingt.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_URL_TEMPLATE = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 
 # Fokus je Trainingsphase (siehe claude/status-und-plan.md im Projekt).
@@ -27,6 +34,40 @@ def _fmt(value, unit=""):
     if value is None:
         return "keine Daten"
     return f"{value}{unit}"
+
+
+def _model_from_404(message: str, tried_model: str):
+    """Zieht aus einer 404-Antwort das von Google empfohlene Nachfolgemodell.
+
+    Beispielmeldung: "This model models/gemini-2.5-flash is no longer available to
+    new users. Please update your code to use models/gemini-3.6-flash ...".
+    Wir nehmen das erste genannte Modell, das nicht das gerade versuchte ist."""
+    for name in re.findall(r"models/([A-Za-z0-9.\-]+)", message or ""):
+        if name != tried_model:
+            return name
+    return None
+
+
+def _call_gemini(model: str, prompt: str):
+    """Ein Gemini-Aufruf. Gibt (status_code, body_text_or_json) zurueck."""
+    resp = requests.post(
+        GEMINI_URL_TEMPLATE.format(model=model),
+        headers={
+            "x-goog-api-key": GEMINI_API_KEY,
+            "content-type": "application/json",
+        },
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            # Die Flash-Modelle sind "Thinking"-Modelle: interne Denk-Tokens zaehlen mit
+            # gegen maxOutputTokens. Bei einem knappen Budget kann das Modell alles fuers
+            # Denken verbrauchen und einen Kandidaten ganz ohne Text-Part zurueckliefern
+            # (finishReason MAX_TOKENS) - ohne HTTP-Fehler. Daher grosszuegige Obergrenze;
+            # der sichtbare Text bleibt kurz, weil der Prompt 3-4 Saetze vorgibt.
+            "generationConfig": {"maxOutputTokens": 2000},
+        },
+        timeout=30,
+    )
+    return resp
 
 
 def generate_coaching_note(data: dict) -> str:
@@ -66,28 +107,23 @@ def generate_coaching_note(data: dict) -> str:
         "sondern ziehe eine klare, direkt umsetzbare Schlussfolgerung."
     )
 
-    resp = requests.post(
-        GEMINI_URL,
-        headers={
-            "x-goog-api-key": GEMINI_API_KEY,
-            "content-type": "application/json",
-        },
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            # WICHTIG: gemini-2.5-* sind "Thinking"-Modelle - die internen Denk-Tokens
-            # zaehlen mit gegen maxOutputTokens. Mit einem knappen Budget (vorher 300)
-            # verbraucht das Modell alles fuers Denken und liefert einen Kandidaten
-            # voellig OHNE Text-Part zurueck (finishReason MAX_TOKENS), ohne HTTP-Fehler.
-            # Genau das ist beim ersten Test passiert. Der sichtbare Text bleibt trotzdem
-            # kurz, weil der Prompt 3-4 Saetze vorgibt - das Budget ist nur die Obergrenze.
-            "generationConfig": {"maxOutputTokens": 2000},
-        },
-        timeout=30,
-    )
+    model = GEMINI_MODEL
+    resp = _call_gemini(model, prompt)
+
+    if resp.status_code == 404:
+        # Google zieht Modelle fuer neue Accounts zurueck und nennt in der 404-Antwort
+        # das Nachfolgemodell. Einmal automatisch nachziehen, statt den Coaching-Tipp
+        # ausfallen zu lassen, bis jemand die Version haendisch anpasst.
+        successor = _model_from_404(resp.text, model)
+        if successor:
+            print(f"[ai_coach] Modell '{model}' nicht verfuegbar, wechsle auf '{successor}'")
+            model = successor
+            resp = _call_gemini(model, prompt)
+
     if resp.status_code >= 400:
         # Antwortkoerper mitloggen: Gemini erklaert darin praezise, was fehlt
         # (ungueltiger Key, unbekanntes Modell, Quota erschoepft, ...).
-        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:400]}")
+        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
     body = resp.json()
     candidates = body.get("candidates") or []
     if not candidates:
@@ -104,7 +140,8 @@ def generate_coaching_note(data: dict) -> str:
         # bleibt unsichtbar - genau die Klasse von Bug, die dieses Projekt schon zweimal
         # ausgebremst hat.
         raise RuntimeError(
-            f"Gemini hat leeren Text geliefert (finishReason: {candidate.get('finishReason')}, "
+            f"Gemini ({model}) hat leeren Text geliefert "
+            f"(finishReason: {candidate.get('finishReason')}, "
             f"usageMetadata: {body.get('usageMetadata')})"
         )
     return text

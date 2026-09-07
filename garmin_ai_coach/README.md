@@ -20,6 +20,17 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.7.2
+- **Modell gewechselt:** `gemini-2.5-flash` liefert für neu angelegte Accounts nur noch HTTP 404
+  ("This model ... is no longer available to new users. Please update your code to use
+  models/gemini-3.6-flash"). Standardmodell ist daher jetzt `gemini-3.6-flash`.
+- **Selbstheilung bei künftigen Modell-Abkündigungen:** Bei einem 404 liest das Add-on das von
+  Google in der Fehlermeldung genannte Nachfolgemodell aus und wiederholt den Aufruf automatisch
+  damit (`_model_from_404`). Ein Modellwechsel bei Google erzwingt damit kein manuelles Update
+  mehr; der Wechsel wird im Log protokolliert. Überschreibbar per `GEMINI_MODEL`-Env-Var.
+- Hinweis: `generateContent` funktioniert weiterhin; Google empfiehlt in der Meldung zusätzlich die
+  neuere "Interactions API" - ein möglicher späterer Umbau, aktuell nicht nötig.
+
 ### 0.7.1
 - **Bugfix Coaching-Notiz blieb leer:** `gemini-2.5-flash` ist ein "Thinking"-Modell - die internen
   Denk-Tokens zählen gegen `maxOutputTokens`. Mit dem bisherigen Budget von 300 verbrauchte das
