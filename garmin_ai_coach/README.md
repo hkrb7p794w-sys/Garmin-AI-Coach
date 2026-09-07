@@ -20,6 +20,14 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.7.3
+- **Timeout erhöht (30s → 120s, per `GEMINI_TIMEOUT` änderbar):** `gemini-3.6-flash` brauchte für
+  den Coaching-Prompt länger als 30 Sekunden, der Aufruf lief in `Read timed out`.
+- **Messwerte sind von der KI entkoppelt:** `do_sync()` publiziert jetzt erst alle Garmin-Sensoren
+  (`publish_state`) und den Sync-Status, und fragt *danach* Gemini; die Notiz geht separat über die
+  neue Funktion `publish_coaching_note()` raus. Vorher hingen alle Sensorwerte an der KI-Antwort -
+  ein langsamer oder fehlschlagender LLM-Aufruf hat den kompletten Sync blockiert bzw. verzögert.
+
 ### 0.7.2
 - **Modell gewechselt:** `gemini-2.5-flash` liefert für neu angelegte Accounts nur noch HTTP 404
   ("This model ... is no longer available to new users. Please update your code to use

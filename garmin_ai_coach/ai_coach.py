@@ -13,6 +13,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 # in der Antwort genannte nach (siehe _model_from_404), damit ein kuenftiger Modellwechsel
 # bei Google nicht wieder ein manuelles Update erzwingt.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", 120))
 GEMINI_URL_TEMPLATE = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
@@ -65,7 +66,11 @@ def _call_gemini(model: str, prompt: str):
             # der sichtbare Text bleibt kurz, weil der Prompt 3-4 Saetze vorgibt.
             "generationConfig": {"maxOutputTokens": 2000},
         },
-        timeout=30,
+        # Thinking-Modelle brauchen fuer diesen Prompt teils deutlich mehr als 30s
+        # (genau daran ist der erste Versuch mit gemini-3.6-flash gescheitert:
+        # "Read timed out"). Der Aufruf blockiert nichts Kritisches mehr, seit die
+        # Messwerte in app.py bereits VOR der KI-Anfrage publiziert werden.
+        timeout=GEMINI_TIMEOUT,
     )
     return resp
 

@@ -1,6 +1,11 @@
 import os, json, datetime, threading, time
 from flask import Flask, request, redirect
-from ha_publish import publish_discovery, publish_state, publish_sync_status
+from ha_publish import (
+    publish_discovery,
+    publish_state,
+    publish_sync_status,
+    publish_coaching_note,
+)
 from ai_coach import generate_coaching_note
 
 DATA_DIR = "/data"
@@ -170,6 +175,13 @@ def do_sync(force: bool = False):
             json.dump(wellness, f, indent=2, ensure_ascii=False, default=str)
 
         publish_discovery()
+
+        # Messwerte SOFORT publizieren - vor der KI-Anfrage. Die Gemini-Antwort kann
+        # je nach Modell deutlich ueber eine Minute dauern oder ganz fehlschlagen; die
+        # Garmin-Daten sollen davon nicht aufgehalten oder mitgerissen werden.
+        publish_state(wellness)
+        publish_sync_status(ok=True)
+
         try:
             if not os.environ.get("GEMINI_API_KEY"):
                 raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
@@ -179,8 +191,7 @@ def do_sync(force: bool = False):
             # im Dashboard landet - dort sollen keine Exception-Details/Keys auftauchen.
             print(f"[ai_coach] Coaching-Notiz fehlgeschlagen: {e}")
             note = "Coaching-Tipp aktuell nicht verfuegbar - Werte wurden trotzdem synchronisiert."
-        publish_state(wellness, coaching_note=note)
-        publish_sync_status(ok=True)
+        publish_coaching_note(note)
         return wellness
     except Exception as e:
         print(f"[sync] Sync fehlgeschlagen: {e}")

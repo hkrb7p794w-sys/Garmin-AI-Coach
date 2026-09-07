@@ -380,16 +380,27 @@ def publish_state(data: dict, coaching_note: str = None):
         client.publish("garmin_ai_coach/training_phase/state", metrics["training_phase"], retain=True)
 
     if coaching_note:
-        short = coaching_note[:250] + ("…" if len(coaching_note) > 250 else "")
-        client.publish("garmin_ai_coach/coaching_note/state", short, retain=True)
-        client.publish("garmin_ai_coach/coaching_note/attributes",
-                        json.dumps({"full_text": coaching_note}), retain=True)
+        publish_coaching_note(coaching_note)
 
     client.publish(
         "garmin_ai_coach/last_sync/state",
         datetime.datetime.now(datetime.timezone.utc).isoformat(),
         retain=True,
     )
+
+
+def publish_coaching_note(note: str):
+    """Publiziert nur die Coaching-Notiz.
+
+    Bewusst getrennt von publish_state(): die Garmin-Messwerte gehen sofort nach
+    dem Abruf raus und haengen nicht mehr an der (teils >30s dauernden oder ganz
+    fehlschlagenden) KI-Anfrage."""
+    if not note:
+        return
+    short = note[:250] + ("…" if len(note) > 250 else "")
+    client.publish("garmin_ai_coach/coaching_note/state", short, retain=True)
+    client.publish("garmin_ai_coach/coaching_note/attributes",
+                   json.dumps({"full_text": note}), retain=True)
 
 
 def publish_sync_status(ok: bool, detail: str = ""):
