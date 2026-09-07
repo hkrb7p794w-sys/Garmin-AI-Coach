@@ -74,17 +74,37 @@ def generate_coaching_note(data: dict) -> str:
         },
         json={
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 300},
+            # WICHTIG: gemini-2.5-* sind "Thinking"-Modelle - die internen Denk-Tokens
+            # zaehlen mit gegen maxOutputTokens. Mit einem knappen Budget (vorher 300)
+            # verbraucht das Modell alles fuers Denken und liefert einen Kandidaten
+            # voellig OHNE Text-Part zurueck (finishReason MAX_TOKENS), ohne HTTP-Fehler.
+            # Genau das ist beim ersten Test passiert. Der sichtbare Text bleibt trotzdem
+            # kurz, weil der Prompt 3-4 Saetze vorgibt - das Budget ist nur die Obergrenze.
+            "generationConfig": {"maxOutputTokens": 2000},
         },
-        timeout=20,
+        timeout=30,
     )
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        # Antwortkoerper mitloggen: Gemini erklaert darin praezise, was fehlt
+        # (ungueltiger Key, unbekanntes Modell, Quota erschoepft, ...).
+        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:400]}")
     body = resp.json()
     candidates = body.get("candidates") or []
     if not candidates:
         # Gemini liefert bei Safety-Blocks o.ae. leere candidates statt eines Fehlers -
         # dann lieber eine klare Meldung als ein KeyError.
         reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Text geliefert (Grund: {reason})")
-    parts = candidates[0].get("content", {}).get("parts") or []
-    return "".join(p.get("text", "") for p in parts).strip()
+        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+    candidate = candidates[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        # Nicht still "" zurueckgeben: publish_state() published leere Notizen gar nicht,
+        # dann bleibt im Dashboard kommentarlos die alte Notiz stehen und der Fehler
+        # bleibt unsichtbar - genau die Klasse von Bug, die dieses Projekt schon zweimal
+        # ausgebremst hat.
+        raise RuntimeError(
+            f"Gemini hat leeren Text geliefert (finishReason: {candidate.get('finishReason')}, "
+            f"usageMetadata: {body.get('usageMetadata')})"
+        )
+    return text

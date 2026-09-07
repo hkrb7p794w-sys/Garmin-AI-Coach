@@ -20,6 +20,19 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.7.1
+- **Bugfix Coaching-Notiz blieb leer:** `gemini-2.5-flash` ist ein "Thinking"-Modell - die internen
+  Denk-Tokens zählen gegen `maxOutputTokens`. Mit dem bisherigen Budget von 300 verbrauchte das
+  Modell alles fürs Denken und lieferte einen Kandidaten ganz ohne Text-Part zurück
+  (`finishReason: MAX_TOKENS`), ohne HTTP-Fehler. Die Funktion gab dann einen leeren String
+  zurück, `publish_state()` überspringt leere Notizen - im Dashboard blieb kommentarlos die alte
+  Notiz stehen. Budget auf 2000 erhöht.
+- Leerer Antworttext und HTTP-Fehler werfen jetzt eine aussagekräftige Exception (inkl.
+  `finishReason`, `usageMetadata` bzw. Antwortkörper), statt still zu scheitern.
+- `PYTHONUNBUFFERED=1` in `run.sh`: Python pufferte seine `print()`-Diagnosen blockweise, weil
+  stdout kein TTY ist - `[sync]`/`[ai_coach]`-Zeilen tauchten im Add-on-Log gar nicht auf, während
+  die Flask-Zugriffslogs sofort sichtbar waren. Das hat die Fehlersuche unnötig erschwert.
+
 ### 0.7.0
 - **KI-Anbieter von Anthropic Claude auf Google Gemini umgestellt**, um eine kostenlose Nutzung zu
   ermöglichen (Gemini API bietet ein kostenloses Kontingent ohne Kreditkarte, Anthropic-API-Nutzung

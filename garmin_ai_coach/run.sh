@@ -2,6 +2,12 @@
 
 bashio::log.info "Garmin AI Coach add-on gestartet."
 
+# Ohne das puffert Python seine print()-Ausgaben blockweise, weil stdout kein TTY ist:
+# Diagnose-Zeilen wie "[sync] ..." oder "[ai_coach] ..." tauchen dann erst viel spaeter
+# (oder gar nicht) im Add-on-Log auf, waehrend die Flask-Zugriffslogs sofort erscheinen -
+# was die Fehlersuche massiv erschwert hat.
+export PYTHONUNBUFFERED=1
+
 export GEMINI_API_KEY=$(bashio::config 'gemini_api_key')
 export GARMIN_EMAIL=$(bashio::config 'garmin_email')
 export SYNC_HOUR=$(bashio::config 'sync_hour')
