@@ -20,7 +20,16 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
-### 0.11.1
+### 0.11.2
+- **Versionsnummer erneut angehoben (0.11.1 -> 0.11.2), damit der Add-on-Store den Rebuild ueberhaupt
+  erkennt:** `config.yaml` stand durch einen frueheren, unterbrochenen Aenderungsversuch bereits auf
+  0.11.1, und dieser Stand war bereits committet/gepusht/im Add-on installiert - allerdings mit dem
+  unten beschriebenen Bug. Der Fix fuer diesen Bug wurde zunaechst faelschlich weiter unter derselben
+  Versionsnummer 0.11.1 abgelegt; der HA-Add-on-Store erkennt einen Rebuild aber nur ueber eine
+  geaenderte `version`, nicht ueber Dateiinhalte - ohne Versionssprung waere "Neu laden" + Update
+  wirkungslos geblieben, obwohl der Code auf GitHub bereits korrigiert war (daher: "hat sich nix
+  geaendert" trotz gepushtem Fix). Lehre: bei jeder Code-Aenderung immer pruefen, ob die Version
+  bereits dem lokal vorgefundenen Stand entspricht, statt sie unveraendert zu lassen.
 - **Wochenreport (Dashboard-Tab "Woche") nutzt jetzt die echte Kalenderwoche (Mo-So) statt eines
   rollierenden 7-Tage-Fensters ab "jetzt".** Vorher zeigte der Report bei manueller Erzeugung (z. B.
   Mittwochs ueber "Wochenreport erzeugen") die letzten 7 Tage ab dem aktuellen Tag zurueck - das
