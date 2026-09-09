@@ -20,30 +20,33 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.10.1
+- **Fix: Kraft-Uebungen jetzt ueber Garmins offizielle exerciseSets-API statt FIT-Parsing.** Die
+  v0.10.0-Implementierung (FIT-Datei herunterladen + selbst parsen) war ungetestet gegen echte Daten
+  geschrieben worden und lieferte am ersten echten Sync tatsaechlich unbrauchbare Ergebnisse: von 4
+  Kraft-Einheiten der Woche zeigten 2 gar keine Uebungen, die anderen 2 nur `"Uebung (Code (None,
+  None, None))"` ohne Gewichtsangabe - fitparse konnte die Uebungs-Enums der Original-FIT-Datei
+  nicht in Klartext aufloesen. Nachdem `cyberjunky/python-garminconnect` als Projekt-Quelle
+  synchronisiert wurde, zeigte der echte Quellcode einen viel direkteren Weg:
+  `Garmin.get_activity_exercise_sets(activity_id)` liest Garmins eigenen JSON-Endpunkt
+  (`.../activity/{id}/exerciseSets`) - dieselben, von Garmin bereits aufgeloesten Uebungsdaten, die
+  auch die Garmin-Connect-App selbst anzeigt. Kein FIT-Download, kein ZIP, kein `fitparse` mehr
+  (Abhaengigkeit wieder entfernt). Uebungsnamen werden ueber den mitgelieferten 1527-Uebungen-
+  Katalog `garminconnect.exercises` aufgeloest. Datei bleibt aus Kompatibilitaetsgruenden weiter
+  `fit_exercises.py`, macht inhaltlich aber keinen FIT-Umweg mehr.
+  - **Weiterhin offen:** Die genauen JSON-Feldnamen fuer Wiederholungen/Gewicht innerhalb eines
+    Satzes (z.B. `repetitionCount` vs. `reps`) sind nicht durch eine echte Beispielantwort bestaetigt,
+    nur die Uebungs-Zuordnung selbst (`category`/`name`) ist durch den Quellcode-Docstring direkt
+    belegt. Der Code probiert mehrere plausible Feldnamen und bleibt bei Fehlern defensiv (leere
+    Liste statt Sync-Abbruch). **Bitte nach dem naechsten Sync erneut die Attribute von
+    `sensor.garmin_ai_coach_garmin_krafttraining_uebungen`** (Entwicklerwerkzeuge -> Zustaende)
+    pruefen.
+  - Das Dashboard wurde weiterhin bewusst NICHT um diese Daten erweitert, bis Wiederholungen/Gewicht
+    an echten Daten bestaetigt sind.
+
 ### 0.10.0
-- **Neu (Best-Effort, siehe Hinweis unten): einzelne Kraft-Uebungen je Einheit.** Die normale
-  Garmin-API liefert fuer Krafttraining nur Aggregatwerte (Gesamtzahl Saetze/Wiederholungen/Volumen),
-  nicht welche Uebung wann mit wie vielen Wiederholungen/Gewicht gemacht wurde. Neues Modul
-  `fit_exercises.py` laedt dafuer die Original-FIT-Datei einer Kraft-Aktivitaet direkt von Garmin
-  (`download_activity(..., dl_fmt=ORIGINAL)`, kommt als ZIP) und liest daraus die `set`- und
-  `exercise_title`-Nachrichten des Geraets aus (neue Abhaengigkeit: `fitparse`). Ergebnis: neuer
-  Sensor `sensor.garmin_ai_coach_strength_exercises` mit den erkannten Uebungen/Saetzen der laufenden
-  Woche als Attribut (`sessions`), und der woechentliche KI-Report bekommt dieselben Details als
-  Zusatzkontext, falls vorhanden.
-  - **Wichtiger Hinweis:** Diese Extraktion ist ungetestet gegen eine echte Kraft-FIT-Datei (keine
-    oeffentlich verfuegbare Testdatei gefunden). Sie ist vollstaendig defensiv gebaut: jeder Fehler
-    (unerwartetes Dateiformat, fehlende Felder, unbekannte Codes) fuehrt zu einer leeren Liste statt
-    den Sync zu gefaehrden - im schlimmsten Fall bleibt der neue Sensor einfach leer, alle anderen
-    Sensoren sind unberuehrt. **Bitte nach dem ersten Sync die Attribute von
-    `sensor.garmin_ai_coach_strength_exercises` in Home Assistant unter Entwicklerwerkzeuge ->
-    Zustaende pruefen** und kurz Rueckmeldung geben, ob echte Uebungsnamen (z.B. "Bench Press") oder
-    nur Zahlencodes ankommen ("Uebung (Code 14)") - falls Codes, kann die Zuordnung gezielt
-    nachgeschaerft werden. Ausserdem laut Garmin-Dokumentation: Uebungsdetails werden nur erfasst,
-    wenn die automatische Satz-/Wiederholungserkennung der Uhr beim Training aktiv war, und
-    nachtraegliche Korrekturen in der Garmin-Connect-App spiegeln sich nicht in der Original-Datei
-    wider.
-  - Das Dashboard wurde bewusst noch NICHT um diese Daten erweitert, bis die Extraktion an echten
-    Daten bestaetigt ist - siehe claude/status-und-plan.md fuer den naechsten Schritt.
+- **Neu (Best-Effort): einzelne Kraft-Uebungen je Einheit** ueber FIT-Datei-Parsing - siehe 0.10.1,
+  dieser Ansatz wurde direkt im ersten echten Test durch die exerciseSets-API ersetzt.
 
 ### 0.9.0
 - **Coaching-Notiz und Wochenreport jetzt als Stichpunkte:** Beide Gemini-Prompts fordern jetzt
