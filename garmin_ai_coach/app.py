@@ -246,17 +246,40 @@ def _save_strength_cache(cache: dict) -> dict:
     return cache
 
 
+def _is_broken_strength_entry(entry: dict) -> bool:
+    """Erkennt Cache-Eintraege aus der fehlgeschlagenen v0.10.0-FIT-Extraktion
+    (leere Uebungsliste oder nur der Codename-Platzhalter „Uebung (Code ...)"),
+    damit sie nach dem v0.10.1-Fix (exerciseSets-API statt eigenem FIT-Parsing)
+    automatisch einmalig neu abgerufen werden, statt dauerhaft als kaputter
+    Eintrag im Cache haengen zu bleiben (siehe claude/status-und-plan.md,
+    Abschnitt v0.10.1 - live bestaetigt: 2 von 4 Kraft-Einheiten des ersten
+    echten Syncs blieben unter v0.10.0 leer bzw. nur mit Codename-Platzhalter)."""
+    exercises = entry.get("exercises") or []
+    if not exercises:
+        return True
+    return any(
+        str((ex or {}).get("exercise", "")).startswith("Uebung (Code")
+        for ex in exercises
+    )
+
+
 def _update_strength_exercises(client, activities: list) -> list:
     """Laedt fuer Kraft-Aktivitaeten der laufenden Woche, die noch nicht im
-    Cache stehen, die Original-FIT-Datei und extrahiert die geloggten
-    Uebungen/Saetze daraus (siehe fit_exercises.py) - die normale Garmin-API
+    Cache stehen (oder deren Cache-Eintrag als fehlgeschlagen erkannt wurde,
+    siehe _is_broken_strength_entry), die Uebungsdaten ueber Garmins
+    exerciseSets-API (siehe fit_exercises.py) - die normale Aktivitaetenliste
     liefert dafuer nur Aggregatwerte (total_sets/total_reps/total_volume),
     keine Aufschluesselung je Uebung. Gibt die Sessions der laufenden Woche
     zurueck (fuer Wochenreport/Dashboard), aeltere bleiben nur im Cache."""
     cache = _load_strength_cache()
+    broken_keys = [k for k, v in cache.items() if _is_broken_strength_entry(v)]
+    for k in broken_keys:
+        del cache[k]
+    if broken_keys:
+        print(f"[strength] {len(broken_keys)} kaputte Cache-Eintraege (v0.10.0) verworfen, werden neu abgerufen: {broken_keys}")
     now = datetime.datetime.now()
     window_start = now - datetime.timedelta(days=7)
-    changed = False
+    changed = bool(broken_keys)
 
     for act in activities or []:
         try:

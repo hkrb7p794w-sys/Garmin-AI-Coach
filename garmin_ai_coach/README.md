@@ -20,6 +20,22 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.10.2
+- **Live bestaetigt: exerciseSets-API (0.10.1) liefert echte Uebungsnamen, Gewichte und
+  Wiederholungen.** Nach dem ersten Sync mit 0.10.1 zeigte `sensor.garmin_ai_coach_garmin_
+  krafttraining_uebungen` fuer eine neue Kraft-Einheit z.B. `Row (SEATED_CABLE_ROW)` 13x/110kg,
+  `Curl (CABLE_BICEPS_CURL)` 9x/50kg, `Pull Up (KNEELING_LAT_PULLDOWN)` 8x/52.5kg - realistische
+  Werte, die vormals offene Feldnamen-Unsicherheit (`repetitionCount` vs. `reps`, Gramm vs. Kilogramm)
+  ist damit ausgeraeumt.
+- **Fix: kaputte Cache-Eintraege aus der v0.10.0-Aera wurden nie neu abgerufen.** Der dauerhafte
+  Uebungs-Cache (`/data/strength_exercises.json`) ueberspringt Aktivitaeten, die bereits einen
+  Eintrag haben - auch wenn dieser Eintrag (aus v0.10.0) leer war oder nur den Codename-Platzhalter
+  `"Uebung (Code (None, None, None))"` enthielt. Dadurch blieben 2 von 4 Kraft-Einheiten der ersten
+  Woche dauerhaft kaputt, obwohl der Bug selbst (v0.10.1) laengst behoben war. Neue Funktion
+  `_is_broken_strength_entry()` erkennt genau diese beiden Faelle (leere Liste, Codename-Platzhalter)
+  und verwirft sie beim Laden aus dem Cache, sodass sie beim naechsten Sync automatisch neu ueber die
+  exerciseSets-API abgerufen werden - einmalig, danach bleiben sie wie gewohnt gecacht.
+
 ### 0.10.1
 - **Fix: Kraft-Uebungen jetzt ueber Garmins offizielle exerciseSets-API statt FIT-Parsing.** Die
   v0.10.0-Implementierung (FIT-Datei herunterladen + selbst parsen) war ungetestet gegen echte Daten
