@@ -20,6 +20,20 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.11.3
+- **Doppelt gezaehlte Rad-Einheiten (Zwift + Herzfrequenz-Zweitaufzeichnung) behoben.** Alex faehrt
+  auf Zwift (laedt die Einheit inkl. echter Distanz nach Garmin hoch) und laesst parallel dazu eine
+  zweite Aktivitaet auf der Garmin-Uhr mitlaufen, rein um die Herzfrequenz zu erfassen - die Uhr hat
+  keine eigene Distanzmessung fuers Indoor-Fahren und die Aktivitaet wird selbst als "Indoor
+  Radfahren" mit 0 km eingeordnet. `_volumes_in_window()` zaehlte bisher jede Aktivitaet mit
+  "bik"/"cycl"/"ride" im `activityType`, also auch diese Herzfrequenz-Zweitaufzeichnung - dieselbe
+  Fahrt tauchte dadurch als zwei Rad-Einheiten in den Wochenkennzahlen auf (Sessions und Minuten
+  verdoppelt, km blieben korrekt, da die Zweitaufzeichnung 0 km beitraegt). Fix: Rad-Aktivitaeten
+  zaehlen jetzt nur noch, wenn ihre Distanz > 0 km ist; die reine Herzfrequenz-Aufzeichnung ohne km
+  wird ignoriert. Betrifft `weekly_volumes`/`weekly_volumes_prev` (Dashboard-Tab "Woche") und damit
+  auch `bike_sessions`, `bike_min` und `total_min`/`volume_change_pct`; `bike_km` war schon vorher
+  korrekt.
+
 ### 0.11.2
 - **Versionsnummer erneut angehoben (0.11.1 -> 0.11.2), damit der Add-on-Store den Rebuild ueberhaupt
   erkennt:** `config.yaml` stand durch einen frueheren, unterbrochenen Aenderungsversuch bereits auf

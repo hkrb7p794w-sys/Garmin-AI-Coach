@@ -118,6 +118,15 @@ def _volumes_in_window(activities, window_start, window_end):
                 totals["swim_min"] += duration_min
                 totals["swim_sessions"] += 1
             elif "bik" in type_key or "cycl" in type_key or "ride" in type_key:
+                # Alex faehrt auf Zwift (das laedt die Einheit inkl. echter Distanz
+                # nach Garmin hoch) und laesst parallel zur Herzfrequenzmessung eine
+                # zweite Aktivitaet auf der Uhr mitlaufen, die er selbst als "Indoor
+                # Radfahren" ohne km einordnet - dieselbe Fahrt wuerde sonst doppelt
+                # als zwei Rad-Einheiten gezaehlt (Sessions UND Minuten). Nur
+                # Aktivitaeten mit echter Distanz > 0 zaehlen als Rad-Einheit; die
+                # reine Herzfrequenz-Zweitaufzeichnung (0 km) wird ignoriert.
+                if distance_km <= 0:
+                    continue
                 totals["bike_km"] += distance_km
                 totals["bike_min"] += duration_min
                 totals["bike_sessions"] += 1
