@@ -20,6 +20,22 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.11.0
+- **Neu: eigener Dashboard-Tab "Gym" fuer Kraft-Fortschritt.** Bisher tauchten Kraft-Uebungen nur
+  als Attribut eines einzelnen Sensors auf. Der neue Tab im "Garmin Coach"-Dashboard listet die
+  Kraft-Einheiten der letzten 7 Tage mit Datum, Uebungsname, Wiederholungen und Gewicht je Satz.
+- **Neu: eigener KI-Coaching-Tipp nur fuers Krafttraining** (`generate_gym_coaching_note()` in
+  `ai_coach.py`, neuer Sensor `sensor.garmin_ai_coach_garmin_gym_coaching_tipp`, publiziert ueber
+  `publish_gym_coaching_note()`). Getrennt vom bisherigen allgemeinen Tages-Coaching-Tipp, damit
+  er nicht mit der Ausdauer-/Erholungsperspektive vermischt wird. Bewertet die Muskelgruppen-Balance
+  der Woche (Push/Pull/Beine/Rumpf) und gibt eine konkrete Empfehlung fuer die naechste Einheit -
+  inkl. Gewichtsangaben je Satz (der bisherige Wochenbericht nutzt weiterhin nur Wiederholungen ohne
+  Gewicht). Laeuft unabhaengig vom Hauptsync durch (eigenes try/except), ein Fehler hier bricht den
+  Sync nicht ab.
+  - **Hinweis:** Saetze ohne erfasstes Zusatzgewicht am Geraet werden im Prompt explizit als
+    "Koerpergewicht/ohne Angabe" gekennzeichnet und nicht als Datenfehler behandelt - das kann schlicht
+    bedeuten, dass am Geraet kein Gewicht eingetragen wurde.
+
 ### 0.10.2
 - **Live bestaetigt: exerciseSets-API (0.10.1) liefert echte Uebungsnamen, Gewichte und
   Wiederholungen.** Nach dem ersten Sync mit 0.10.1 zeigte `sensor.garmin_ai_coach_garmin_

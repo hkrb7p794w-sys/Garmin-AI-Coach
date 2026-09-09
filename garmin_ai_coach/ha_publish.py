@@ -156,13 +156,18 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:dumbbell",
     },
+    "gym_coaching_note": {
+        "name": "Garmin Gym Coaching Tipp",
+        "unit": None,
+        "icon": "mdi:arm-flex",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
-    "strength_exercises",
+    "strength_exercises", "gym_coaching_note",
 }
 
 
@@ -470,6 +475,19 @@ def publish_strength_exercises(sessions: list):
         json.dumps({"sessions": sessions}, ensure_ascii=False, default=str),
         retain=True,
     )
+
+
+def publish_gym_coaching_note(note: str):
+    """Publiziert den separaten, auf Krafttraining fokussierten Coaching-Tipp
+    (siehe ai_coach.generate_gym_coaching_note). Eigener Sensor statt Teil
+    von publish_coaching_note(): so kann der Gym-Tipp unabhaengig vom
+    allgemeinen Tages-Tipp im eigenen Gym-Dashboard-Tab angezeigt werden."""
+    if not note:
+        return
+    short = note[:250] + ("…" if len(note) > 250 else "")
+    client.publish("garmin_ai_coach/gym_coaching_note/state", short, retain=True)
+    client.publish("garmin_ai_coach/gym_coaching_note/attributes",
+                   json.dumps({"full_text": note}, ensure_ascii=False), retain=True)
 
 
 def publish_sync_status(ok: bool, detail: str = ""):

@@ -229,6 +229,108 @@ def _format_strength_sessions(sessions: list) -> str:
     return "\n".join(lines)
 
 
+def _format_strength_sessions_detailed(sessions: list) -> str:
+    """Formatiert die per exerciseSets-API erkannten Uebungen/Saetze (siehe
+    fit_exercises.py) INKLUSIVE Gewichten fuer den Gym-Coaching-Prompt - im
+    Unterschied zu _format_strength_sessions (nur Wiederholungen, fuer den
+    Wochenreport) werden hier auch die Gewichte gebraucht, um Belastung und
+    Fortschritt je Uebung einschaetzen zu koennen."""
+    weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    lines = []
+    for session in sessions or []:
+        exercises = session.get("exercises") or []
+        if not exercises:
+            continue
+        try:
+            day_name = weekdays[datetime.date.fromisoformat(str(session.get("date"))).weekday()]
+        except (ValueError, TypeError):
+            day_name = session.get("date") or "?"
+        parts = []
+        for ex in exercises:
+            sets = ex.get("sets") or []
+            set_strs = []
+            for s in sets:
+                reps = s.get("reps")
+                weight = s.get("weight_kg")
+                if reps is None and weight is None:
+                    continue
+                reps_str = str(reps) if reps is not None else "?"
+                weight_str = f"{weight}kg" if weight is not None else "Koerpergewicht/ohne Angabe"
+                set_strs.append(f"{reps_str}x{weight_str}")
+            if set_strs:
+                parts.append(f"{ex.get('exercise', '?')} ({', '.join(set_strs)})")
+        if parts:
+            lines.append(f"{day_name} ({session.get('date')}): " + "; ".join(parts))
+    return "\n".join(lines)
+
+
+def generate_gym_coaching_note(sessions: list) -> str:
+    """Eigener, auf Krafttraining fokussierter KI-Tipp - getrennt vom
+    allgemeinen Tages-Coaching-Tipp (generate_coaching_note), weil der sich
+    auf Erholung/Tagesplanung ueber alle Disziplinen bezieht, waehrend dieser
+    Tipp gezielt die einzelnen Uebungen/Saetze/Gewichte der letzten 7 Tage
+    auswertet (Muskelgruppen-Balance, auffaellige Saetze, konkrete Empfehlung
+    fuer die naechste Einheit). Nutzt dieselbe Gemini-Anbindung wie die
+    anderen beiden Coaching-Texte."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
+
+    detail = _format_strength_sessions_detailed(sessions)
+    if not detail:
+        raise RuntimeError("keine verwertbaren Kraft-Uebungsdaten der letzten 7 Tage")
+
+    prompt = (
+        "Du bist ein Kraft-/Fitnesscoach fuer einen Age-Group-Athleten in der "
+        f"Ironman-70.3-Vorbereitung (Zielzeit {RACE_GOAL}). Krafttraining ist bei ihm "
+        "Nebensache zum Ausdauertraining, nicht das Hauptziel - Kraftaufbau soll die "
+        "Ausdauerdisziplinen unterstuetzen (Verletzungsvorbeugung, Rumpfstabilitaet, "
+        "muskulaere Balance), nicht mit ihnen konkurrieren.\n\n"
+        "Erkannte Kraft-Uebungen der letzten 7 Tage (Uebung: Wiederholungen x Gewicht "
+        "je Satz - 'Koerpergewicht/ohne Angabe' heisst: keine Zusatzgewichts-Angabe am "
+        "Geraet erfasst, nicht zwangslaeufig ein Datenfehler):\n"
+        f"{detail}\n\n"
+        "Gib mir einen kurzen, konkreten Gym-Coaching-Tipp auf Deutsch - als Stichpunkte "
+        "im Markdown-Format, JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN "
+        "Fliesstext und KEIN einleitender Satz davor. Genau 2-3 Punkte:\n"
+        "- Ein Punkt: Einschaetzung der Muskelgruppen-Balance dieser Woche (Push/Pull/"
+        "Beine/Rumpf) - fehlt etwas Wichtiges fuers Ausdauertraining (v.a. Beine/Rumpf)?\n"
+        "- Ein Punkt: eine konkrete, umsetzbare Empfehlung fuer die naechste Kraft-Einheit "
+        "(z.B. eine Uebung ergaenzen, Gewicht/Wiederholungen einer auffaelligen Uebung "
+        "anpassen).\n"
+        "- NUR falls Kraftvolumen/-intensitaet auffaellig hoch wirkt und die Erholung "
+        "fuers Ausdauertraining gefaehrden koennte: ein dritter Punkt dazu (sonst "
+        "weglassen).\n"
+        "Nenne nicht jeden Satz einzeln, sondern ziehe eine klare Schlussfolgerung. "
+        "Gewichtsangaben koennen unvollstaendig sein (siehe Hinweis oben) - baue darauf "
+        "keine ueberzogen sichere Aussage."
+    )
+
+    model = GEMINI_MODEL
+    resp = _call_gemini(model, prompt)
+    if resp.status_code == 404:
+        successor = _model_from_404(resp.text, model)
+        if successor:
+            print(f"[ai_coach] Modell '{model}' nicht verfuegbar, wechsle auf '{successor}'")
+            model = successor
+            resp = _call_gemini(model, prompt)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
+    body = resp.json()
+    candidates = body.get("candidates") or []
+    if not candidates:
+        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
+        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+    candidate = candidates[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError(
+            f"Gemini ({model}) hat leeren Text geliefert "
+            f"(finishReason: {candidate.get('finishReason')})"
+        )
+    return text
+
+
 def generate_weekly_report(data: dict, summary: dict) -> str:
     """Woechentlicher Rueckblick: Soll/Ist der Wochenstruktur, Trends, Fokus fuer die
     kommende Woche. Nutzt dieselbe Gemini-Anbindung wie die Tagesnotiz."""

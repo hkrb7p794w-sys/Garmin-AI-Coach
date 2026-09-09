@@ -7,9 +7,10 @@ from ha_publish import (
     publish_coaching_note,
     publish_weekly_report,
     publish_strength_exercises,
+    publish_gym_coaching_note,
     extract_metrics,
 )
-from ai_coach import generate_coaching_note, generate_weekly_report
+from ai_coach import generate_coaching_note, generate_weekly_report, generate_gym_coaching_note
 import fit_exercises
 
 DATA_DIR = "/data"
@@ -486,6 +487,22 @@ def do_sync(force: bool = False):
         publish_state(wellness)
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
+
+        # Eigener, auf Krafttraining fokussierter Coaching-Tipp (siehe
+        # ai_coach.generate_gym_coaching_note) - getrennt vom allgemeinen
+        # Tages-Tipp unten, damit er im eigenen Gym-Dashboard-Tab landet und
+        # nicht mit der Erholungs-/Tagesplanungs-Perspektive vermischt wird.
+        try:
+            if not os.environ.get("GEMINI_API_KEY"):
+                raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
+            if not any((s.get("exercises") or []) for s in wellness["strength_exercises"]):
+                gym_note = "Noch keine verwertbaren Kraft-Uebungsdaten der letzten 7 Tage fuer einen Gym-Tipp."
+            else:
+                gym_note = generate_gym_coaching_note(wellness["strength_exercises"])
+        except Exception as e:
+            print(f"[ai_coach] Gym-Coaching-Tipp fehlgeschlagen: {e}")
+            gym_note = "Gym-Coaching-Tipp aktuell nicht verfuegbar - Uebungsdaten wurden trotzdem synchronisiert."
+        publish_gym_coaching_note(gym_note)
 
         try:
             if not os.environ.get("GEMINI_API_KEY"):
