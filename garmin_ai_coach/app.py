@@ -360,8 +360,6 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
         "sleep_hours_avg_prev": _history_avg(history, "sleep_hours", dsm + 1, dsm + 7),
         "readiness_avg": _history_avg(history, "readiness", 0, dsm),
         "readiness_avg_prev": _history_avg(history, "readiness", dsm + 1, dsm + 7),
-        "readiness_avg": _history_avg(history, "readiness", 0, 6),
-        "readiness_avg_prev": _history_avg(history, "readiness", 7, 13),
         # Wie viele Tage die Historie ueberhaupt schon abdeckt - der Report soll
         # nicht so tun, als waeren Trends belastbar, wenn erst 2 Tage erfasst sind.
         "history_days": len(history or []),

@@ -20,6 +20,26 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.11.1
+- **Wochenreport (Dashboard-Tab "Woche") nutzt jetzt die echte Kalenderwoche (Mo-So) statt eines
+  rollierenden 7-Tage-Fensters ab "jetzt".** Vorher zeigte der Report bei manueller Erzeugung (z. B.
+  Mittwochs ueber "Wochenreport erzeugen") die letzten 7 Tage ab dem aktuellen Tag zurueck - das
+  entspricht keiner echten Woche und macht Wochenvergleiche irrefuehrend, sobald der Report nicht
+  exakt montags laeuft. `do_sync()` ermittelt die Trainingsvolumina (`weekly_volumes`/
+  `weekly_volumes_prev`) und `build_weekly_summary()` die Datumsbereiche (`period_label`) jetzt ueber
+  echte Montag-00:00-bis-Sonntag-Grenzen; bei Erzeugung mitten in der Woche zeigt "diese Woche"
+  entsprechend die bisherige Teilwoche (Montag bis heute), "Vorwoche" immer die volle
+  abgeschlossene Vorwoche.
+  - **Bugfix dabei gefunden:** In `build_weekly_summary()` ueberschrieb ein doppelt vergebener
+    Dict-Key (`readiness_avg`/`readiness_avg_prev` war zweimal im selben Dict-Literal gesetzt - ein
+    Ueberrest der alten Implementierung) die neue kalenderwochenbasierte Berechnung wieder mit der
+    alten rollierenden 7-Tage-Variante. Dadurch waeren Ruhepuls/HRV/Schlaf im Wochenmittel bereits
+    korrekt auf die Kalenderwoche umgestellt gewesen, Training Readiness aber weiterhin auf den alten
+    rollierenden Wert zurueckgefallen. Doppelten Eintrag entfernt, `py_compile` verifiziert.
+  - **Bewusst unveraendert:** Die "Gym Fortschritt"-Liste im Tab "Gym" (`_update_strength_exercises`)
+    nutzt weiterhin ein rollierendes 7-Tage-Fenster fuer die dort gelisteten Kraft-Einheiten - das war
+    nicht Teil dieser Anfrage (nur der Tab "Woche"), koennte bei Bedarf separat umgestellt werden.
+
 ### 0.11.0
 - **Neu: eigener Dashboard-Tab "Gym" fuer Kraft-Fortschritt.** Bisher tauchten Kraft-Uebungen nur
   als Attribut eines einzelnen Sensors auf. Der neue Tab im "Garmin Coach"-Dashboard listet die
