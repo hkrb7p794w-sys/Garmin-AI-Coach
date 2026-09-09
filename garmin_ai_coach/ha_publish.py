@@ -161,13 +161,18 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:arm-flex",
     },
+    "trainingsplan_kommentar": {
+        "name": "Garmin Trainingsplan Kommentar",
+        "unit": None,
+        "icon": "mdi:clipboard-text-clock",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
-    "strength_exercises", "gym_coaching_note",
+    "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar",
 }
 
 
@@ -488,6 +493,31 @@ def publish_gym_coaching_note(note: str):
     client.publish("garmin_ai_coach/gym_coaching_note/state", short, retain=True)
     client.publish("garmin_ai_coach/gym_coaching_note/attributes",
                    json.dumps({"full_text": note}, ensure_ascii=False), retain=True)
+
+
+def publish_trainingsplan_kommentar(note: str, trigger_key: str = None, trigger_detail: str = None):
+    """Publiziert den phasenspezifischen Gemini-Kommentar zu den
+    Trainingsplaenen (Tab 'Trainingsplaene', siehe ai_coach.
+    generate_trainingsplan_kommentar). Anders als die anderen Coaching-Texte
+    wird diese Funktion NICHT bei jedem Sync aufgerufen, sondern nur wenn
+    app.check_trainingsplan_trigger() einen konkreten Ausloeser erkennt -
+    ein Sync ohne Ausloeser ruft diese Funktion also gar nicht auf und laesst
+    den zuletzt publizierten (retained) Kommentar im Dashboard einfach
+    stehen, statt ihn durch einen leeren/generischen Text zu ersetzen."""
+    if not note:
+        return
+    short = note[:250] + ("…" if len(note) > 250 else "")
+    client.publish("garmin_ai_coach/trainingsplan_kommentar/state", short, retain=True)
+    client.publish(
+        "garmin_ai_coach/trainingsplan_kommentar/attributes",
+        json.dumps({
+            "full_text": note,
+            "trigger": trigger_key,
+            "trigger_detail": trigger_detail,
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }, ensure_ascii=False),
+        retain=True,
+    )
 
 
 def publish_sync_status(ok: bool, detail: str = ""):

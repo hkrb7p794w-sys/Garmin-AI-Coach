@@ -55,6 +55,60 @@ PHASE_FOCUS = {
     "Taper/Rennwoche": "Volumen -40 bis -60%, Intensitaet halten, Rennwoche",
 }
 
+# Kompakte, phasenabhaengige Zusammenfassung der Trainingsplaene aus dem
+# Dashboard-Tab "Trainingsplaene" (View "plaene" im Dashboard "garmin-coach",
+# siehe claude/status-und-plan.md) - bewusst nur die Kernpunkte je Disziplin,
+# nicht die volle Markdown-Tabelle, damit der Prompt fuer
+# generate_trainingsplan_kommentar() nicht unnoetig gross wird. WICHTIG: Bei
+# einer inhaltlichen Aenderung der Plaene im Dashboard muss dieser Text
+# manuell nachgezogen werden, sonst kommentiert Gemini einen veralteten Stand.
+TRAININGSPLAN_PHASE_DETAIL = {
+    "Grundlagenausdauer": (
+        "Lauf: Zone-2 fix (mit der Freundin) + 4x8min Schwelle (2min Trabpause) oder Fahrtspiel "
+        "30-40min, Wochenende optional Longrun 60-75min. Schwimmen: Technik-Fokus, 12-16x50m an "
+        "CSS-Pace, 15s Pause, CSS-Test alle 4-6 Wochen. Rad (Zwift): 45-60min Zone 2 (Endurance) fest, "
+        "Wochenende optional 60-90min locker. Kraft: bestehender Split (Push A/B, Pull A/B, Lower), "
+        "2x12 Standard-Wiederholungsbereich."
+    ),
+    "Aufbau 1": (
+        "Lauf: Zone-2 fix + 3-4x10min Schwellenpace, Longrun bis 90min (alle 3-4 Wochen mit 15-20min "
+        "Tempo). Schwimmen: laengere Intervalle, 6-8x100m an CSS-Pace, 20s Pause. Rad (Zwift): 60min "
+        "Sweet-Spot (2x15min @88-94% FTP) fest, optional Longride bis 90min, FTP-Test zu Phasenbeginn. "
+        "Kraft: bei den 5 Grundübungen (Bankdruecken, Dips, Beinpressen, enges Rudern, Lat-Ziehen eng) "
+        "phasenweise (2 von 4 Wochen) auf 3x6-8 schwerer wechseln statt durchgehend 2x12."
+    ),
+    "Aufbau 2 (spezifisch)": (
+        "Lauf: Zone-2 fix + 6x3min knapp ueber Schwelle (VO2max-Reiz, wechselt mit Schwelleneinheit), "
+        "Longrun 100-110min inkl. 20min Renntempo (ideal als Brick direkt nach einer Radeinheit). "
+        "Schwimmen: wettkampfnah, 4x400m renntemponah, wenn moeglich Freiwasser-/Neopren-Gewoehnung. "
+        "Rad (Zwift): Race-Simulation 60-90min bei 70-75% FTP konstant fest, danach Brick-Lauf "
+        "20-30min locker. Kraft: weiter phasenweise schwerer bei den Grundübungen."
+    ),
+    "Peak": (
+        "Lauf: Zone-2 fix + Formtest (10km oder Halbmarathon als Tempolauf), hoechstes Wochenvolumen "
+        "der gesamten Vorbereitung. Schwimmen: kurz halten, Frische bewahren, 8x50m zuegig mit viel "
+        "Pause. Rad (Zwift): laengste Ausfahrt der Vorbereitung, 2:30-3:00h bei Zielwatt. Kraft: "
+        "Volumen reduzieren, Fokus auf Erholung statt neuen Reizen."
+    ),
+    "Taper/Rennwoche": (
+        "Lauf: Zone-2 fix, aber kuerzer (30-40min) + 2-3x5min Renntempo, Rest locker, kein Longrun "
+        "mehr. Schwimmen: kurz halten, viel Pause. Rad (Zwift): 30-40min mit kurzen "
+        "Intensitaetsspitzen. Kraft und Gesamtvolumen: -40 bis -60%, Intensitaet halten, Rennwoche."
+    ),
+}
+
+# Bereits im Dashboard dokumentierte, gezielte Gym-Anpassungsvorschlaege (siehe
+# claude/status-und-plan.md) - Umsetzung liegt bei Alex, nicht automatisch
+# vorgenommen. Phasenunabhaengig, deshalb separat von TRAININGSPLAN_PHASE_DETAIL.
+TRAININGSPLAN_GYM_KRITIK = (
+    "Vier bereits vorgeschlagene, gezielte Gym-Anpassungen (Umsetzung liegt beim Athleten, nicht "
+    "automatisch vorgenommen): (1) in Pull B eine Curl-Variante durch Pallof Press am Kabel ersetzen "
+    "(Bizeps wird sonst 4x/Woche isoliert trainiert), (2) Beinstrecken durch Rumaenisches Kreuzheben "
+    "ersetzen (Lower hat bisher keine Hueftstreckung/posteriore Kette), (3) optional Plank/Side Plank "
+    "ergaenzen (Crunches trainiert nur Bauchflexion), (4) bei den 5 grossen Grundübungen phasenweise "
+    "auf 3x6-8 schwerer wechseln (siehe TRAININGSPLAN_PHASE_DETAIL je Phase) statt durchgehend 2x12."
+)
+
 
 def _fmt(value, unit=""):
     """Formatiert einen Metrikwert fuer den Prompt; gibt 'keine Daten' zurueck,
@@ -425,5 +479,82 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         raise RuntimeError(
             f"Gemini hat leeren Text geliefert "
             f"(finishReason: {candidates[0].get('finishReason')})"
+        )
+    return text
+
+
+def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data: dict, history: list) -> str:
+    """Phasenspezifischer Gemini-Kommentar zu den Trainingsplaenen im
+    Dashboard-Tab 'Trainingsplaene' (View 'plaene'). Anders als die anderen
+    Coaching-Texte wird diese Funktion NICHT bei jedem Sync aufgerufen,
+    sondern nur wenn app.check_trainingsplan_trigger() einen konkreten
+    Ausloeser erkennt (Phasenwechsel oder Datentrigger - Readiness/VO2max,
+    siehe claude/status-und-plan.md, Abschnitt 'Trigger-Kriterien fuer
+    automatische Gemini-Kommentierung'). Der Kommentar ERSETZT NICHT die
+    Plantabellen selbst (die bleiben als stabile Referenz im Dashboard
+    stehen), sondern erklaert, warum JETZT eine Anpassung sinnvoll sein
+    koennte - genau das war Alex' ausdruecklicher Design-Wunsch."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
+
+    metrics = extract_metrics(data)
+    phase = data.get("phase") or "unbekannt"
+    focus = PHASE_FOCUS.get(phase, "")
+    plan_detail = TRAININGSPLAN_PHASE_DETAIL.get(phase, "")
+    wv = data.get("weekly_volumes") or {}
+
+    prompt = (
+        "Du bist ein Ausdauersport-Coach fuer einen Age-Group-Athleten in der Vorbereitung "
+        f"auf einen Ironman 70.3 am 29.08.2027. Zielzeit: {RACE_GOAL}.\n\n"
+        f"{ATHLETE_PROFILE}\n\n"
+        f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}).\n\n"
+        "Der Athlet hat bereits konkrete, phasenabhaengige Trainingsplaene fuer Laufen, Schwimmen "
+        f"und Rad im Dashboard hinterlegt. Fuer die aktuelle Phase gilt:\n{plan_detail}\n\n"
+        f"Gym-Plan-Anpassungen (bereits vorgeschlagen, Umsetzung liegt beim Athleten):\n"
+        f"{TRAININGSPLAN_GYM_KRITIK}\n\n"
+        f"AUSLOESER fuer diesen Kommentar JETZT: {trigger_detail}\n\n"
+        "Aktuelle Werte: "
+        f"Training Readiness {_fmt(metrics['training_readiness_score'], '%')}, "
+        f"VO2max {_fmt(metrics['vo2max'], ' ml/kg/min')}, "
+        f"Wochenvolumen Rad {_fmt(wv.get('bike_km'), ' km')}, "
+        f"Wochenvolumen Lauf {_fmt(wv.get('run_km'), ' km')}.\n\n"
+        "Schreibe einen kurzen Kommentar zu den BESTEHENDEN Trainingsplaenen auf Deutsch - als "
+        "Stichpunkte im Markdown-Format, JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN "
+        "Fliesstext und KEIN einleitender Satz davor. WICHTIG: Du ersetzt NICHT den Plan, sondern "
+        "kommentierst ihn - erfinde KEINE komplett neuen Wocheneinheiten, sondern beziehe dich "
+        "konkret auf die oben genannten bestehenden Plaene. Genau 2-3 Punkte:\n"
+        "- Ein Punkt: was der genannte Ausloeser konkret bedeutet (1-2 Saetze, direkt auf die Werte "
+        "oben bezogen).\n"
+        "- Ein Punkt: eine konkrete, im bestehenden Zeitrahmen umsetzbare Anpassungsempfehlung an "
+        "einem der vier Plaene (Lauf/Schwimm/Rad/Gym) - oder explizit die begruendete Einschaetzung, "
+        "dass der Plan aktuell so bleiben kann, falls der Ausloeser das nahelegt.\n"
+        "- NUR falls der Ausloeser ein Phasenwechsel ist: ein dritter Punkt, was sich in der NEUEN "
+        "Phase laut der Beschreibung oben inhaltlich am staerksten aendert (sonst diesen Punkt "
+        "weglassen).\n"
+        "Sei konkret und begruendet, keine allgemeinen Trainingsplatitueden."
+    )
+
+    model = GEMINI_MODEL
+    resp = _call_gemini(model, prompt)
+    if resp.status_code == 404:
+        successor = _model_from_404(resp.text, model)
+        if successor:
+            print(f"[ai_coach] Modell '{model}' nicht verfuegbar, wechsle auf '{successor}'")
+            model = successor
+            resp = _call_gemini(model, prompt)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
+    body = resp.json()
+    candidates = body.get("candidates") or []
+    if not candidates:
+        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
+        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+    candidate = candidates[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError(
+            f"Gemini ({model}) hat leeren Text geliefert "
+            f"(finishReason: {candidate.get('finishReason')})"
         )
     return text

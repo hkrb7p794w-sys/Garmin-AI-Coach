@@ -8,9 +8,15 @@ from ha_publish import (
     publish_weekly_report,
     publish_strength_exercises,
     publish_gym_coaching_note,
+    publish_trainingsplan_kommentar,
     extract_metrics,
 )
-from ai_coach import generate_coaching_note, generate_weekly_report, generate_gym_coaching_note
+from ai_coach import (
+    generate_coaching_note,
+    generate_weekly_report,
+    generate_gym_coaching_note,
+    generate_trainingsplan_kommentar,
+)
 import fit_exercises
 
 DATA_DIR = "/data"
@@ -24,6 +30,14 @@ HISTORY_DAYS = 60
 # Original-Datei jeder Kraft-Aktivitaet von Garmin geladen wird.
 STRENGTH_FILE = os.path.join(DATA_DIR, "strength_exercises.json")
 STRENGTH_CACHE_DAYS = 21
+# Zustand der Trainingsplan-Kommentierung (Tab "Trainingsplaene", siehe
+# check_trainingsplan_trigger unten) - welche Phase zuletzt bekannt war und
+# wann welcher Trigger zuletzt ausgeloest hat, damit nicht jeder Sync erneut
+# denselben Grund meldet, solange der Zustand anhaelt.
+TRAININGSPLAN_STATE_FILE = os.path.join(DATA_DIR, "trainingsplan_state.json")
+TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS = 21
+TRAININGSPLAN_READINESS_LOW_THRESHOLD = 60
+TRAININGSPLAN_VO2MAX_STAGNATION_TOLERANCE = 0.3
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
@@ -174,6 +188,11 @@ def _update_history(wellness):
         "readiness": metrics["training_readiness_score"],
         "stress_avg": metrics["stress_avg"],
         "steps": metrics["steps_today"],
+        # Seit v0.12.0: fuer den VO2max-Stagnations-Trigger der
+        # Trainingsplan-Kommentierung (siehe check_trainingsplan_trigger).
+        # Aeltere Historieneintraege haben dieses Feld noch nicht - das ist
+        # unproblematisch, _history_avg() ueberspringt fehlende Werte einfach.
+        "vo2max": metrics["vo2max"],
     }
     history = []
     if os.path.exists(HISTORY_FILE):
@@ -314,6 +333,112 @@ def _update_strength_exercises(client, activities: list) -> list:
     window_date = window_start.date().isoformat()
     sessions = [v for v in cache.values() if (v.get("date") or "") >= window_date]
     return sorted(sessions, key=lambda s: s.get("date") or "")
+
+
+def _load_trainingsplan_state() -> dict:
+    if not os.path.exists(TRAININGSPLAN_STATE_FILE):
+        return {"last_known_phase": None, "last_trigger_dates": {}}
+    try:
+        with open(TRAININGSPLAN_STATE_FILE) as f:
+            return json.load(f) or {"last_known_phase": None, "last_trigger_dates": {}}
+    except Exception as e:
+        print(f"[trainingsplan] Status nicht lesbar, starte neu: {e}")
+        return {"last_known_phase": None, "last_trigger_dates": {}}
+
+
+def _save_trainingsplan_state(state: dict):
+    try:
+        with open(TRAININGSPLAN_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[trainingsplan] Status konnte nicht geschrieben werden: {e}")
+
+
+def _days_since(date_str, today: datetime.date):
+    if not date_str:
+        return None
+    try:
+        return (today - datetime.date.fromisoformat(date_str)).days
+    except ValueError:
+        return None
+
+
+def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: list):
+    """Prueft, ob eine Gemini-Kommentierung der Trainingsplaene (Dashboard-Tab
+    "Trainingsplaene") gerechtfertigt ist - bewusst NICHT bei jedem Sync,
+    siehe claude/status-und-plan.md ("Trigger-Kriterien fuer automatische
+    Gemini-Kommentierung", von Alex am 09.09.2026 so gewuenscht). Zwei
+    Trigger-Arten:
+
+    1. Phasenwechsel (kalenderbasiert, einmalig je Phasenuebergang) - die
+       Basis-Kadenz, faellt mit den echten Mesozyklus-Grenzen der
+       Periodisierung zusammen (PHASES oben, alle ~8-13 Wochen).
+    2. Datenbasiert, mit Cooldown (TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS),
+       damit ein anhaltender Zustand nicht bei jedem einzelnen Sync erneut
+       ausloest:
+       - Training Readiness im 14-Tage-Schnitt unter
+         TRAININGSPLAN_READINESS_LOW_THRESHOLD (moegliches Uebertraining).
+       - VO2max im 7-Tage-Schnitt stagniert/sinkt gegenueber dem 7-Tage-
+         Schnitt vor ca. 4 Wochen (Reiz greift nicht mehr).
+
+    Zwei in status-und-plan.md ebenfalls dokumentierte Trigger (deutlicher
+    Benchmark-Sprung, konsistente Planabweichung ueber mehrere Wochen) sind
+    hier bewusst NICHT implementiert: dafuer fehlen aktuell verlaessliche
+    Daten (die Zielzeit-Benchmarks liegen nur als manuell gepflegte HA-
+    input_number-Helper vor, auf die dieses Add-on keinen Lesezugriff hat;
+    eine historische Wochenvolumen-Reihe wird bisher nicht persistiert) -
+    lieber ehrlich zwei Trigger auslassen als sie auf duennem Datenboden zu
+    erraten.
+
+    Gibt (trigger_key, klartext_grund) oder (None, None) zurueck; speichert
+    bei jedem erkannten Ausloeser sowie beim allerersten Aufruf ueberhaupt
+    (Phase nur merken) den aktualisierten Zustand."""
+    state = _load_trainingsplan_state()
+    last_dates = state.get("last_trigger_dates") or {}
+
+    if state.get("last_known_phase") and state.get("last_known_phase") != phase:
+        old_phase = state["last_known_phase"]
+        state["last_known_phase"] = phase
+        last_dates["phase_change"] = today_date.isoformat()
+        state["last_trigger_dates"] = last_dates
+        _save_trainingsplan_state(state)
+        return "phase_change", f"Phasenwechsel von '{old_phase}' zu '{phase}'"
+    if not state.get("last_known_phase"):
+        # Erster Sync ueberhaupt (oder erster nach diesem Feature-Update):
+        # Phase nur merken, nicht sofort als "Wechsel" werten.
+        state["last_known_phase"] = phase
+        _save_trainingsplan_state(state)
+
+    readiness_14d = _history_avg(history, "readiness", 0, 13, today=today_date)
+    days_since_readiness = _days_since(last_dates.get("readiness_low"), today_date)
+    if (readiness_14d is not None and readiness_14d < TRAININGSPLAN_READINESS_LOW_THRESHOLD
+            and len(history) >= 14
+            and (days_since_readiness is None
+                 or days_since_readiness >= TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS)):
+        last_dates["readiness_low"] = today_date.isoformat()
+        state["last_trigger_dates"] = last_dates
+        _save_trainingsplan_state(state)
+        return "readiness_low", (
+            f"Training Readiness im 14-Tage-Schnitt bei {readiness_14d}% "
+            f"(unter der Schwelle von {TRAININGSPLAN_READINESS_LOW_THRESHOLD}%)"
+        )
+
+    vo2max_recent = _history_avg(history, "vo2max", 0, 6, today=today_date)
+    vo2max_month_ago = _history_avg(history, "vo2max", 21, 27, today=today_date)
+    days_since_vo2max = _days_since(last_dates.get("vo2max_stagnation"), today_date)
+    if (vo2max_recent is not None and vo2max_month_ago is not None
+            and vo2max_recent <= vo2max_month_ago + TRAININGSPLAN_VO2MAX_STAGNATION_TOLERANCE
+            and (days_since_vo2max is None
+                 or days_since_vo2max >= TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS)):
+        last_dates["vo2max_stagnation"] = today_date.isoformat()
+        state["last_trigger_dates"] = last_dates
+        _save_trainingsplan_state(state)
+        return "vo2max_stagnation", (
+            f"VO2max stagniert/sinkt: {vo2max_recent} ml/kg/min (7-Tage-Schnitt aktuell) vs. "
+            f"{vo2max_month_ago} ml/kg/min (7-Tage-Schnitt vor ca. 4 Wochen)"
+        )
+
+    return None, None
 
 
 def build_weekly_summary(wellness: dict, history: list) -> dict:
@@ -527,6 +652,33 @@ def do_sync(force: bool = False):
         publish_coaching_note(note)
 
         history = _update_history(wellness)
+
+        # Trainingsplan-Kommentierung (Tab "Trainingsplaene") - anders als die
+        # anderen Coaching-Texte NICHT bei jedem Sync, sondern nur wenn ein
+        # konkreter Ausloeser vorliegt (siehe check_trainingsplan_trigger).
+        # Kein Trigger -> Funktion wird gar nicht erst aufgerufen, der zuletzt
+        # publizierte (retained) Kommentar bleibt im Dashboard einfach stehen.
+        try:
+            trigger_key, trigger_detail = check_trainingsplan_trigger(
+                today_date, wellness["phase"], history
+            )
+            if trigger_key:
+                if not os.environ.get("GEMINI_API_KEY"):
+                    raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
+                plan_note = generate_trainingsplan_kommentar(
+                    trigger_key, trigger_detail, wellness, history
+                )
+                publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)
+                print(f"[trainingsplan] Kommentar publiziert (Ausloeser: {trigger_key})")
+        except Exception as e:
+            # Bewusst KEIN publish_trainingsplan_kommentar(...) mit Fehlertext:
+            # anders als bei den anderen Coaching-Texten soll bei einem Fehler
+            # hier der zuletzt erfolgreich generierte Kommentar (falls
+            # vorhanden) im Dashboard stehen bleiben statt durch eine
+            # Fehlermeldung ersetzt zu werden - der naechste ausgeloeste Sync
+            # versucht es erneut.
+            print(f"[trainingsplan] Kommentar fehlgeschlagen: {e}")
+
         # Wochenreport montags automatisch (Rueckblick auf die abgeschlossene Woche);
         # jederzeit manuell ueber /weekly ausloesbar.
         if today_date.weekday() == 0:

@@ -20,6 +20,34 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.12.0
+- **Neu: phasenspezifischer Gemini-Kommentar zu den Trainingsplaenen (Dashboard-Tab
+  "Trainingsplaene").** Bisher hatte dieser Tab keine KI-Anbindung - die Plaene (Gym-Kritik,
+  Lauf-/Schwimm-/Radplan je Phase) standen als reiner Text im Dashboard. Neue Funktion
+  `generate_trainingsplan_kommentar()` in `ai_coach.py` (Vorbild `generate_gym_coaching_note()`)
+  generiert dazu einen Kommentar - **ersetzt aber NICHT den Plan selbst**, der bleibt als stabile
+  Referenz stehen.
+- **Bewusst NICHT bei jedem Sync**, sondern nur wenn `check_trainingsplan_trigger()` (neu in
+  `app.py`) einen konkreten Ausloeser erkennt: (1) Phasenwechsel (Grundlage -> Aufbau 1 -> Aufbau 2
+  -> Peak -> Taper, kalenderbasiert, einmalig je Uebergang), (2) Training Readiness im 14-Tage-
+  Schnitt unter 60 %, oder (3) VO2max stagniert/sinkt im 7-Tage-Schnitt gegenueber vor ca. 4 Wochen -
+  beide Datentrigger mit 21-Tage-Cooldown, damit ein anhaltender Zustand nicht jeden Sync erneut
+  ausloest. Zwei weitere in `claude/status-und-plan.md` dokumentierte Trigger (Benchmark-Sprung,
+  konsistente Planabweichung) sind bewusst nicht umgesetzt - dafuer fehlen aktuell verlaessliche
+  Daten (Zielzeit-Benchmarks liegen nur als manuelle HA-`input_number`-Helper vor, keine
+  Wochenvolumen-Historie persistiert).
+- Zustand (letzte bekannte Phase, letzter Ausloese-Zeitpunkt je Trigger-Typ) wird in
+  `/data/trainingsplan_state.json` gehalten. Tages-Historie (`/data/history.json`) enthaelt ab
+  jetzt zusaetzlich `vo2max` je Tag (fuer den Stagnations-Trigger); aeltere Eintraege ohne dieses
+  Feld werden von `_history_avg()` einfach uebersprungen, kein Migrationsschritt noetig.
+- Neuer Sensor `sensor.garmin_ai_coach_garmin_trainingsplan_kommentar` (`publish_trainingsplan_
+  kommentar()` in `ha_publish.py`), mit Attributen `full_text`, `trigger`, `trigger_detail`,
+  `generated_at`. Wird nur bei einem tatsaechlichen Ausloeser publiziert (retained) - ohne Ausloeser
+  bleibt der zuletzt publizierte Kommentar im Dashboard einfach stehen, statt durch einen leeren/
+  generischen Text ersetzt zu werden.
+- Trigger-Logik mit synthetischen Testfaellen verifiziert (erster Sync, Phasenwechsel, Cooldown,
+  niedrige Readiness, stagnierendes/steigendes VO2max).
+
 ### 0.11.3
 - **Doppelt gezaehlte Rad-Einheiten (Zwift + Herzfrequenz-Zweitaufzeichnung) behoben.** Alex faehrt
   auf Zwift (laedt die Einheit inkl. echter Distanz nach Garmin hoch) und laesst parallel dazu eine
