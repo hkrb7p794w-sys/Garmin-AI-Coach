@@ -90,25 +90,18 @@ def _safe_fetch(label, fn):
         print(f"[sync] Metrik '{label}' fehlgeschlagen: {e}")
         return None
 
-
-def _volumes_in_window(activities, days_from: int = 0, days_to: int = 7):
+def _volumes_in_window(activities, window_start, window_end):
     """Summiert Aktivitaeten in einem Zeitfenster je Disziplin (km/Minuten).
 
-    `days_from`/`days_to` sind Tage zurueck ab jetzt: (0, 7) = laufende Woche,
-    (7, 14) = Vorwoche. Damit laesst sich der Wochenreport ohne zusaetzliche
-    Garmin-Abfragen aus denselben Aktivitaetsdaten bauen."""
+    window_start/window_end sind konkrete datetime-Grenzen (start inklusiv,
+    end exklusiv) - so lassen sich echte Kalenderwochen (Mo-So) abbilden statt
+    nur rollierender 7-Tage-Fenster ab "jetzt"."""
     totals = {"swim_km": 0.0, "bike_km": 0.0, "run_km": 0.0,
               "swim_min": 0.0, "bike_min": 0.0, "run_min": 0.0, "strength_min": 0.0,
-              # Einheiten-Zaehler: Der Wochenplan ist in Einheiten pro Woche gedacht
-              # (1x Schwimmen, 2x Laufen, ...), nicht in Kilometern - der Soll/Ist-
-              # Vergleich im Wochenreport braucht daher beides.
               "swim_sessions": 0, "bike_sessions": 0, "run_sessions": 0,
               "strength_sessions": 0}
     if not activities:
         return totals
-    now = datetime.datetime.now()
-    window_start = now - datetime.timedelta(days=days_to)
-    window_end = now - datetime.timedelta(days=days_from)
     for act in activities:
         try:
             start_str = act.get("startTimeLocal")
@@ -133,14 +126,11 @@ def _volumes_in_window(activities, days_from: int = 0, days_to: int = 7):
                 totals["run_min"] += duration_min
                 totals["run_sessions"] += 1
             elif "strength" in type_key or "weight" in type_key or "gym" in type_key:
-                # Krafttraining (Beine, Push/Pull) - fuer die Belastungsbilanz relevant,
-                # auch wenn es keine Distanz hat.
                 totals["strength_min"] += duration_min
                 totals["strength_sessions"] += 1
         except Exception as e:
             print(f"[sync] Aktivitaet konnte nicht ausgewertet werden: {e}")
     return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in totals.items()}
-
 
 def _fetch_max_metrics(client, today_date):
     """Holt VO2max ueber ein 14-Tage-Fenster statt nur fuer heute.
@@ -336,16 +326,20 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
     # konkretes Datum statt einer relativen Woche-Bezeichnung raeumt die Verwirrung aus,
     # unabhaengig davon, an welchem Wochentag der Report erzeugt wird (auch /weekly
     # kann jederzeit manuell ausgeloest werden, nicht nur montags).
+    
     try:
         today = datetime.date.fromisoformat(wellness.get("date")) if wellness.get("date") else datetime.date.today()
     except ValueError:
         today = datetime.date.today()
-    period_from = today - datetime.timedelta(days=6)
-    period_prev_from = today - datetime.timedelta(days=13)
-    period_prev_to = today - datetime.timedelta(days=7)
+    # Kalenderwoche Mo-So statt rollierender 7-Tage-Fenster (dsm = Tage seit Montag).
+    dsm = today.weekday()
+    period_from = today - datetime.timedelta(days=dsm)
+    period_to = period_from + datetime.timedelta(days=6)
+    period_prev_from = period_from - datetime.timedelta(days=7)
+    period_prev_to = period_from - datetime.timedelta(days=1)
 
     summary = {
-        "period_label": f"{_fmt_dm(period_from)}–{_fmt_dm(today)}",
+        "period_label": f"{_fmt_dm(period_from)}–{_fmt_dm(period_to)}",
         "period_prev_label": f"{_fmt_dm(period_prev_from)}–{_fmt_dm(period_prev_to)}",
         "swim_km": cur.get("swim_km"), "bike_km": cur.get("bike_km"), "run_km": cur.get("run_km"),
         "swim_km_prev": prev.get("swim_km"), "bike_km_prev": prev.get("bike_km"),
@@ -358,12 +352,14 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
         "strength_sessions_prev": prev.get("strength_sessions"),
         "total_min": total_min, "total_min_prev": total_min_prev,
         "volume_change_pct": _pct_change(total_min, total_min_prev),
-        "resting_hr_avg": _history_avg(history, "resting_hr", 0, 6),
-        "resting_hr_avg_prev": _history_avg(history, "resting_hr", 7, 13),
-        "hrv_avg": _history_avg(history, "hrv_avg", 0, 6),
-        "hrv_avg_prev": _history_avg(history, "hrv_avg", 7, 13),
-        "sleep_hours_avg": _history_avg(history, "sleep_hours", 0, 6),
-        "sleep_hours_avg_prev": _history_avg(history, "sleep_hours", 7, 13),
+        "resting_hr_avg": _history_avg(history, "resting_hr", 0, dsm),
+        "resting_hr_avg_prev": _history_avg(history, "resting_hr", dsm + 1, dsm + 7),
+        "hrv_avg": _history_avg(history, "hrv_avg", 0, dsm),
+        "hrv_avg_prev": _history_avg(history, "hrv_avg", dsm + 1, dsm + 7),
+        "sleep_hours_avg": _history_avg(history, "sleep_hours", 0, dsm),
+        "sleep_hours_avg_prev": _history_avg(history, "sleep_hours", dsm + 1, dsm + 7),
+        "readiness_avg": _history_avg(history, "readiness", 0, dsm),
+        "readiness_avg_prev": _history_avg(history, "readiness", dsm + 1, dsm + 7),
         "readiness_avg": _history_avg(history, "readiness", 0, 6),
         "readiness_avg_prev": _history_avg(history, "readiness", 7, 13),
         # Wie viele Tage die Historie ueberhaupt schon abdeckt - der Report soll
@@ -452,10 +448,18 @@ def do_sync(force: bool = False):
         }
 
         recent_activities = _safe_fetch("activities", lambda: client.get_activities(0, 50)) or []
-        wellness["weekly_volumes"] = _volumes_in_window(recent_activities, 0, 7)
+        # Kalenderwoche Mo-So statt rollierender 7-Tage-Fenster: Montag 00:00 dieser
+        # Woche bis (exklusiv) naechsten Montag; Vorwoche entsprechend 7 Tage davor.
+        week_start = datetime.datetime.combine(
+            today_date - datetime.timedelta(days=today_date.weekday()), datetime.time.min
+        )
+        week_end = week_start + datetime.timedelta(days=7)
+        prev_week_start = week_start - datetime.timedelta(days=7)
+        prev_week_end = week_start
+        wellness["weekly_volumes"] = _volumes_in_window(recent_activities, week_start, week_end)
         # Vorwoche aus denselben Aktivitaetsdaten - Basis fuer den Soll/Ist-Vergleich
         # im Wochenreport, ohne einen einzigen zusaetzlichen Garmin-Request.
-        wellness["weekly_volumes_prev"] = _volumes_in_window(recent_activities, 7, 14)
+        wellness["weekly_volumes_prev"] = _volumes_in_window(recent_activities, prev_week_start, prev_week_end)
         # Einzelne Uebungen/Saetze je Kraft-Einheit dieser Woche (Best-Effort ueber
         # die Original-FIT-Datei, siehe fit_exercises.py) - ueber _safe_fetch, damit
         # ein Problem hier (z.B. neues Garmin-Dateiformat) nie den ganzen Sync killt.
