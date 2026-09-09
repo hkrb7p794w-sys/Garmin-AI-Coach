@@ -6,9 +6,11 @@ from ha_publish import (
     publish_sync_status,
     publish_coaching_note,
     publish_weekly_report,
+    publish_strength_exercises,
     extract_metrics,
 )
 from ai_coach import generate_coaching_note, generate_weekly_report
+import fit_exercises
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -16,6 +18,11 @@ DATA_FILE = os.path.join(DATA_DIR, "data.json")
 # Rollierende Tages-Historie fuer Wochentrends (Ruhepuls, HRV, Schlaf, Readiness).
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 HISTORY_DAYS = 60
+# Cache der per FIT-Datei extrahierten Kraft-Uebungen je Aktivitaet (siehe
+# fit_exercises.py) - dauerhaft, damit nicht bei jedem Sync erneut die
+# Original-Datei jeder Kraft-Aktivitaet von Garmin geladen wird.
+STRENGTH_FILE = os.path.join(DATA_DIR, "strength_exercises.json")
+STRENGTH_CACHE_DAYS = 21
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
@@ -214,6 +221,78 @@ def _fmt_dm(d: datetime.date) -> str:
     return d.strftime("%d.%m.")
 
 
+def _load_strength_cache() -> dict:
+    if not os.path.exists(STRENGTH_FILE):
+        return {}
+    try:
+        with open(STRENGTH_FILE) as f:
+            return json.load(f) or {}
+    except Exception as e:
+        print(f"[strength] Cache nicht lesbar, starte neu: {e}")
+        return {}
+
+
+def _save_strength_cache(cache: dict) -> dict:
+    """Speichert den Uebungs-Cache, begrenzt auf STRENGTH_CACHE_DAYS Tage
+    (analog zu HISTORY_DAYS bei der Wellness-Historie), damit die Datei nicht
+    unbegrenzt waechst."""
+    cutoff = (datetime.date.today() - datetime.timedelta(days=STRENGTH_CACHE_DAYS)).isoformat()
+    cache = {k: v for k, v in cache.items() if (v.get("date") or "") >= cutoff}
+    try:
+        with open(STRENGTH_FILE, "w") as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[strength] Cache konnte nicht geschrieben werden: {e}")
+    return cache
+
+
+def _update_strength_exercises(client, activities: list) -> list:
+    """Laedt fuer Kraft-Aktivitaeten der laufenden Woche, die noch nicht im
+    Cache stehen, die Original-FIT-Datei und extrahiert die geloggten
+    Uebungen/Saetze daraus (siehe fit_exercises.py) - die normale Garmin-API
+    liefert dafuer nur Aggregatwerte (total_sets/total_reps/total_volume),
+    keine Aufschluesselung je Uebung. Gibt die Sessions der laufenden Woche
+    zurueck (fuer Wochenreport/Dashboard), aeltere bleiben nur im Cache."""
+    cache = _load_strength_cache()
+    now = datetime.datetime.now()
+    window_start = now - datetime.timedelta(days=7)
+    changed = False
+
+    for act in activities or []:
+        try:
+            type_key = ((act.get("activityType") or {}).get("typeKey", "") or "").lower()
+            if not ("strength" in type_key or "weight" in type_key or "gym" in type_key):
+                continue
+            start_str = act.get("startTimeLocal")
+            if not start_str:
+                continue
+            start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+            if start_dt < window_start:
+                continue
+            activity_id = act.get("activityId")
+            if activity_id is None:
+                continue
+            key = str(activity_id)
+            if key in cache:
+                continue
+            exercises = fit_exercises.get_strength_exercises(client, activity_id)
+            cache[key] = {
+                "date": start_dt.date().isoformat(),
+                "activity_name": act.get("activityName"),
+                "exercises": exercises,
+            }
+            changed = True
+        except Exception as e:
+            print(f"[strength] Aktivitaet konnte nicht verarbeitet werden: {e}")
+
+    if changed:
+        cache = _save_strength_cache(cache)
+
+    window_date = window_start.date().isoformat()
+    sessions = [v for v in cache.values() if (v.get("date") or "") >= window_date]
+    return sorted(sessions, key=lambda s: s.get("date") or "")
+
+
 def build_weekly_summary(wellness: dict, history: list) -> dict:
     """Stellt die Kennzahlen des Wochenreports zusammen (laufende Woche vs. Vorwoche).
 
@@ -353,6 +432,12 @@ def do_sync(force: bool = False):
         # Vorwoche aus denselben Aktivitaetsdaten - Basis fuer den Soll/Ist-Vergleich
         # im Wochenreport, ohne einen einzigen zusaetzlichen Garmin-Request.
         wellness["weekly_volumes_prev"] = _volumes_in_window(recent_activities, 7, 14)
+        # Einzelne Uebungen/Saetze je Kraft-Einheit dieser Woche (Best-Effort ueber
+        # die Original-FIT-Datei, siehe fit_exercises.py) - ueber _safe_fetch, damit
+        # ein Problem hier (z.B. neues Garmin-Dateiformat) nie den ganzen Sync killt.
+        wellness["strength_exercises"] = _safe_fetch(
+            "strength_exercises", lambda: _update_strength_exercises(client, recent_activities)
+        ) or []
 
         # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
         # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
@@ -377,6 +462,7 @@ def do_sync(force: bool = False):
         # Garmin-Daten sollen davon nicht aufgehalten oder mitgerissen werden.
         publish_state(wellness)
         publish_sync_status(ok=True)
+        publish_strength_exercises(wellness["strength_exercises"])
 
         try:
             if not os.environ.get("GEMINI_API_KEY"):

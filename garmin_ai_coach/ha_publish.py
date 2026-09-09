@@ -151,11 +151,19 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:calendar-check",
     },
+    "strength_exercises": {
+        "name": "Garmin Krafttraining Uebungen",
+        "unit": None,
+        "icon": "mdi:dumbbell",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
-ATTRIBUTE_SENSORS = {"coaching_note", "training_readiness", "training_status", "weekly_report"}
+ATTRIBUTE_SENSORS = {
+    "coaching_note", "training_readiness", "training_status", "weekly_report",
+    "strength_exercises",
+}
 
 
 def publish_discovery():
@@ -440,6 +448,28 @@ def publish_weekly_report(text: str, summary: dict = None):
             attributes[key] = value
     client.publish("garmin_ai_coach/weekly_report/attributes",
                    json.dumps(attributes, ensure_ascii=False), retain=True)
+
+
+def publish_strength_exercises(sessions: list):
+    """Publiziert die je Kraft-Einheit dieser Woche per FIT-Datei erkannten
+    Uebungen/Saetze (siehe fit_exercises.py) als Attribute - strukturierte
+    Liste, deshalb Attribute statt eigener Sensor je Uebung. Best-Effort:
+    ohne verwertbare Uebungsdetails (z.B. Auto-Satzerkennung der Uhr war aus)
+    bleibt der state ehrlich statt eine leere Liste zu verschweigen."""
+    sessions = sessions or []
+    total_exercises = sum(len(s.get("exercises") or []) for s in sessions)
+    if not sessions:
+        state = "keine Kraft-Einheiten diese Woche"
+    elif total_exercises == 0:
+        state = f"{len(sessions)} Einheit(en), keine Uebungsdetails erkannt"
+    else:
+        state = f"{len(sessions)} Einheit(en), {total_exercises} Uebungen erkannt"
+    client.publish("garmin_ai_coach/strength_exercises/state", state[:250], retain=True)
+    client.publish(
+        "garmin_ai_coach/strength_exercises/attributes",
+        json.dumps({"sessions": sessions}, ensure_ascii=False, default=str),
+        retain=True,
+    )
 
 
 def publish_sync_status(ok: bool, detail: str = ""):

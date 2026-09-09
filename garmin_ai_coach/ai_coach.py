@@ -201,6 +201,34 @@ def _trend(current, previous, unit="", better="hoch"):
     return f"{current}{unit} (Vorwoche {previous}{unit}, {sign}{delta})"
 
 
+def _format_strength_sessions(sessions: list) -> str:
+    """Formatiert die per FIT-Datei erkannten Uebungen/Saetze (siehe
+    fit_exercises.py) fuer den Wochenreport-Prompt. Best-Effort: liefert '',
+    wenn keine Session verwertbare Uebungsdetails hat - der Prompt behauptet
+    dann einfach nichts zu einzelnen Uebungen, statt Luecken zu erfinden."""
+    weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    lines = []
+    for session in sessions or []:
+        exercises = session.get("exercises") or []
+        if not exercises:
+            continue
+        try:
+            day_name = weekdays[datetime.date.fromisoformat(str(session.get("date"))).weekday()]
+        except (ValueError, TypeError):
+            day_name = session.get("date") or "?"
+        parts = []
+        for ex in exercises:
+            sets = ex.get("sets") or []
+            reps = [str(s.get("reps")) for s in sets if s.get("reps")]
+            detail = f"{len(sets)} Saetze"
+            if reps:
+                detail += f", {'/'.join(reps)} Wdh."
+            parts.append(f"{ex.get('exercise', '?')} ({detail})")
+        if parts:
+            lines.append(f"{day_name}: " + ", ".join(parts))
+    return "\n".join(lines)
+
+
 def generate_weekly_report(data: dict, summary: dict) -> str:
     """Woechentlicher Rueckblick: Soll/Ist der Wochenstruktur, Trends, Fokus fuer die
     kommende Woche. Nutzt dieselbe Gemini-Anbindung wie die Tagesnotiz."""
@@ -220,6 +248,15 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         if history_days >= 10 else
         f"ACHTUNG: Es liegen erst {history_days} Tage Historie vor - Trendaussagen zu "
         "Ruhepuls/HRV/Schlaf sind noch NICHT belastbar, sag das offen statt sie zu deuten."
+    )
+
+    # Einzelne erkannte Kraft-Uebungen (Best-Effort aus der Original-FIT-Datei, siehe
+    # fit_exercises.py) - nur einbauen, wenn tatsaechlich etwas Verwertbares vorliegt.
+    strength_detail = _format_strength_sessions(data.get("strength_exercises"))
+    strength_block = (
+        "- Davon erkannte Kraft-Uebungen (Best-Effort aus der Original-Geraetedatei, "
+        f"nicht garantiert vollstaendig):\n{strength_detail}"
+        if strength_detail else ""
     )
 
     prompt = (
@@ -245,7 +282,8 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         f"({_fmt(s.get('strength_sessions_prev'))})\n"
         f"- Gesamtbelastung: {_fmt(s.get('total_min'), ' min')} "
         f"(Vorwoche {_fmt(s.get('total_min_prev'), ' min')}, "
-        f"Veraenderung {_fmt(s.get('volume_change_pct'), '%')})\n\n"
+        f"Veraenderung {_fmt(s.get('volume_change_pct'), '%')})\n"
+        f"{strength_block}\n"
         "Erholung im Wochenmittel:\n"
         f"- Ruhepuls: {_trend(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), ' bpm')}\n"
         f"- HRV: {_trend(s.get('hrv_avg'), s.get('hrv_avg_prev'), ' ms')}\n"

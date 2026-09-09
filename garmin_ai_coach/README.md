@@ -20,6 +20,31 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.10.0
+- **Neu (Best-Effort, siehe Hinweis unten): einzelne Kraft-Uebungen je Einheit.** Die normale
+  Garmin-API liefert fuer Krafttraining nur Aggregatwerte (Gesamtzahl Saetze/Wiederholungen/Volumen),
+  nicht welche Uebung wann mit wie vielen Wiederholungen/Gewicht gemacht wurde. Neues Modul
+  `fit_exercises.py` laedt dafuer die Original-FIT-Datei einer Kraft-Aktivitaet direkt von Garmin
+  (`download_activity(..., dl_fmt=ORIGINAL)`, kommt als ZIP) und liest daraus die `set`- und
+  `exercise_title`-Nachrichten des Geraets aus (neue Abhaengigkeit: `fitparse`). Ergebnis: neuer
+  Sensor `sensor.garmin_ai_coach_strength_exercises` mit den erkannten Uebungen/Saetzen der laufenden
+  Woche als Attribut (`sessions`), und der woechentliche KI-Report bekommt dieselben Details als
+  Zusatzkontext, falls vorhanden.
+  - **Wichtiger Hinweis:** Diese Extraktion ist ungetestet gegen eine echte Kraft-FIT-Datei (keine
+    oeffentlich verfuegbare Testdatei gefunden). Sie ist vollstaendig defensiv gebaut: jeder Fehler
+    (unerwartetes Dateiformat, fehlende Felder, unbekannte Codes) fuehrt zu einer leeren Liste statt
+    den Sync zu gefaehrden - im schlimmsten Fall bleibt der neue Sensor einfach leer, alle anderen
+    Sensoren sind unberuehrt. **Bitte nach dem ersten Sync die Attribute von
+    `sensor.garmin_ai_coach_strength_exercises` in Home Assistant unter Entwicklerwerkzeuge ->
+    Zustaende pruefen** und kurz Rueckmeldung geben, ob echte Uebungsnamen (z.B. "Bench Press") oder
+    nur Zahlencodes ankommen ("Uebung (Code 14)") - falls Codes, kann die Zuordnung gezielt
+    nachgeschaerft werden. Ausserdem laut Garmin-Dokumentation: Uebungsdetails werden nur erfasst,
+    wenn die automatische Satz-/Wiederholungserkennung der Uhr beim Training aktiv war, und
+    nachtraegliche Korrekturen in der Garmin-Connect-App spiegeln sich nicht in der Original-Datei
+    wider.
+  - Das Dashboard wurde bewusst noch NICHT um diese Daten erweitert, bis die Extraktion an echten
+    Daten bestaetigt ist - siehe claude/status-und-plan.md fuer den naechsten Schritt.
+
 ### 0.9.0
 - **Coaching-Notiz und Wochenreport jetzt als Stichpunkte:** Beide Gemini-Prompts fordern jetzt
   explizit Markdown-Bulletpoints statt Fliesstext an (2-3 bzw. 3-4 kurze Punkte, je 1-2 Saetze,
