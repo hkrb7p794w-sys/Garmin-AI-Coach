@@ -52,6 +52,19 @@ _vorschlag_reject_callback = None
 _vorschlag_label_map = {}
 _selected_suggestion_id = None
 
+# Freier Gemini-Chat im Dashboard-Tab "Chat" (siehe chat.py sowie
+# publish_chat_history unten). Ein MQTT-"text"-Entity statt eines HA-
+# input_text-Helpers, weil das Add-on eigene Discovery-Entities selbst
+# verwaltet (analog zum Sync-Button/den Vorschlaegen) statt Alex einen
+# manuell anzulegenden Helper aufzuerlegen. "text"-Entities sind laut
+# offizieller HA-Doku (https://www.home-assistant.io/integrations/text.mqtt/)
+# hart auf max. 255 Zeichen begrenzt - fuer eine getippte Frage ausreichend.
+# Bewusst OHNE state_topic (nur optimistic=True, wie bei der Vorschlag-
+# Auswahl) - HA zeigt dann einfach den zuletzt eingegebenen Text weiter an,
+# Alex ueberschreibt ihn fuer die naechste Frage einfach neu.
+CHAT_QUESTION_COMMAND_TOPIC = "garmin_ai_coach/chat_frage/set"
+_chat_callback = None
+
 
 def set_sync_button_callback(fn):
     """Registriert die Funktion, die app.py beim Druecken des Sync-Buttons
@@ -76,6 +89,16 @@ def set_vorschlag_callbacks(on_accept=None, on_reject=None):
         _vorschlag_reject_callback = on_reject
 
 
+def set_chat_callback(fn):
+    """Registriert die Funktion, die app.py beim Eingeben/Absenden einer Chat-
+    Frage ausfuehren soll (dort: _handle_chat_question, ruft in einem eigenen
+    Thread ai_coach.generate_chat_answer auf und speichert das Ergebnis ueber
+    chat.py). Analog zu set_sync_button_callback. Bekommt die Frage (str) als
+    einziges Argument."""
+    global _chat_callback
+    _chat_callback = fn
+
+
 def _on_connect(client, userdata, flags, rc):
     """(Re-)Abonniert die Command-Topics und veroeffentlicht die Discovery-
     Configs bei jedem (erneuten) Verbindungsaufbau - nicht nur beim ersten. Ein
@@ -89,6 +112,7 @@ def _on_connect(client, userdata, flags, rc):
         client.subscribe(VORSCHLAG_SELECT_COMMAND_TOPIC)
         client.subscribe(VORSCHLAG_ACCEPT_COMMAND_TOPIC)
         client.subscribe(VORSCHLAG_REJECT_COMMAND_TOPIC)
+        client.subscribe(CHAT_QUESTION_COMMAND_TOPIC)
         publish_discovery()
     else:
         print(f"[mqtt] Verbindung fehlgeschlagen, rc={rc}")
@@ -132,6 +156,18 @@ def _on_message(client, userdata, msg):
                 _vorschlag_reject_callback(_selected_suggestion_id)
             except Exception as e:
                 print(f"[mqtt] Vorschlag-Ablehnen-Callback fehlgeschlagen: {e}")
+    elif msg.topic == CHAT_QUESTION_COMMAND_TOPIC:
+        question = msg.payload.decode("utf-8", errors="replace").strip()
+        print(f"[mqtt] Chat-Frage empfangen: {question[:80]!r}")
+        if not question:
+            print("[mqtt] leere Chat-Frage ignoriert")
+        elif _chat_callback:
+            try:
+                _chat_callback(question)
+            except Exception as e:
+                print(f"[mqtt] Chat-Callback fehlgeschlagen: {e}")
+        else:
+            print("[mqtt] Chat-Frage gesendet, aber noch kein Callback registriert (App startet noch?)")
 
 
 # on_connect/on_message MUESSEN vor connect_async()/loop_start() gesetzt werden -
@@ -287,6 +323,11 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:thumbs-up-down",
     },
+    "chat_verlauf": {
+        "name": "Garmin Chat Verlauf",
+        "unit": None,
+        "icon": "mdi:chat-processing-outline",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
@@ -294,6 +335,7 @@ SENSORS = {
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
+    "chat_verlauf",
 }
 
 
@@ -382,6 +424,27 @@ def publish_discovery():
     client.publish(
         "homeassistant/button/garmin_ai_coach_vorschlag_ablehnen/config",
         json.dumps(reject_payload),
+        retain=True,
+    )
+
+    # Freier Gemini-Chat (Dashboard-Tab "Chat", siehe CHAT_QUESTION_COMMAND_TOPIC/
+    # _on_message oben sowie chat.py und app.py, _handle_chat_question). "max": 255
+    # ist das von HA fest vorgegebene Maximum fuer MQTT-"text"-Entities (siehe
+    # https://www.home-assistant.io/integrations/text.mqtt/) - fuer eine getippte
+    # Frage ausreichend.
+    chat_text_payload = {
+        "name": "Garmin Chat Frage",
+        "unique_id": "garmin_ai_coach_chat_frage",
+        "command_topic": CHAT_QUESTION_COMMAND_TOPIC,
+        "max": 255,
+        "mode": "text",
+        "optimistic": True,
+        "icon": "mdi:chat-question-outline",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/text/garmin_ai_coach_chat_frage/config",
+        json.dumps(chat_text_payload),
         retain=True,
     )
 
@@ -776,6 +839,23 @@ def publish_trainingsplan_kommentar(note: str, trigger_key: str = None, trigger_
             "trigger_detail": trigger_detail,
             "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }, ensure_ascii=False),
+        retain=True,
+    )
+
+
+def publish_chat_history(entries: list):
+    """Publiziert den Gemini-Chatverlauf (Dashboard-Tab "Chat", siehe chat.py
+    und app.py, _handle_chat_question) als Sensor-Attribute. Aufgerufen nach
+    jeder beantworteten Chat-Frage, unabhaengig vom normalen Sync-Zyklus -
+    analog zu publish_vorschlaege() nach einem Annehmen/Ablehnen-Tastendruck."""
+    entries = entries or []
+    last_asked = entries[-1].get("asked_at") if entries else None
+    state = f"{len(entries)} Nachricht(en)" if entries else "noch keine Frage gestellt"
+    client.publish("garmin_ai_coach/chat_verlauf/state", state[:250], retain=True)
+    client.publish(
+        "garmin_ai_coach/chat_verlauf/attributes",
+        json.dumps({"messages": entries, "last_asked_at": last_asked},
+                    ensure_ascii=False, default=str),
         retain=True,
     )
 

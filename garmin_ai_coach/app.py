@@ -10,8 +10,10 @@ from ha_publish import (
     publish_gym_coaching_note,
     publish_trainingsplan_kommentar,
     publish_vorschlaege,
+    publish_chat_history,
     set_sync_button_callback,
     set_vorschlag_callbacks,
+    set_chat_callback,
     extract_metrics,
 )
 from ai_coach import (
@@ -19,10 +21,12 @@ from ai_coach import (
     generate_weekly_report,
     generate_gym_coaching_note,
     generate_trainingsplan_kommentar,
+    generate_chat_answer,
     TRAININGSPLAN_GYM_KRITIK,
 )
 import fit_exercises
 import suggestions
+import chat
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -795,6 +799,62 @@ def _handle_vorschlag_reject(suggestion_id: str):
 
 
 set_vorschlag_callbacks(on_accept=_handle_vorschlag_accept, on_reject=_handle_vorschlag_reject)
+
+
+def _load_latest_wellness_and_history():
+    """Laedt die zuletzt gespeicherten Sync-Daten + Tages-Historie von der
+    Platte - gleiche Quelle/gleiches Muster wie do_weekly_report() ohne
+    Parameter. Fuer den Chat (_handle_chat_question unten) gebraucht, damit
+    eine Frage NICHT extra einen neuen Garmin-Sync ausloest (waere zu
+    langsam/unnoetiges Rate-Limit-Risiko fuer eine reine Textfrage)."""
+    wellness = {}
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE) as f:
+                wellness = json.load(f) or {}
+        except Exception as e:
+            print(f"[chat] Sync-Daten nicht lesbar: {e}")
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE) as f:
+                history = json.load(f) or []
+        except Exception as e:
+            print(f"[chat] Historie nicht lesbar: {e}")
+    return wellness, history
+
+
+def _handle_chat_question(question: str):
+    """Wird ueber MQTT ausgeloest (text-Entity "Garmin Chat Frage", Topic
+    garmin_ai_coach/chat_frage/set, siehe ha_publish.py). Ruft Gemini MIT dem
+    aktuellen Trainingskontext auf (ai_coach.generate_chat_answer - Alex'
+    ausdruecklicher Wunsch, damit z.B. "Wie war meine Woche?" ohne weitere
+    Erklaerung funktioniert), haengt Frage+Antwort an den gespeicherten
+    Verlauf an (chat.py) und published das Ergebnis sofort.
+
+    Laeuft in einem eigenen Thread (wie _handle_sync_button_press) - der
+    Gemini-Aufruf kann mehrere Sekunden bis über eine Minute dauern und darf
+    den MQTT-Netzwerk-Thread nicht blockieren. Ein Fehler landet NICHT als
+    Exception im Dashboard, sondern als ehrliche, kurze Fehlermeldung in der
+    Antwort - der Verlauf bekommt trotzdem einen Eintrag, damit die gestellte
+    Frage nicht spurlos verschwindet."""
+    def _run():
+        print(f"[mqtt] Chat-Frage wird beantwortet: {question[:80]!r}")
+        try:
+            wellness, history = _load_latest_wellness_and_history()
+            chat_context = chat.context_for_prompt()
+            if not os.environ.get("GEMINI_API_KEY"):
+                raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
+            answer = generate_chat_answer(question, wellness, history, chat_context)
+        except Exception as e:
+            print(f"[chat] Antwort fehlgeschlagen: {e}")
+            answer = "Antwort aktuell nicht verfuegbar (Gemini-Fehler). Frag gern gleich nochmal."
+        entries = chat.add_exchange(question, answer)
+        publish_chat_history(entries)
+    threading.Thread(target=_run, daemon=True).start()
+
+
+set_chat_callback(_handle_chat_question)
 
 
 @app.route("/")

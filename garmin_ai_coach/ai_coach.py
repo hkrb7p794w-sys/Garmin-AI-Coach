@@ -544,6 +544,129 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
     return text
 
 
+def generate_chat_answer(question: str, data: dict, history: list, chat_context: str = "") -> str:
+    """Beantwortet eine freie, gezielte Frage des Athleten im Dashboard-Tab
+    "Chat" (siehe claude/status-und-plan.md, Auftrag von Alex 11.09.2026:
+    "Chat integrieren, sodass ich gezielte Fragen ueber die API an Gemini
+    stellen kann"). Anders als die anderen generate_*-Funktionen hier KEIN
+    fest vorgegebenes Antwortformat (keine erzwungenen Stichpunkte) - eine
+    echte Chat-Antwort soll sich an der gestellten Frage orientieren, nicht an
+    einer Coaching-Notiz-Schablone.
+
+    data: die zuletzt gespeicherten Sync-Daten (wie bei generate_coaching_note)
+    - MIT Trainingskontext, das war Alex' ausdruecklicher Wunsch bei der
+    Abstimmung dieser Funktion: Readiness/VO2max/Phase/Wochenvolumen etc.
+    werden bei jeder Frage automatisch mitgegeben, damit z.B. "Wie war meine
+    Woche?" ohne weitere Erklaerung funktioniert.
+    history: die Tages-Historie (fuer evtl. Trend-Rueckfragen, gleiche Quelle
+    wie beim Wochenreport).
+    chat_context: vorformatierter Block ueber den bisherigen Gespraechsverlauf
+    (siehe chat.context_for_prompt) - hier bewusst als fertiger String statt
+    chat.py direkt zu importieren, analog zu generate_trainingsplan_kommentar/
+    decided_context (suggestions.py)."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
+    question = (question or "").strip()
+    if not question:
+        raise RuntimeError("Leere Frage")
+
+    metrics = extract_metrics(data or {})
+    phase = (data or {}).get("phase") or "unbekannt"
+    focus = PHASE_FOCUS.get(phase, "")
+    plan_detail = TRAININGSPLAN_PHASE_DETAIL.get(phase, "")
+    wv = (data or {}).get("weekly_volumes") or {}
+    readiness_14d = None
+    vo2max_7d = None
+    try:
+        today = datetime.date.today()
+        readiness_14d = _history_avg_for_chat(history, "readiness", 0, 13, today)
+        vo2max_7d = _history_avg_for_chat(history, "vo2max", 0, 6, today)
+    except Exception:
+        pass
+    context_block = f"\n\n{chat_context}\n" if chat_context else ""
+
+    prompt = (
+        "Du bist ein Ausdauersport-Coach und persoenlicher Trainingsassistent fuer einen "
+        f"Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am 29.08.2027. "
+        f"Zielzeit: {RACE_GOAL}. Du beantwortest hier eine gezielte Frage in einem Chat - "
+        "KEINE Coaching-Notiz und KEINE erzwungenen Stichpunkte, sondern eine direkte, "
+        "natuerliche Antwort auf genau diese Frage, so kurz wie moeglich, aber vollstaendig.\n\n"
+        f"{ATHLETE_PROFILE}\n\n"
+        f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}). "
+        f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n"
+        f"Fuer die aktuelle Phase geplant:\n{plan_detail}\n\n"
+        "Aktueller Datenstand (letzter Sync):\n"
+        f"- Ruhepuls: {_fmt(metrics['resting_hr'], ' bpm')}\n"
+        f"- Training Readiness: {_fmt(metrics['training_readiness_score'], '%')} "
+        f"({_fmt(metrics['training_readiness_level'])}), 14-Tage-Schnitt: {_fmt(readiness_14d, '%')}\n"
+        f"- HRV letzte Nacht: {_fmt(metrics['hrv_avg'], ' ms')} ({_fmt(metrics['hrv_status'])})\n"
+        f"- Body Battery: {_fmt(metrics['body_battery'], '%')}\n"
+        f"- Schlaf: {_fmt(metrics['sleep_hours'], ' h')}, Score {_fmt(metrics['sleep_score'])}\n"
+        f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}, 7-Tage-Schnitt: {_fmt(vo2max_7d, ' ml/kg/min')}\n"
+        f"- Training Status: {_fmt(metrics['training_status_phrase'])}\n"
+        f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
+        f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
+        "WICHTIGE EINSCHRAENKUNG (damit du nichts erfindest): Dir liegen KEINE Sensordaten zu "
+        "Pace (Lauf/Schwimm), Watt/FTP (Rad) oder Koerpergewicht vor, und du hast KEINEN "
+        "Lesezugriff auf die manuell im Dashboard gepflegten Zielzeit-Benchmark-Felder "
+        "(Schwimm-Pace/Rad-Schnitt/Lauf-Pace). Falls die Frage solche Werte braucht, sag das "
+        "ehrlich statt eine Zahl zu erfinden, und beziehe dich stattdessen auf die oben "
+        "genannten tatsaechlich vorliegenden Daten.\n"
+        f"{context_block}\n"
+        f"Neue Frage des Athleten: {question}\n\n"
+        "Antworte auf Deutsch, direkt und konkret auf die Frage bezogen, nutze die obigen Daten "
+        "wo relevant. Halte die Antwort kurz (max. ca. 120 Woerter), als Fliesstext (kein "
+        "Stichpunkt-Zwang) - nur wenn eine Aufzaehlung die Frage klarer beantwortet, darfst du "
+        "kurze Stichpunkte verwenden. Wenn eine Frage nichts mit Training/Erholung/Coaching zu "
+        "tun hat, beantworte sie trotzdem hoeflich, aber lenke bei Gelegenheit kurz zurueck auf "
+        "die Rolle als Trainingscoach."
+    )
+
+    model = GEMINI_MODEL
+    resp = _call_gemini(model, prompt)
+    if resp.status_code == 404:
+        successor = _model_from_404(resp.text, model)
+        if successor:
+            print(f"[ai_coach] Modell '{model}' nicht verfuegbar, wechsle auf '{successor}'")
+            model = successor
+            resp = _call_gemini(model, prompt)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
+    body = resp.json()
+    candidates = body.get("candidates") or []
+    if not candidates:
+        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
+        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+    candidate = candidates[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError(
+            f"Gemini ({model}) hat leeren Text geliefert "
+            f"(finishReason: {candidate.get('finishReason')})"
+        )
+    return text
+
+
+def _history_avg_for_chat(history: list, key: str, offset_from: int, offset_to: int, today):
+    """Kleine, lokale Kopie von app._history_avg (Mittelwert eines Feldes ueber
+    Tage mit Abstand offset_from..offset_to zu heute) - bewusst dupliziert statt
+    aus app.py importiert, um keinen zirkulaeren Import (app.py importiert
+    bereits aus ai_coach.py) einzufuehren. Nur fuer die zwei Zusatzwerte
+    (Readiness-14-Tage-/VO2max-7-Tage-Schnitt) im Chat-Prompt oben genutzt."""
+    values = []
+    for entry in history or []:
+        try:
+            day = datetime.date.fromisoformat(str(entry.get("date")))
+        except (TypeError, ValueError):
+            continue
+        if offset_from <= (today - day).days <= offset_to:
+            value = entry.get(key)
+            if isinstance(value, (int, float)):
+                values.append(value)
+    return round(sum(values) / len(values), 1) if values else None
+
+
 def generate_trainingsplan_kommentar(
     trigger_key: str,
     trigger_detail: str,

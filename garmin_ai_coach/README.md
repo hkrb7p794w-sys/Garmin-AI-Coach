@@ -20,6 +20,52 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.15.0
+- **Neu: freier Gemini-Chat im Dashboard** (neuer Tab "Chat"). Auslöser: Alex wollte gezielte
+  Fragen über die API direkt an Gemini stellen können, statt nur die automatisch generierten
+  Coaching-Texte zu lesen. Per `AskUserQuestion` auf drei Punkte eingegrenzt (alle mit der jeweils
+  empfohlenen Option beantwortet): (1) **Technik:** MQTT-basiert (Textfeld + Verlauf per Sensor)
+  statt einer eigenen iframe-Weboberfläche (Ingress-Session-Risiko, siehe 0.13.0) oder eines
+  nativen HA-Assist-Conversation-Agents (eigene Integration nötig, kein reiner Add-on-Task). (2)
+  **Kontext:** Gemini bekommt bei jeder Frage automatisch den aktuellen Trainingskontext
+  (Readiness, VO2max, Trainingsphase, Wochenvolumen, HRV, Schlaf etc.) mitgegeben, damit z.B. "Wie
+  war meine Woche?" ohne weitere Erklärung funktioniert. (3) **Verlauf:** die letzten Frage-Antwort-
+  Paare bleiben im Dashboard sichtbar (nicht nur die letzte Antwort).
+  - **Neues Modul `chat.py`:** verwaltet den Chatverlauf in `/data/chat_history.json` (analog zu
+    `suggestions.py`), begrenzt auf die letzten 30 Austausche. `context_for_prompt()` baut einen
+    Gesprächsverlauf-Block der letzten 5 Austausche für Anschlussfragen.
+  - **`ai_coach.py`:** neue Funktion `generate_chat_answer(question, data, history, chat_context)`
+    - anders als die übrigen `generate_*`-Funktionen ohne erzwungenes Stichpunkt-Format (eine
+    Chat-Antwort soll sich an der Frage orientieren, nicht an einer Coaching-Notiz-Schablone).
+    Nennt Gemini ausdrücklich, dass keine Sensordaten zu Pace/Watt/Körpergewicht und kein
+    Lesezugriff auf die manuell gepflegten Zielzeit-Benchmark-Felder vorliegen, damit dort nichts
+    erfunden wird.
+  - **`ha_publish.py`:** neue MQTT-`text`-Entity `text.garmin_ai_coach_garmin_chat_frage` (Frage
+    eingeben, `optimistic: true`, `max: 255` - das von Home Assistant fest vorgegebene Maximum für
+    MQTT-Text-Entities) sowie neuer Sensor `sensor.garmin_ai_coach_garmin_chat_verlauf` (Attribut
+    `messages`: Liste der gespeicherten Frage-Antwort-Paare).
+  - **`app.py`:** neuer Handler `_handle_chat_question()` (per MQTT-Callback ausgelöst, läuft wie
+    der Sync-Button-Handler in einem eigenen Thread, damit ein länger dauernder Gemini-Aufruf den
+    MQTT-Netzwerk-Thread nicht blockiert). Nutzt die zuletzt gespeicherten Sync-Daten statt einen
+    neuen Garmin-Sync auszulösen (eine Textfrage soll nicht zusätzlich das Garmin-Rate-Limit
+    belasten). Ein Gemini-Fehler liefert eine ehrliche Fallback-Antwort statt die Frage stillschweigend
+    verschwinden zu lassen.
+  - **`Dockerfile`:** `COPY chat.py /chat.py` ergänzt - direkt beim Anlegen des neuen Moduls, um
+    genau den Fehler aus 0.14.1 zu vermeiden (dort fehlte die analoge `COPY`-Zeile für
+    `suggestions.py`, das Add-on startete deshalb mit `ModuleNotFoundError` nicht mehr).
+  - **Neuer Dashboard-Tab "Chat":** Erklärung, Eingabefeld (die neue Text-Entity) sowie eine
+    Markdown-Card, die den Verlauf aus den Sensor-Attributen rendert (neueste Frage zuerst).
+  - MQTT-Text-Discovery-Schema vorab gegen die offizielle Home-Assistant-Dokumentation
+    (https://www.home-assistant.io/integrations/text.mqtt/) geprüft (u.a. das 255-Zeichen-Limit).
+  - Alle vier geänderten/neuen Python-Dateien (`chat.py`, `ai_coach.py`, `ha_publish.py`, `app.py`)
+    mit `py_compile` verifiziert sowie mit 42 synthetischen Tests gegen echte Modul-Instanzen
+    (Stub-Modul für `paho`, da in der Cloud-Sandbox nicht installierbar): Verlauf-Verwaltung
+    (Speichern, Begrenzung auf 30 Einträge, Kontext-Block), `generate_chat_answer` (Erfolgsfall,
+    leere Frage, fehlender API-Key, 404-Modellwechsel-Fallback, Gesprächskontext im Prompt),
+    Discovery-Payloads (Text-Entity, Sensor), `publish_chat_history`, MQTT-Routing sowie ein voller
+    End-to-End-Durchlauf über `app._handle_chat_question()` inkl. Fehlerfall und
+    Anschlussfrage-Kontext - alle Fälle bestanden.
+
 ### 0.14.1
 - **Hotfix: Add-on startete nicht mehr (ModuleNotFoundError: No module named 'suggestions').**
   Das in 0.14.0 neu eingefuehrte Modul `suggestions.py` wurde im `Dockerfile` nicht per `COPY`
