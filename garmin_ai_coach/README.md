@@ -20,6 +20,14 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.14.1
+- **Hotfix: Add-on startete nicht mehr (ModuleNotFoundError: No module named 'suggestions').**
+  Das in 0.14.0 neu eingefuehrte Modul `suggestions.py` wurde im `Dockerfile` nicht per `COPY`
+  in das Container-Image aufgenommen (die anderen vier Python-Dateien schon) - dadurch fehlte die
+  Datei im gebauten Image, obwohl sie im Repo lag und `app.py` sie importiert. Fix: `COPY
+  suggestions.py /suggestions.py` im Dockerfile ergaenzt. Reiner Build-Fix, keine Logik-Aenderung
+  gegenueber 0.14.0.
+
 ### 0.14.0
 - **Neu: KI-Trainingsplan-Vorschlaege lassen sich jetzt einzeln annehmen oder ablehnen** (neuer
   Dashboard-Tab "Vorschlaege"). Auslöser: Alex wollte einige der Gym-Plan-Vorschlaege nicht

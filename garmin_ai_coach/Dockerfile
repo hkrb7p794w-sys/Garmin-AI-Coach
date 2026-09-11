@@ -6,6 +6,7 @@ COPY app.py /app.py
 COPY ha_publish.py /ha_publish.py
 COPY ai_coach.py /ai_coach.py
 COPY fit_exercises.py /fit_exercises.py
+COPY suggestions.py /suggestions.py
 COPY run.sh /
 RUN chmod a+x /run.sh
 CMD [ "/run.sh" ]
