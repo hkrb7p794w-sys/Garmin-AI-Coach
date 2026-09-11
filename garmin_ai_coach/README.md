@@ -20,6 +20,32 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.13.0
+- **Fix: "Jetzt synchronisieren"-Button (Dashboard-Tab "Heute") gab HTTP 401 statt zu syncen.**
+  Der Button rief bisher eine im Dashboard fest verdrahtete Ingress-URL
+  (`/api/hassio_ingress/<Token>/sync?force=1`) direkt auf. Das funktioniert nur, solange der Browser
+  bereits eine gueltige, kurzlebige Ingress-Session fuer dieses Add-on hat (die HA beim Oeffnen der
+  Add-on-Weboberflaeche ueber Einstellungen -> Add-ons selbst aufbaut) - ein direkter Klick auf die
+  Dashboard-Kachel oeffnet den Link dagegen typischerweise in einem neuen Tab/Kontext ohne diese
+  Session, was Supervisor mit 401 Unauthorized quittiert. War bereits als latentes Risiko
+  dokumentiert (siehe `claude/status-und-plan.md`, "Dashboard-Ingress-URL fragil"), trat jetzt live
+  auf.
+- **Fix: robuster durch einen MQTT-Button statt einer Ingress-URL.** Neue Button-Entity "Garmin
+  Jetzt Synchronisieren" (`ha_publish.py`, `SYNC_BUTTON_COMMAND_TOPIC =
+  "garmin_ai_coach/sync_now/set"`) wird wie die bestehenden Sensoren per MQTT-Discovery angelegt und
+  bei jedem (Re-)Connect des MQTT-Clients erneut publiziert (`_on_connect`) - macht sie zusaetzlich
+  robust gegen einen Mosquitto-Neustart (siehe Lessons Learned Punkt 10 in
+  `claude/status-und-plan.md`). Das Add-on abonniert das Command-Topic und fuehrt bei einer
+  Nachricht `do_sync(force=True, also_weekly=True)` in einem eigenen Thread aus (`app.py`,
+  `_handle_sync_button_press`), damit der MQTT-Netzwerk-Thread nicht blockiert. Das Dashboard ruft
+  jetzt den Service `mqtt.publish` (Topic `garmin_ai_coach/sync_now/set`, Payload `PRESS`) auf statt
+  der alten URL - ein ganz normaler Home-Assistant-Service-Call, unabhaengig von Ingress-Sessions.
+- **Neu: "Jetzt synchronisieren" erzeugt jetzt gleichzeitig den Wochenreport.** `do_sync()` hat
+  einen neuen Parameter `also_weekly` (zusaetzlich zum bisherigen `weekday() == 0`-Automatismus fuer
+  den montaeglichen Wochenreport); der Sync-Button setzt ihn auf `True`. Auch der manuelle
+  `/sync`-Endpunkt akzeptiert jetzt `?weekly=1` fuer denselben Effekt (z.B. `/sync?force=1&weekly=1`
+  ueber die Add-on-Weboberflaeche).
+
 ### 0.12.0
 - **Neu: phasenspezifischer Gemini-Kommentar zu den Trainingsplaenen (Dashboard-Tab
   "Trainingsplaene").** Bisher hatte dieser Tab keine KI-Anbindung - die Plaene (Gym-Kritik,

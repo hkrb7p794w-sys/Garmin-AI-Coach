@@ -23,6 +23,60 @@ print(f"[mqtt debug] host={MQTT_HOST} port={MQTT_PORT} "
       f"pass_set={'yes' if MQTT_PASS else 'NO - env var MQTT_PASSWORD is empty/unset'}")
 if MQTT_USER:
     client.username_pw_set(MQTT_USER, MQTT_PASS)
+
+# Command-Topic fuer den "Jetzt synchronisieren"-Button (siehe publish_discovery()
+# unten sowie app.py, _handle_sync_button_press). Ersetzt den bisherigen
+# Dashboard-Button mit fest verdrahteter Ingress-URL, der bei fehlender/
+# abgelaufener Ingress-Browser-Session mit HTTP 401 scheiterte (siehe
+# claude/status-und-plan.md, "Dashboard-Ingress-URL fragil"). Ein MQTT-Button
+# ist eine normale HA-Entity/ein normaler Service-Call (mqtt.publish) und damit
+# unabhaengig von Ingress-Sessions.
+SYNC_BUTTON_COMMAND_TOPIC = "garmin_ai_coach/sync_now/set"
+_sync_button_callback = None
+
+
+def set_sync_button_callback(fn):
+    """Registriert die Funktion, die app.py beim Druecken des Sync-Buttons
+    ausfuehren soll (dort: do_sync(force=True, also_weekly=True) in einem
+    eigenen Thread). Getrennt von diesem Modul, damit ha_publish.py nicht
+    zirkulaer von app.py importieren muss."""
+    global _sync_button_callback
+    _sync_button_callback = fn
+
+
+def _on_connect(client, userdata, flags, rc):
+    """(Re-)Abonniert das Sync-Button-Topic und veroeffentlicht die Discovery-
+    Configs bei jedem (erneuten) Verbindungsaufbau - nicht nur beim ersten. Ein
+    Abonnement ueberlebt einen Reconnect NICHT automatisch, und ein erneutes
+    Discovery-Publish macht den Button (und alle Sensoren) robust gegen einen
+    Mosquitto-Neustart wie den in claude/status-und-plan.md dokumentierten
+    Supervisor-MQTT-Service-Ausfall (Lessons Learned Punkt 10)."""
+    if rc == 0:
+        print("[mqtt] verbunden - abonniere Sync-Button-Topic und publiziere Discovery")
+        client.subscribe(SYNC_BUTTON_COMMAND_TOPIC)
+        publish_discovery()
+    else:
+        print(f"[mqtt] Verbindung fehlgeschlagen, rc={rc}")
+
+
+def _on_message(client, userdata, msg):
+    if msg.topic != SYNC_BUTTON_COMMAND_TOPIC:
+        return
+    print("[mqtt] Sync-Button-Nachricht empfangen")
+    if _sync_button_callback:
+        try:
+            _sync_button_callback()
+        except Exception as e:
+            print(f"[mqtt] Sync-Button-Callback fehlgeschlagen: {e}")
+    else:
+        print("[mqtt] Sync-Button gedrueckt, aber noch kein Callback registriert (App startet noch?)")
+
+
+# on_connect/on_message MUESSEN vor connect_async()/loop_start() gesetzt werden -
+# sonst koennte der Hintergrund-Thread theoretisch schon verbinden, bevor die
+# Callbacks zugewiesen sind (kleines, aber vermeidbares Race).
+client.on_connect = _on_connect
+client.on_message = _on_message
 # connect_async + loop_start (statt eines blockierenden connect()) laesst den
 # Broker-Verbindungsaufbau im Hintergrund-Thread laufen und automatisch neu
 # versuchen, falls core-mosquitto beim Add-on-Start noch nicht bereit ist.
@@ -195,6 +249,24 @@ def publish_discovery():
         if key in ATTRIBUTE_SENSORS:
             payload["json_attributes_topic"] = f"garmin_ai_coach/{key}/attributes"
         client.publish(topic, json.dumps(payload), retain=True)
+
+    # Sync-Button: loest ueber MQTT einen Sync + Wochenreport aus (siehe
+    # SYNC_BUTTON_COMMAND_TOPIC/_on_message oben sowie app.py,
+    # _handle_sync_button_press). Ersetzt den bisherigen Dashboard-Button mit
+    # fest verdrahteter, ingress-session-abhaengiger URL.
+    button_payload = {
+        "name": "Garmin Jetzt Synchronisieren",
+        "unique_id": "garmin_ai_coach_sync_now",
+        "command_topic": SYNC_BUTTON_COMMAND_TOPIC,
+        "payload_press": "PRESS",
+        "icon": "mdi:sync",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/button/garmin_ai_coach_sync_now/config",
+        json.dumps(button_payload),
+        retain=True,
+    )
 
 
 def extract_metrics(data: dict) -> dict:

@@ -9,6 +9,7 @@ from ha_publish import (
     publish_strength_exercises,
     publish_gym_coaching_note,
     publish_trainingsplan_kommentar,
+    set_sync_button_callback,
     extract_metrics,
 )
 from ai_coach import (
@@ -530,7 +531,7 @@ def do_weekly_report(wellness: dict = None, history: list = None) -> str:
     return text
 
 
-def do_sync(force: bool = False):
+def do_sync(force: bool = False, also_weekly: bool = False):
     """Holt aktuelle Garmin-Daten, speichert sie lokal und published sie
     (inkl. KI-Coaching-Notiz) nach MQTT/Home Assistant.
 
@@ -538,6 +539,9 @@ def do_sync(force: bool = False):
     Hintergrund-Scheduler genutzt, damit beide Wege garantiert
     tatsaechlich bei Home Assistant ankommen. `force=True` umgeht die
     Mindestpause (z.B. fuer gezieltes Testen ueber /sync?force=1).
+    `also_weekly=True` erzeugt zusaetzlich unabhaengig vom Wochentag den
+    Wochenreport (siehe "Jetzt synchronisieren"-Button/Handler unten) -
+    normalerweise laeuft der Wochenreport nur montags automatisch mit.
     """
     global _last_sync_attempt
     if not is_logged_in():
@@ -680,14 +684,45 @@ def do_sync(force: bool = False):
             print(f"[trainingsplan] Kommentar fehlgeschlagen: {e}")
 
         # Wochenreport montags automatisch (Rueckblick auf die abgeschlossene Woche);
-        # jederzeit manuell ueber /weekly ausloesbar.
-        if today_date.weekday() == 0:
+        # jederzeit manuell ueber /weekly ausloesbar, oder ueber also_weekly=True
+        # gebuendelt mit diesem Sync (siehe "Jetzt synchronisieren"-Button).
+        if today_date.weekday() == 0 or also_weekly:
             do_weekly_report(wellness, history)
         return wellness
     except Exception as e:
         print(f"[sync] Sync fehlgeschlagen: {e}")
         publish_sync_status(ok=False, detail=str(e))
         return None
+
+
+def _handle_sync_button_press():
+    """Wird ueber MQTT ausgeloest (Button-Entity "Garmin AI Coach Jetzt
+    synchronisieren" aus ha_publish.publish_discovery(), Topic
+    garmin_ai_coach/sync_now/set) statt wie bisher ueber einen Dashboard-Klick
+    auf eine fest verdrahtete Ingress-URL. Diese URL scheiterte mit HTTP 401,
+    sobald der Browser keine gueltige (kurzlebige) Ingress-Session mehr hatte -
+    z.B. weil der Tap-Action-Typ "url" den Link in einem neuen Tab oeffnet, der
+    nie eine Ingress-Session aufgebaut hat (siehe claude/status-und-plan.md,
+    "Dashboard-Ingress-URL fragil"). Ein MQTT-Button ist eine normale
+    HA-Entity, die ueber einen ganz normalen Service-Call (mqtt.publish)
+    ausgeloest wird - unabhaengig von Ingress-Sessions.
+
+    Laeuft in einem eigenen Thread, damit der MQTT-Netzwerk-Thread (der diesen
+    Callback aufruft) nicht blockiert wird - ein Sync inkl. Gemini-Aufrufen
+    kann mehrere zehn Sekunden dauern. Loest bewusst IMMER auch den
+    Wochenreport aus (also_weekly=True, siehe do_sync) - Alex' ausdruecklicher
+    Wunsch, damit ein Klick auf "Jetzt synchronisieren" beides gleichzeitig
+    anstoesst, unabhaengig vom Wochentag."""
+    def _run():
+        print("[mqtt] Sync-Button gedrueckt - starte Sync + Wochenreport")
+        try:
+            do_sync(force=True, also_weekly=True)
+        except Exception as e:
+            print(f"[mqtt] Sync ueber Button fehlgeschlagen: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+set_sync_button_callback(_handle_sync_button_press)
 
 
 @app.route("/")
@@ -702,7 +737,7 @@ def home():
     <html><body style="font-family:sans-serif;padding:2rem;">
     <h1>Garmin AI Coach</h1>
     <p>Verbunden mit Garmin ✅</p>
-    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a> &nbsp;|&nbsp; <a href="weekly">Wochenreport erzeugen</a></p>
+    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a> &nbsp;|&nbsp; <a href="sync?force=1&weekly=1">Sync + Wochenreport erzwingen</a> &nbsp;|&nbsp; <a href="weekly">Wochenreport erzeugen</a></p>
     <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
     </body></html>
     """
@@ -739,7 +774,10 @@ def login():
 def sync():
     if not is_logged_in():
         return redirect(".")
-    do_sync(force=request.args.get("force") == "1")
+    do_sync(
+        force=request.args.get("force") == "1",
+        also_weekly=request.args.get("weekly") == "1",
+    )
     return redirect(".")
 
 
