@@ -34,6 +34,24 @@ if MQTT_USER:
 SYNC_BUTTON_COMMAND_TOPIC = "garmin_ai_coach/sync_now/set"
 _sync_button_callback = None
 
+# Annehmen/Ablehnen fuer KI-Trainingsplan-Vorschlaege (Dashboard-Tab "Vorschlaege",
+# siehe suggestions.py sowie publish_vorschlaege unten). Bewusst EINE Auswahl-Select-
+# Entity + zwei feste Annehmen/Ablehnen-Buttons statt eigener Button-Entities je
+# Vorschlag - die Anzahl der Vorschlaege ist dynamisch (4 feste Gym-Kritik-Punkte plus
+# eine wechselnde Zahl Gemini-generierter Trainingsplan-Kommentar-Vorschlaege), eine
+# feste Dashboard-Card mit fest referenzierten Entities kann das nicht abbilden ohne
+# bei jeder Aenderung neu geschrieben zu werden. Ablauf: Alex waehlt einen Vorschlag im
+# Dropdown (HA published den gewaehlten Options-Text an VORSCHLAG_SELECT_COMMAND_TOPIC),
+# das Add-on merkt sich die dazugehoerige id (_vorschlag_label_map, siehe
+# publish_vorschlaege), und ein Druck auf Annehmen/Ablehnen wirkt auf diese gemerkte id.
+VORSCHLAG_SELECT_COMMAND_TOPIC = "garmin_ai_coach/vorschlag_auswahl/set"
+VORSCHLAG_ACCEPT_COMMAND_TOPIC = "garmin_ai_coach/vorschlag_annehmen/set"
+VORSCHLAG_REJECT_COMMAND_TOPIC = "garmin_ai_coach/vorschlag_ablehnen/set"
+_vorschlag_accept_callback = None
+_vorschlag_reject_callback = None
+_vorschlag_label_map = {}
+_selected_suggestion_id = None
+
 
 def set_sync_button_callback(fn):
     """Registriert die Funktion, die app.py beim Druecken des Sync-Buttons
@@ -44,32 +62,76 @@ def set_sync_button_callback(fn):
     _sync_button_callback = fn
 
 
+def set_vorschlag_callbacks(on_accept=None, on_reject=None):
+    """Registriert die Funktionen, die app.py beim Druecken der Annehmen-/
+    Ablehnen-Buttons fuer den aktuell ausgewaehlten Vorschlag ausfuehren soll
+    (dort: suggestions.set_status(...) + erneutes publish_vorschlaege(), siehe
+    _handle_vorschlag_accept/_handle_vorschlag_reject). Analog zu
+    set_sync_button_callback. Jede Callback-Funktion bekommt die suggestion_id
+    (str) als einziges Argument."""
+    global _vorschlag_accept_callback, _vorschlag_reject_callback
+    if on_accept:
+        _vorschlag_accept_callback = on_accept
+    if on_reject:
+        _vorschlag_reject_callback = on_reject
+
+
 def _on_connect(client, userdata, flags, rc):
-    """(Re-)Abonniert das Sync-Button-Topic und veroeffentlicht die Discovery-
+    """(Re-)Abonniert die Command-Topics und veroeffentlicht die Discovery-
     Configs bei jedem (erneuten) Verbindungsaufbau - nicht nur beim ersten. Ein
     Abonnement ueberlebt einen Reconnect NICHT automatisch, und ein erneutes
-    Discovery-Publish macht den Button (und alle Sensoren) robust gegen einen
+    Discovery-Publish macht Buttons/Select (und alle Sensoren) robust gegen einen
     Mosquitto-Neustart wie den in claude/status-und-plan.md dokumentierten
     Supervisor-MQTT-Service-Ausfall (Lessons Learned Punkt 10)."""
     if rc == 0:
-        print("[mqtt] verbunden - abonniere Sync-Button-Topic und publiziere Discovery")
+        print("[mqtt] verbunden - abonniere Command-Topics und publiziere Discovery")
         client.subscribe(SYNC_BUTTON_COMMAND_TOPIC)
+        client.subscribe(VORSCHLAG_SELECT_COMMAND_TOPIC)
+        client.subscribe(VORSCHLAG_ACCEPT_COMMAND_TOPIC)
+        client.subscribe(VORSCHLAG_REJECT_COMMAND_TOPIC)
         publish_discovery()
     else:
         print(f"[mqtt] Verbindung fehlgeschlagen, rc={rc}")
 
 
 def _on_message(client, userdata, msg):
-    if msg.topic != SYNC_BUTTON_COMMAND_TOPIC:
-        return
-    print("[mqtt] Sync-Button-Nachricht empfangen")
-    if _sync_button_callback:
-        try:
-            _sync_button_callback()
-        except Exception as e:
-            print(f"[mqtt] Sync-Button-Callback fehlgeschlagen: {e}")
-    else:
-        print("[mqtt] Sync-Button gedrueckt, aber noch kein Callback registriert (App startet noch?)")
+    global _selected_suggestion_id
+    if msg.topic == SYNC_BUTTON_COMMAND_TOPIC:
+        print("[mqtt] Sync-Button-Nachricht empfangen")
+        if _sync_button_callback:
+            try:
+                _sync_button_callback()
+            except Exception as e:
+                print(f"[mqtt] Sync-Button-Callback fehlgeschlagen: {e}")
+        else:
+            print("[mqtt] Sync-Button gedrueckt, aber noch kein Callback registriert (App startet noch?)")
+    elif msg.topic == VORSCHLAG_SELECT_COMMAND_TOPIC:
+        label = msg.payload.decode("utf-8", errors="replace")
+        _selected_suggestion_id = _vorschlag_label_map.get(label)
+        # optimistic=True in der Discovery-Config reicht theoretisch fuer die
+        # sofortige UI-Anzeige, trotzdem den gewaehlten Wert als state zurueckpublizieren -
+        # so zeigt auch ein zweiter Dashboard-Client/-Tab sofort denselben Stand.
+        client.publish("garmin_ai_coach/vorschlag_auswahl/state", label, retain=True)
+        if not _selected_suggestion_id:
+            print(f"[mqtt] Vorschlag-Auswahl '{label}' nicht (mehr) bekannt")
+    elif msg.topic == VORSCHLAG_ACCEPT_COMMAND_TOPIC:
+        print("[mqtt] Vorschlag-Annehmen-Button gedrueckt")
+        if not _selected_suggestion_id:
+            print("[mqtt] kein Vorschlag ausgewaehlt - ignoriert")
+        elif _vorschlag_accept_callback:
+            try:
+                _vorschlag_accept_callback(_selected_suggestion_id)
+            except Exception as e:
+                print(f"[mqtt] Vorschlag-Annehmen-Callback fehlgeschlagen: {e}")
+    elif msg.topic == VORSCHLAG_REJECT_COMMAND_TOPIC:
+        print("[mqtt] Vorschlag-Ablehnen-Button gedrueckt")
+        if not _selected_suggestion_id:
+            print("[mqtt] kein Vorschlag ausgewaehlt - ignoriert")
+        elif _vorschlag_reject_callback:
+            try:
+                _vorschlag_reject_callback(_selected_suggestion_id)
+            except Exception as e:
+                print(f"[mqtt] Vorschlag-Ablehnen-Callback fehlgeschlagen: {e}")
 
 
 # on_connect/on_message MUESSEN vor connect_async()/loop_start() gesetzt werden -
@@ -220,13 +282,18 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:clipboard-text-clock",
     },
+    "vorschlaege": {
+        "name": "Garmin Vorschlaege",
+        "unit": None,
+        "icon": "mdi:thumbs-up-down",
+    },
 }
 
 # Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
-    "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar",
+    "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
 }
 
 
@@ -265,6 +332,127 @@ def publish_discovery():
     client.publish(
         "homeassistant/button/garmin_ai_coach_sync_now/config",
         json.dumps(button_payload),
+        retain=True,
+    )
+
+    # Annehmen/Ablehnen fuer KI-Trainingsplan-Vorschlaege (Dashboard-Tab "Vorschlaege",
+    # siehe VORSCHLAG_*_COMMAND_TOPIC/_on_message oben sowie publish_vorschlaege unten
+    # und suggestions.py). Hier nur die initiale/Fallback-Registrierung mit einer
+    # Platzhalter-Optionsliste, damit die drei Entities sofort nach einem Add-on-(Neu-)
+    # Start existieren, auch vor dem ersten Sync - publish_vorschlaege() republished die
+    # Select-Discovery-Config danach bei jedem Sync sowie nach jedem Annehmen/Ablehnen
+    # mit der jeweils aktuellen Optionsliste (die Optionen sind Teil der Discovery-
+    # Config, es gibt dafuer keinen separaten State).
+    select_payload = {
+        "name": "Garmin Vorschlag Auswahl",
+        "unique_id": "garmin_ai_coach_vorschlag_auswahl",
+        "command_topic": VORSCHLAG_SELECT_COMMAND_TOPIC,
+        "state_topic": "garmin_ai_coach/vorschlag_auswahl/state",
+        "options": ["(noch keine Vorschlaege - nach dem ersten Sync verfuegbar)"],
+        "optimistic": True,
+        "icon": "mdi:format-list-checks",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/select/garmin_ai_coach_vorschlag_auswahl/config",
+        json.dumps(select_payload),
+        retain=True,
+    )
+    accept_payload = {
+        "name": "Garmin Vorschlag Annehmen",
+        "unique_id": "garmin_ai_coach_vorschlag_annehmen",
+        "command_topic": VORSCHLAG_ACCEPT_COMMAND_TOPIC,
+        "payload_press": "PRESS",
+        "icon": "mdi:thumb-up-outline",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/button/garmin_ai_coach_vorschlag_annehmen/config",
+        json.dumps(accept_payload),
+        retain=True,
+    )
+    reject_payload = {
+        "name": "Garmin Vorschlag Ablehnen",
+        "unique_id": "garmin_ai_coach_vorschlag_ablehnen",
+        "command_topic": VORSCHLAG_REJECT_COMMAND_TOPIC,
+        "payload_press": "PRESS",
+        "icon": "mdi:thumb-down-outline",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/button/garmin_ai_coach_vorschlag_ablehnen/config",
+        json.dumps(reject_payload),
+        retain=True,
+    )
+
+
+def _vorschlag_options_and_labels(state: dict):
+    """Baut die Dropdown-Optionen (Label-Text je Vorschlag: Status-Emoji +
+    Titel, sortiert offen -> angenommen -> abgelehnt) sowie die Label->id-
+    Zuordnung fuer die Auswahl-Select-Entity (siehe publish_vorschlaege).
+    Die Zuordnung wird in _vorschlag_label_map gemerkt, damit _on_message
+    eine eingehende Auswahl auf die zugehoerige suggestion_id aufloesen kann."""
+    order = {"pending": 0, "accepted": 1, "rejected": 2}
+    emoji = {"pending": "⏳", "accepted": "✅", "rejected": "❌"}
+    items = sorted(
+        state.items(),
+        key=lambda kv: (order.get(kv[1].get("status"), 0), kv[1].get("updated_at") or ""),
+    )
+    labels = []
+    label_map = {}
+    for sid, rec in items:
+        base = f"{emoji.get(rec.get('status'), '⏳')} {rec.get('title') or sid}"
+        label = base
+        # Eindeutigkeit erzwingen, falls zwei Vorschlaege zufaellig denselben Titel
+        # haetten (Kollisionsschutz fuer die Label->id-Aufloesung).
+        suffix = 2
+        while label in label_map:
+            label = f"{base} ({suffix})"
+            suffix += 1
+        labels.append(label)
+        label_map[label] = sid
+    if not labels:
+        labels = ["(keine Vorschlaege vorhanden)"]
+    return labels, label_map
+
+
+def publish_vorschlaege(state: dict):
+    """Published den Annehmen/Ablehnen-Zustand der Trainingsplan-Vorschlaege
+    (siehe suggestions.py, Dashboard-Tab "Vorschlaege") als Sensor-Attribute
+    (fuer die Anzeige) sowie die aktuelle Optionsliste der Auswahl-Select-
+    Entity (per erneutem Discovery-Publish - siehe _vorschlag_options_and_labels).
+    Aufgerufen von app.py nach jedem Sync sowie sofort nach jedem Annehmen/
+    Ablehnen-Tastendruck, damit das Dashboard immer den aktuellen Stand zeigt."""
+    global _vorschlag_label_map
+    state = state or {}
+    pending = [{**v, "id": k} for k, v in state.items() if v.get("status") == "pending"]
+    accepted = [{**v, "id": k} for k, v in state.items() if v.get("status") == "accepted"]
+    rejected = [{**v, "id": k} for k, v in state.items() if v.get("status") == "rejected"]
+    client.publish("garmin_ai_coach/vorschlaege/state", f"{len(pending)} offen", retain=True)
+    client.publish(
+        "garmin_ai_coach/vorschlaege/attributes",
+        json.dumps(
+            {"pending": pending, "accepted": accepted, "rejected": rejected},
+            ensure_ascii=False, default=str,
+        ),
+        retain=True,
+    )
+
+    labels, label_map = _vorschlag_options_and_labels(state)
+    _vorschlag_label_map = label_map
+    select_payload = {
+        "name": "Garmin Vorschlag Auswahl",
+        "unique_id": "garmin_ai_coach_vorschlag_auswahl",
+        "command_topic": VORSCHLAG_SELECT_COMMAND_TOPIC,
+        "state_topic": "garmin_ai_coach/vorschlag_auswahl/state",
+        "options": labels,
+        "optimistic": True,
+        "icon": "mdi:format-list-checks",
+        "device": DEVICE,
+    }
+    client.publish(
+        "homeassistant/select/garmin_ai_coach_vorschlag_auswahl/config",
+        json.dumps(select_payload, ensure_ascii=False),
         retain=True,
     )
 

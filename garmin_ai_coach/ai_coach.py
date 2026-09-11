@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import datetime
 import requests
 from ha_publish import extract_metrics
@@ -100,14 +101,74 @@ TRAININGSPLAN_PHASE_DETAIL = {
 # Bereits im Dashboard dokumentierte, gezielte Gym-Anpassungsvorschlaege (siehe
 # claude/status-und-plan.md) - Umsetzung liegt bei Alex, nicht automatisch
 # vorgenommen. Phasenunabhaengig, deshalb separat von TRAININGSPLAN_PHASE_DETAIL.
-TRAININGSPLAN_GYM_KRITIK = (
-    "Vier bereits vorgeschlagene, gezielte Gym-Anpassungen (Umsetzung liegt beim Athleten, nicht "
-    "automatisch vorgenommen): (1) in Pull B eine Curl-Variante durch Pallof Press am Kabel ersetzen "
-    "(Bizeps wird sonst 4x/Woche isoliert trainiert), (2) Beinstrecken durch Rumaenisches Kreuzheben "
-    "ersetzen (Lower hat bisher keine Hueftstreckung/posteriore Kette), (3) optional Plank/Side Plank "
-    "ergaenzen (Crunches trainiert nur Bauchflexion), (4) bei den 5 grossen Grundübungen phasenweise "
-    "auf 3x6-8 schwerer wechseln (siehe TRAININGSPLAN_PHASE_DETAIL je Phase) statt durchgehend 2x12."
-)
+#
+# Seit v0.14.0 als Liste einzelner, stabil identifizierbarer Vorschlaege statt
+# eines einzigen Textblocks (siehe Dashboard-Tab "Vorschlaege", suggestions.py):
+# jeder Punkt laesst sich dort einzeln annehmen ("weiter forcieren" - fliesst als
+# Kontext in kuenftige Gemini-Prompts ein) oder ablehnen (wird vorerst nicht mehr
+# vorgeschlagen, spaeter reaktivierbar). Die "id" ist stabil und darf sich NICHT
+# aendern, ohne den bereits gespeicherten Annehmen/Ablehnen-Zustand (Alex' fruehere
+# Entscheidungen!) fuer diesen Punkt zu verlieren.
+TRAININGSPLAN_GYM_KRITIK = [
+    {
+        "id": "gym_bizeps_redundanz",
+        "title": "Curl in Pull B durch Pallof Press ersetzen",
+        "text": (
+            "Pull A und Pull B haben je 2 Curl-Varianten (Bizeps wird dadurch 4x/Woche isoliert "
+            "trainiert). In Pull B eine Curl-Variante durch Pallof Press am Kabel (Rumpf-Anti-"
+            "Rotation, stuetzt Schwimmlage sowie Rad-/Lauf-Haltung) ersetzen, Pull A bleibt."
+        ),
+    },
+    {
+        "id": "gym_huefte_kreuzheben",
+        "title": "Beinstrecken durch Rumaenisches Kreuzheben ersetzen",
+        "text": (
+            "Lower hat mit Beinbeugen und Beinstrecken zwei reine Knie-Isolationsuebungen, aber "
+            "keine Hueftstreckung/posteriore Kette. Beinstrecken (geringster Ausdauer-Transfer) "
+            "durch Rumaenisches Kreuzheben ersetzen. Beinpressen und Fersenheben bleiben."
+        ),
+    },
+    {
+        "id": "gym_rumpf_plank",
+        "title": "Plank/Side Plank ergaenzen",
+        "text": (
+            "Crunches trainiert nur Bauchflexion. Optional Plank/Side Plank ergaenzen (kein "
+            "Ersatz fuer Crunches, sondern zusaetzlich)."
+        ),
+    },
+    {
+        "id": "gym_periodisierung",
+        "title": "Phasenweise auf 3x6-8 statt durchgehend 2x12 wechseln",
+        "text": (
+            "Durchgehend 2x12 ist reines Hypertrophie-Volumen, kein Kraft-/Oekonomie-Reiz. Bei "
+            "den 5 grossen Grundübungen (Bankdruecken, Dips, Beinpressen, enges Rudern, "
+            "Lat-Ziehen eng) phasenweise (z.B. 2 von 4 Wochen) auf 3x6-8 schwerer wechseln, "
+            "Isolationsübungen bleiben bei 2x12-15."
+        ),
+    },
+]
+
+
+def _render_gym_kritik(status_by_id: dict = None) -> str:
+    """Rendert TRAININGSPLAN_GYM_KRITIK als Text fuer den Trainingsplan-
+    Kommentar-Prompt (generate_trainingsplan_kommentar unten).
+
+    status_by_id (optional): {suggestion_id: "pending"|"accepted"|"rejected"}
+    aus suggestions.by_source("gym_kritik") - vom Athleten ABGELEHNTE Punkte
+    werden komplett ausgeblendet (Alex soll sie vorerst nicht erneut
+    vorgeschlagen bekommen), ANGENOMMENE werden als bereits umgesetzt
+    markiert, damit Gemini sie nicht wie einen offenen Vorschlag behandelt."""
+    status_by_id = status_by_id or {}
+    lines = []
+    for item in TRAININGSPLAN_GYM_KRITIK:
+        status = status_by_id.get(item["id"], "pending")
+        if status == "rejected":
+            continue
+        suffix = " (vom Athleten bereits angenommen/umgesetzt)" if status == "accepted" else ""
+        lines.append(f"- {item['title']}{suffix}: {item['text']}")
+    if not lines:
+        return "Keine offenen Gym-Anpassungsvorschlaege (alle bereits entschieden)."
+    return "\n".join(lines)
 
 
 def _fmt(value, unit=""):
@@ -483,7 +544,14 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
     return text
 
 
-def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data: dict, history: list) -> str:
+def generate_trainingsplan_kommentar(
+    trigger_key: str,
+    trigger_detail: str,
+    data: dict,
+    history: list,
+    gym_status: dict = None,
+    decided_context: str = "",
+) -> tuple:
     """Phasenspezifischer Gemini-Kommentar zu den Trainingsplaenen im
     Dashboard-Tab 'Trainingsplaene' (View 'plaene'). Anders als die anderen
     Coaching-Texte wird diese Funktion NICHT bei jedem Sync aufgerufen,
@@ -493,7 +561,23 @@ def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data
     automatische Gemini-Kommentierung'). Der Kommentar ERSETZT NICHT die
     Plantabellen selbst (die bleiben als stabile Referenz im Dashboard
     stehen), sondern erklaert, warum JETZT eine Anpassung sinnvoll sein
-    koennte - genau das war Alex' ausdruecklicher Design-Wunsch."""
+    koennte - genau das war Alex' ausdruecklicher Design-Wunsch.
+
+    gym_status (optional): {suggestion_id: status} aus
+    suggestions.by_source("gym_kritik") - siehe _render_gym_kritik.
+    decided_context (optional): Text aus suggestions.context_for_prompt(
+    "trainingsplan_kommentar") ueber bereits angenommene/abgelehnte fruehere
+    Einzelvorschlaege aus DIESEM Kommentar-Kanal.
+
+    Gibt seit v0.14.0 ein Tupel (kommentar_text, vorschlaege) zurueck statt
+    nur eines Strings (Dashboard-Tab 'Vorschlaege', siehe suggestions.py):
+    kommentar_text ist der bisherige Freitext-Kommentar (Markdown-
+    Stichpunkte), vorschlaege eine Liste von {"id","title","text"}-Dicts mit
+    den darin enthaltenen konkreten, einzeln annehm-/ablehnbaren
+    Handlungsempfehlungen. Gemini antwortet dafuer mit einem JSON-Objekt
+    statt reinem Markdown-Text - siehe _parse_trainingsplan_response fuer
+    das defensive Parsing (Fallback auf Rohtext ohne Einzelvorschlaege, falls
+    Gemini sich nicht ans Format haelt)."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
@@ -502,6 +586,8 @@ def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data
     focus = PHASE_FOCUS.get(phase, "")
     plan_detail = TRAININGSPLAN_PHASE_DETAIL.get(phase, "")
     wv = data.get("weekly_volumes") or {}
+    gym_kritik_text = _render_gym_kritik(gym_status)
+    decided_block = f"\n\n{decided_context}" if decided_context else ""
 
     prompt = (
         "Du bist ein Ausdauersport-Coach fuer einen Age-Group-Athleten in der Vorbereitung "
@@ -510,27 +596,40 @@ def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data
         f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}).\n\n"
         "Der Athlet hat bereits konkrete, phasenabhaengige Trainingsplaene fuer Laufen, Schwimmen "
         f"und Rad im Dashboard hinterlegt. Fuer die aktuelle Phase gilt:\n{plan_detail}\n\n"
-        f"Gym-Plan-Anpassungen (bereits vorgeschlagen, Umsetzung liegt beim Athleten):\n"
-        f"{TRAININGSPLAN_GYM_KRITIK}\n\n"
+        f"Offene Gym-Plan-Anpassungen (bereits vorgeschlagen, Umsetzung liegt beim Athleten):\n"
+        f"{gym_kritik_text}"
+        f"{decided_block}\n\n"
         f"AUSLOESER fuer diesen Kommentar JETZT: {trigger_detail}\n\n"
         "Aktuelle Werte: "
         f"Training Readiness {_fmt(metrics['training_readiness_score'], '%')}, "
         f"VO2max {_fmt(metrics['vo2max'], ' ml/kg/min')}, "
         f"Wochenvolumen Rad {_fmt(wv.get('bike_km'), ' km')}, "
         f"Wochenvolumen Lauf {_fmt(wv.get('run_km'), ' km')}.\n\n"
-        "Schreibe einen kurzen Kommentar zu den BESTEHENDEN Trainingsplaenen auf Deutsch - als "
-        "Stichpunkte im Markdown-Format, JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN "
-        "Fliesstext und KEIN einleitender Satz davor. WICHTIG: Du ersetzt NICHT den Plan, sondern "
-        "kommentierst ihn - erfinde KEINE komplett neuen Wocheneinheiten, sondern beziehe dich "
-        "konkret auf die oben genannten bestehenden Plaene. Genau 2-3 Punkte:\n"
+        "Schreibe einen kurzen Kommentar zu den BESTEHENDEN Trainingsplaenen auf Deutsch. WICHTIG: "
+        "Du ersetzt NICHT den Plan, sondern kommentierst ihn - erfinde KEINE komplett neuen "
+        "Wocheneinheiten, sondern beziehe dich konkret auf die oben genannten bestehenden Plaene.\n\n"
+        "Antworte AUSSCHLIESSLICH mit einem gueltigen JSON-Objekt (kein Markdown-Codeblock, kein "
+        "Text davor oder danach) mit genau diesen zwei Feldern:\n"
+        '{"kommentar": "...", "vorschlaege": [...]}\n\n'
+        '"kommentar": Stichpunkte als Markdown-Text, JEDER Punkt eine eigene Zeile beginnend mit '
+        "'- ', KEIN Fliesstext und KEIN einleitender Satz davor. Genau 2-3 Punkte:\n"
         "- Ein Punkt: was der genannte Ausloeser konkret bedeutet (1-2 Saetze, direkt auf die Werte "
         "oben bezogen).\n"
-        "- Ein Punkt: eine konkrete, im bestehenden Zeitrahmen umsetzbare Anpassungsempfehlung an "
-        "einem der vier Plaene (Lauf/Schwimm/Rad/Gym) - oder explizit die begruendete Einschaetzung, "
-        "dass der Plan aktuell so bleiben kann, falls der Ausloeser das nahelegt.\n"
+        "- Ein Punkt: eine kurze Einordnung, ob/welche Anpassung sinnvoll ist (Details dazu gehoeren "
+        'in "vorschlaege", hier nur die Einordnung) - oder die begruendete Einschaetzung, dass der '
+        "Plan aktuell so bleiben kann.\n"
         "- NUR falls der Ausloeser ein Phasenwechsel ist: ein dritter Punkt, was sich in der NEUEN "
         "Phase laut der Beschreibung oben inhaltlich am staerksten aendert (sonst diesen Punkt "
-        "weglassen).\n"
+        "weglassen).\n\n"
+        '"vorschlaege": Liste von 0 bis maximal 3 konkreten, einzeln umsetzbaren '
+        "Handlungsempfehlungen an einem der vier Plaene (Lauf/Schwimm/Rad/Gym) - NICHT die reine "
+        'Einschaetzung/Begruendung (die gehoert in "kommentar"). Leere Liste, wenn der Plan '
+        "unveraendert bleiben sollte. Jeder Eintrag:\n"
+        '{"id": "kurze-kebab-case-id", "title": "Kurztitel, max. 8 Woerter", '
+        '"text": "1-2 Saetze, konkrete Massnahme"}\n'
+        "Falls einer deiner Vorschlaege inhaltlich identisch mit einem bereits oben unter "
+        '"entschiedene fruehere Einzelvorschlaege" genannten ist, wiederverwende dessen id exakt '
+        "(gleiche Schreibweise) - sonst eine neue, inhaltlich passende id.\n\n"
         "Sei konkret und begruendet, keine allgemeinen Trainingsplatitueden."
     )
 
@@ -557,4 +656,55 @@ def generate_trainingsplan_kommentar(trigger_key: str, trigger_detail: str, data
             f"Gemini ({model}) hat leeren Text geliefert "
             f"(finishReason: {candidate.get('finishReason')})"
         )
-    return text
+    return _parse_trainingsplan_response(text)
+
+
+def _parse_trainingsplan_response(text: str) -> tuple:
+    """Parst die JSON-Antwort von generate_trainingsplan_kommentar() (siehe
+    dort) - eigene, direkt testbare Funktion, weil Gemini sich trotz
+    Anweisung nicht IMMER an reines JSON haelt (z.B. ein umschliessender
+    ```json-Codeblock). Wird defensiv behandelt statt den ganzen Sync zu
+    gefaehrden (siehe do_sync()-try/except um den Aufruf in app.py). Gibt
+    IMMER (kommentar_text, vorschlaege_liste) zurueck - im schlimmsten Fall
+    (kompletter Parse-Fehlschlag) den rohen Text als Kommentar mit leerer
+    Vorschlagsliste."""
+    raw = text.strip()
+    # Haeufigstes Abweichungsmuster: Gemini umschliesst die JSON-Antwort trotz
+    # gegenteiliger Anweisung mit einem Markdown-Codeblock (```json ... ``` oder ``` ... ```).
+    fence_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", raw, re.DOTALL)
+    candidate = fence_match.group(1) if fence_match else raw
+    try:
+        parsed = json.loads(candidate)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[ai_coach] Trainingsplan-Kommentar: JSON-Parsing fehlgeschlagen ({e}), "
+              "nutze Rohtext als Kommentar ohne Einzelvorschlaege")
+        return raw, []
+
+    if not isinstance(parsed, dict):
+        print("[ai_coach] Trainingsplan-Kommentar: JSON-Antwort ist kein Objekt, "
+              "nutze Rohtext als Kommentar ohne Einzelvorschlaege")
+        return raw, []
+
+    kommentar = parsed.get("kommentar")
+    if not isinstance(kommentar, str) or not kommentar.strip():
+        kommentar = raw
+    kommentar = kommentar.strip()
+
+    vorschlaege = []
+    for item in parsed.get("vorschlaege") or []:
+        if not isinstance(item, dict):
+            continue
+        sid_raw = str(item.get("id") or "").strip()
+        title = str(item.get("title") or "").strip()
+        vtext = str(item.get("text") or "").strip()
+        if not sid_raw or not title:
+            continue
+        # id robust normalisieren (Gemini haelt sich nicht IMMER exakt an kebab-case) -
+        # sonst wuerde eine leicht andere Schreibweise (Grossbuchstaben, Leerzeichen, ...)
+        # faelschlich als neuer Vorschlag statt als Wiederverwendung eines bereits
+        # entschiedenen erkannt (siehe suggestions.sync_suggestions).
+        sid = re.sub(r"[^a-z0-9-]+", "-", sid_raw.lower()).strip("-")
+        if not sid:
+            continue
+        vorschlaege.append({"id": sid, "title": title, "text": vtext})
+    return kommentar, vorschlaege

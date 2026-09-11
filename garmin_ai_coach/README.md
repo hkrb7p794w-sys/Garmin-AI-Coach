@@ -20,6 +20,37 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.14.0
+- **Neu: KI-Trainingsplan-Vorschlaege lassen sich jetzt einzeln annehmen oder ablehnen** (neuer
+  Dashboard-Tab "Vorschlaege"). Auslöser: Alex wollte einige der Gym-Plan-Vorschlaege nicht
+  übernehmen, ohne dass die KI sie ihm wiederholt erneut vorschlägt. Gilt bewusst nur für die
+  konkreten Trainingsplan-Einzelvorschläge (Gym-Kritik + der ausgelöste Trainingsplan-Kommentar),
+  nicht für die übrigen KI-Texte (Tages-Tipp, Wochenreport, Gym-Coaching-Tipp), die eher
+  Status-Kommentare als einzeln bewertbare Empfehlungen sind.
+  - **Annehmen** merkt den Vorschlag als angenommen und gibt ihn künftigen
+    Trainingsplan-Kommentar-Prompts als Kontext mit ("bereits umgesetzt/akzeptiert, nicht erneut
+    vorschlagen, darauf aufbauen"). Ändert NICHT automatisch die Plantexte im Dashboard - die
+    pflegt Alex weiterhin selbst.
+  - **Ablehnen** merkt den Vorschlag als abgelehnt; er wird der KI-Kontext künftig als "nicht
+    erneut vorschlagen" mitgegeben und taucht im Dashboard unter "Abgelehnt" auf. Von dort lässt er
+    sich jederzeit wieder auswählen und per erneutem "Annehmen" reaktivieren.
+  - **Neues Modul `suggestions.py`:** verwaltet den Zustand (`pending`/`accepted`/`rejected`) je
+    Vorschlag in `/data/suggestions_state.json`, stabil über die Vorschlags-`id`.
+  - **`ai_coach.py`:** `TRAININGSPLAN_GYM_KRITIK` ist jetzt eine Liste von vier Einzelvorschlägen
+    (stabile `id`/`title`/`text`) statt eines Textblocks; `_render_gym_kritik()` blendet abgelehnte
+    Punkte im Prompt aus und markiert angenommene. `generate_trainingsplan_kommentar()` lässt
+    Gemini zusätzlich ein JSON-Objekt mit strukturierten Einzelvorschlägen liefern (0-3 pro
+    Kommentar) statt nur Freitext; `_parse_trainingsplan_response()` parst das defensiv (Fallback
+    auf Rohtext ohne Einzelvorschläge, falls Gemini sich nicht ans Format hält - z.B. bei einem
+    umschließenden Markdown-Codeblock).
+  - **`ha_publish.py`:** neue MQTT-Entities "Garmin Vorschlag Auswahl" (Dropdown aller aktuellen
+    Vorschläge, Status als Emoji im Label), "Garmin Vorschlag Annehmen"/"...Ablehnen" (wirken auf
+    den ausgewählten Vorschlag) sowie der neue Sensor `sensor.garmin_ai_coach_garmin_vorschlaege`
+    (Attribute `pending`/`accepted`/`rejected`, je eine Liste mit `id`/`title`/`text`).
+  - Alle neuen Funktionen mit synthetischen Tests verifiziert (Annehmen/Ablehnen/Reaktivieren,
+    JSON-Parsing inkl. Codeblock- und Fehlerfällen, vollständiger simulierter MQTT-Roundtrip
+    Auswahl -> Annehmen -> Ablehnen -> Reaktivieren).
+
 ### 0.13.0
 - **Fix: "Jetzt synchronisieren"-Button (Dashboard-Tab "Heute") gab HTTP 401 statt zu syncen.**
   Der Button rief bisher eine im Dashboard fest verdrahtete Ingress-URL

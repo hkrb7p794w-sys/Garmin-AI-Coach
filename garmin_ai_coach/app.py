@@ -9,7 +9,9 @@ from ha_publish import (
     publish_strength_exercises,
     publish_gym_coaching_note,
     publish_trainingsplan_kommentar,
+    publish_vorschlaege,
     set_sync_button_callback,
+    set_vorschlag_callbacks,
     extract_metrics,
 )
 from ai_coach import (
@@ -17,8 +19,10 @@ from ai_coach import (
     generate_weekly_report,
     generate_gym_coaching_note,
     generate_trainingsplan_kommentar,
+    TRAININGSPLAN_GYM_KRITIK,
 )
 import fit_exercises
+import suggestions
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -628,6 +632,15 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
 
+        # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschlaege (Dashboard-Tab
+        # "Vorschlaege", siehe suggestions.py) mit der aktuellen Punkteliste
+        # abgleichen - VOR dem Trainingsplan-Kommentar-Block unten, damit
+        # generate_trainingsplan_kommentar() dort bereits den aktuellen Status kennt
+        # (angenommene/abgelehnte Punkte werden im Prompt ausgeblendet bzw. markiert,
+        # siehe ai_coach._render_gym_kritik). Guenstig genug, um bei jedem Sync zu
+        # laufen (reine Dict-/Datei-Operation, kein Gemini-Aufruf).
+        suggestions.sync_suggestions("gym_kritik", TRAININGSPLAN_GYM_KRITIK)
+
         # Eigener, auf Krafttraining fokussierter Coaching-Tipp (siehe
         # ai_coach.generate_gym_coaching_note) - getrennt vom allgemeinen
         # Tages-Tipp unten, damit er im eigenen Gym-Dashboard-Tab landet und
@@ -669,11 +682,22 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             if trigger_key:
                 if not os.environ.get("GEMINI_API_KEY"):
                     raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
-                plan_note = generate_trainingsplan_kommentar(
-                    trigger_key, trigger_detail, wellness, history
+                # Aktueller Annehmen/Ablehnen-Stand als Kontext fuer den Prompt (siehe
+                # suggestions.py): Gym-Status blendet abgelehnte Punkte aus, decided_context
+                # nennt bereits entschiedene fruehere Einzelvorschlaege aus DIESEM Kanal, damit
+                # Gemini angenommene nicht erneut vorschlaegt und abgelehnte nicht wiederholt.
+                gym_status = {
+                    sid: rec["status"] for sid, rec in suggestions.by_source("gym_kritik").items()
+                }
+                decided_context = suggestions.context_for_prompt("trainingsplan_kommentar")
+                plan_note, plan_vorschlaege = generate_trainingsplan_kommentar(
+                    trigger_key, trigger_detail, wellness, history,
+                    gym_status=gym_status, decided_context=decided_context,
                 )
+                suggestions.sync_suggestions("trainingsplan_kommentar", plan_vorschlaege)
                 publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)
-                print(f"[trainingsplan] Kommentar publiziert (Ausloeser: {trigger_key})")
+                print(f"[trainingsplan] Kommentar publiziert (Ausloeser: {trigger_key}, "
+                      f"{len(plan_vorschlaege)} Einzelvorschlag/-vorschlaege)")
         except Exception as e:
             # Bewusst KEIN publish_trainingsplan_kommentar(...) mit Fehlertext:
             # anders als bei den anderen Coaching-Texten soll bei einem Fehler
@@ -682,6 +706,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             # Fehlermeldung ersetzt zu werden - der naechste ausgeloeste Sync
             # versucht es erneut.
             print(f"[trainingsplan] Kommentar fehlgeschlagen: {e}")
+
+        # Aktuellen Annehmen/Ablehnen-Gesamtzustand publizieren (Dashboard-Tab
+        # "Vorschlaege") - unabhaengig davon, ob oben ein Trainingsplan-Kommentar-
+        # Trigger ausgeloest hat: die Gym-Kritik wurde weiter oben in jedem Fall
+        # abgeglichen, und selbst ohne neuen Trigger soll das Dashboard den zuletzt
+        # bekannten Stand (inkl. frueherer Annahme-/Ablehnungs-Entscheidungen) zeigen.
+        publish_vorschlaege(suggestions.all_suggestions())
 
         # Wochenreport montags automatisch (Rueckblick auf die abgeschlossene Woche);
         # jederzeit manuell ueber /weekly ausloesbar, oder ueber also_weekly=True
@@ -723,6 +754,47 @@ def _handle_sync_button_press():
 
 
 set_sync_button_callback(_handle_sync_button_press)
+
+
+def _handle_vorschlag_accept(suggestion_id: str):
+    """Wird ueber MQTT ausgeloest (Button "Garmin Vorschlag Annehmen", Topic
+    garmin_ai_coach/vorschlag_annehmen/set), wirkt auf den zuletzt im Dropdown
+    "Garmin Vorschlag Auswahl" ausgewaehlten Vorschlag (siehe ha_publish.
+    _on_message). Setzt dessen Status auf "accepted" (suggestions.py) - wird
+    kuenftigen Trainingsplan-Kommentar-Prompts als bereits angenommen/
+    umgesetzt mitgegeben, siehe suggestions.context_for_prompt und
+    ai_coach._render_gym_kritik. Publiziert danach sofort den neuen
+    Gesamtzustand, damit das Dashboard nicht bis zum naechsten Sync auf die
+    Aktualisierung warten muss. Schnelle reine Datei-/MQTT-Operation, deshalb
+    (anders als der Sync-Button) ohne eigenen Thread."""
+    try:
+        if suggestions.set_status(suggestion_id, suggestions.STATUS_ACCEPTED):
+            print(f"[vorschlaege] '{suggestion_id}' angenommen")
+        else:
+            print(f"[vorschlaege] Annehmen fehlgeschlagen: id '{suggestion_id}' unbekannt "
+                  "(veraltete Dashboard-Auswahl nach einem zwischenzeitlichen Sync?)")
+        publish_vorschlaege(suggestions.all_suggestions())
+    except Exception as e:
+        print(f"[vorschlaege] Annehmen fehlgeschlagen: {e}")
+
+
+def _handle_vorschlag_reject(suggestion_id: str):
+    """Analog zu _handle_vorschlag_accept, aber fuer den "Garmin Vorschlag
+    Ablehnen"-Button - setzt den Status auf "rejected". Der Vorschlag bleibt
+    im Dashboard-Tab "Vorschlaege" unter "Abgelehnt" sichtbar und laesst sich
+    dort jederzeit wieder auswaehlen und per erneutem Annehmen reaktivieren."""
+    try:
+        if suggestions.set_status(suggestion_id, suggestions.STATUS_REJECTED):
+            print(f"[vorschlaege] '{suggestion_id}' abgelehnt")
+        else:
+            print(f"[vorschlaege] Ablehnen fehlgeschlagen: id '{suggestion_id}' unbekannt "
+                  "(veraltete Dashboard-Auswahl nach einem zwischenzeitlichen Sync?)")
+        publish_vorschlaege(suggestions.all_suggestions())
+    except Exception as e:
+        print(f"[vorschlaege] Ablehnen fehlgeschlagen: {e}")
+
+
+set_vorschlag_callbacks(on_accept=_handle_vorschlag_accept, on_reject=_handle_vorschlag_reject)
 
 
 @app.route("/")
