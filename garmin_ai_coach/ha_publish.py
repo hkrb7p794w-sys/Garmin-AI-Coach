@@ -267,6 +267,19 @@ SENSORS = {
         "icon": "mdi:medal",
         "state_class": "measurement",
     },
+    "ftp": {
+        "name": "Garmin FTP",
+        "unit": "W",
+        "icon": "mdi:bike-fast",
+        "device_class": "power",
+        "state_class": "measurement",
+    },
+    "hf_pace_kopplung": {
+        "name": "Garmin HF-Pace-Kopplung",
+        "unit": "%",
+        "icon": "mdi:heart-cog-outline",
+        "state_class": "measurement",
+    },
 
     # Rennvorbereitung / Periodisierung (Ironman 70.3, 29.08.2027)
     "weekly_swim_km": {
@@ -335,7 +348,7 @@ SENSORS = {
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
-    "chat_verlauf",
+    "chat_verlauf", "ftp", "hf_pace_kopplung",
 }
 
 
@@ -520,6 +533,33 @@ def publish_vorschlaege(state: dict):
     )
 
 
+def _extract_ftp_watts(raw):
+    """Extrahiert den FTP-Watt-Wert aus der Antwort von Garmin.get_cycling_ftp()
+    (undokumentierter Endpunkt .../latestFunctionalThresholdPower/CYCLING, laut
+    python-garminconnect-Quellcode dict ODER list[dict]). Die exakten Feldnamen
+    sind nicht durch eine echte Beispielantwort belegt (nur der verwandte
+    Range-Endpunkt liefert laut dessen eigenen Tests {"series": "cycling",
+    "value": ...}) - analog zur exerciseSets-Unsicherheit in v0.10.1 wird hier
+    defensiv gegen mehrere plausible Feldnamen geprueft; das komplette
+    Rohobjekt wird zusaetzlich als Attribut publiziert (siehe publish_state),
+    damit sich die tatsaechliche Struktur nach dem ersten echten Sync in Home
+    Assistant (Entwicklerwerkzeuge -> Zustaende) pruefen laesst."""
+    if raw is None:
+        return None
+    entry = raw
+    if isinstance(raw, list):
+        if not raw:
+            return None
+        entry = raw[-1]
+    if not isinstance(entry, dict):
+        return None
+    for key in ("value", "ftpValue", "functionalThresholdPower", "ftp", "watts"):
+        value = entry.get(key)
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
+
 def extract_metrics(data: dict) -> dict:
     resting_hr = None
     try:
@@ -655,6 +695,25 @@ def extract_metrics(data: dict) -> dict:
     except AttributeError:
         pass
 
+    # FTP (Rad): siehe _extract_ftp_watts() zur Feldnamen-Unsicherheit.
+    ftp_raw = data.get("ftp_raw")
+    ftp = _extract_ftp_watts(ftp_raw)
+
+    # HF-Pace-Kopplung: rollierender Schnitt (letzte 5 qualifizierende Laeufe)
+    # sowie der juengste Einzelwert - siehe decoupling.py und app.py,
+    # _update_decoupling_cache(). Sessions sind aufsteigend nach Datum
+    # sortiert (siehe app.py), der letzte Eintrag ist damit der juengste.
+    decoupling_sessions = data.get("decoupling_sessions") or []
+    decoupling_values = [
+        s.get("decoupling_pct") for s in decoupling_sessions
+        if isinstance(s.get("decoupling_pct"), (int, float))
+    ]
+    decoupling_latest_pct = decoupling_values[-1] if decoupling_values else None
+    decoupling_avg_pct = (
+        round(sum(decoupling_values[-5:]) / len(decoupling_values[-5:]), 1)
+        if decoupling_values else None
+    )
+
     # Wochenvolumen je Disziplin (bereits in app.py vorberechnet) + Rennvorbereitung
     wv = data.get("weekly_volumes") or {}
 
@@ -674,6 +733,10 @@ def extract_metrics(data: dict) -> dict:
         "training_status_phrase": training_status_phrase,
         "vo2max": vo2max,
         "endurance_score": endurance_score,
+        "ftp": ftp,
+        "ftp_raw": ftp_raw,
+        "decoupling_latest_pct": decoupling_latest_pct,
+        "decoupling_avg_pct": decoupling_avg_pct,
         "weekly_swim_km": wv.get("swim_km"),
         "weekly_bike_km": wv.get("bike_km"),
         "weekly_run_km": wv.get("run_km"),
@@ -728,6 +791,19 @@ def publish_state(data: dict, coaching_note: str = None):
 
     if metrics["endurance_score"] is not None:
         client.publish("garmin_ai_coach/endurance_score/state", metrics["endurance_score"], retain=True)
+
+    if metrics["ftp"] is not None:
+        client.publish("garmin_ai_coach/ftp/state", metrics["ftp"], retain=True)
+    if metrics.get("ftp_raw") is not None:
+        # Rohobjekt IMMER als Attribut mitschicken, auch wenn _extract_ftp_watts()
+        # keinen Wert erkennen konnte - siehe dortiger Docstring zur Feldnamen-
+        # Unsicherheit, das macht die tatsaechliche Struktur in Home Assistant
+        # (Entwicklerwerkzeuge -> Zustaende) direkt pruefbar.
+        client.publish(
+            "garmin_ai_coach/ftp/attributes",
+            json.dumps({"raw": metrics["ftp_raw"]}, ensure_ascii=False, default=str),
+            retain=True,
+        )
 
     if metrics["weekly_swim_km"] is not None:
         client.publish("garmin_ai_coach/weekly_swim_km/state", metrics["weekly_swim_km"], retain=True)
@@ -801,6 +877,35 @@ def publish_strength_exercises(sessions: list):
     client.publish(
         "garmin_ai_coach/strength_exercises/attributes",
         json.dumps({"sessions": sessions}, ensure_ascii=False, default=str),
+        retain=True,
+    )
+
+
+def publish_decoupling(sessions: list):
+    """Publiziert die HF-Pace-Kopplung (aerobe Entkopplung, siehe decoupling.py)
+    qualifizierender Lauf-Einheiten als Sensor-Attribute (strukturierte Liste,
+    analog zu publish_strength_exercises). State ist der juengste Einzelwert
+    als reine Zahl (Sensor hat unit_of_measurement "%" und state_class
+    "measurement" - ein Text-Suffix im State wuerde HA als ungueltigen
+    Messwert ablehnen, siehe SENSORS["hf_pace_kopplung"]). Ohne qualifizierende
+    Einheit bleibt der State bewusst unveroeffentlicht (zeigt "unbekannt" statt
+    einer erfundenen Zahl) - analog zu vo2max/endurance_score oben. Der
+    rollierende Schnitt der letzten 5 Einheiten steht zusaetzlich als Attribut
+    zur Verfuegung."""
+    sessions = sessions or []
+    values = [
+        s.get("decoupling_pct") for s in sessions
+        if isinstance(s.get("decoupling_pct"), (int, float))
+    ]
+    if values:
+        client.publish("garmin_ai_coach/hf_pace_kopplung/state", values[-1], retain=True)
+    avg_recent = round(sum(values[-5:]) / len(values[-5:]), 1) if values else None
+    client.publish(
+        "garmin_ai_coach/hf_pace_kopplung/attributes",
+        json.dumps(
+            {"sessions": sessions, "avg_recent_pct": avg_recent},
+            ensure_ascii=False, default=str,
+        ),
         retain=True,
     )
 

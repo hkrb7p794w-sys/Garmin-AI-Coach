@@ -11,6 +11,7 @@ from ha_publish import (
     publish_trainingsplan_kommentar,
     publish_vorschlaege,
     publish_chat_history,
+    publish_decoupling,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -27,6 +28,7 @@ from ai_coach import (
 import fit_exercises
 import suggestions
 import chat
+import decoupling
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -39,6 +41,11 @@ HISTORY_DAYS = 60
 # Original-Datei jeder Kraft-Aktivitaet von Garmin geladen wird.
 STRENGTH_FILE = os.path.join(DATA_DIR, "strength_exercises.json")
 STRENGTH_CACHE_DAYS = 21
+# Cache der HF-Pace-Kopplung (aerobe Entkopplung) je qualifizierender
+# Lauf-Aktivitaet - siehe decoupling.py und claude/konzept-erweiterung-
+# metriken-v0.16-plus.md, Abschnitt 1.3. Gleiches Muster wie STRENGTH_FILE.
+DECOUPLING_FILE = os.path.join(DATA_DIR, "decoupling.json")
+DECOUPLING_CACHE_DAYS = 60
 # Zustand der Trainingsplan-Kommentierung (Tab "Trainingsplaene", siehe
 # check_trainingsplan_trigger unten) - welche Phase zuletzt bekannt war und
 # wann welcher Trigger zuletzt ausgeloest hat, damit nicht jeder Sync erneut
@@ -47,6 +54,16 @@ TRAININGSPLAN_STATE_FILE = os.path.join(DATA_DIR, "trainingsplan_state.json")
 TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS = 21
 TRAININGSPLAN_READINESS_LOW_THRESHOLD = 60
 TRAININGSPLAN_VO2MAX_STAGNATION_TOLERANCE = 0.3
+# Ab wieviel Prozent FTP-Anstieg (7-Tage-Schnitt jetzt vs. 7-Tage-Schnitt vor
+# ca. 4-5 Wochen) der bisher shelvte "Benchmark-Sprung"-Trigger auslöst - siehe
+# claude/status-und-plan.md und Konzept-Dokument Abschnitt 1.1.
+TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT = 5
+# Interferenzfenster Ausdauer-vor-Kraft (AMPK/mTOR) - 3h, nicht die urspruenglich
+# kursierenden 6h (siehe Wojtaszewski et al. 2000 / GSSI SSE #136, im
+# Konzept-Dokument Abschnitt 3 sowie wissenschaftliche-quellen-
+# trainingsgrundlagen.md dokumentiert). Bewusst nur diese Richtung, siehe
+# _check_endurance_before_strength_interference().
+INTERFERENCE_WINDOW_HOURS = 3
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
@@ -202,6 +219,11 @@ def _update_history(wellness):
         # Aeltere Historieneintraege haben dieses Feld noch nicht - das ist
         # unproblematisch, _history_avg() ueberspringt fehlende Werte einfach.
         "vo2max": metrics["vo2max"],
+        # Seit v0.16.0: fuer den FTP-"Benchmark-Sprung"-Trigger (siehe
+        # check_trainingsplan_trigger) sowie den Verlauf im Dashboard-Tab
+        # "Verlauf". Aeltere Eintraege ohne dieses Feld werden wie bei vo2max
+        # einfach uebersprungen.
+        "ftp": metrics.get("ftp"),
     }
     history = []
     if os.path.exists(HISTORY_FILE):
@@ -344,6 +366,140 @@ def _update_strength_exercises(client, activities: list) -> list:
     return sorted(sessions, key=lambda s: s.get("date") or "")
 
 
+def _load_decoupling_cache() -> dict:
+    if not os.path.exists(DECOUPLING_FILE):
+        return {}
+    try:
+        with open(DECOUPLING_FILE) as f:
+            return json.load(f) or {}
+    except Exception as e:
+        print(f"[decoupling] Cache nicht lesbar, starte neu: {e}")
+        return {}
+
+
+def _save_decoupling_cache(cache: dict) -> dict:
+    """Speichert den Entkopplungs-Cache, begrenzt auf DECOUPLING_CACHE_DAYS
+    Tage (analog zu STRENGTH_CACHE_DAYS/HISTORY_DAYS)."""
+    cutoff = (datetime.date.today() - datetime.timedelta(days=DECOUPLING_CACHE_DAYS)).isoformat()
+    cache = {k: v for k, v in cache.items() if (v.get("date") or "") >= cutoff}
+    try:
+        with open(DECOUPLING_FILE, "w") as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        print(f"[decoupling] Cache konnte nicht geschrieben werden: {e}")
+    return cache
+
+
+def _update_decoupling_cache(client, activities: list) -> list:
+    """Berechnet die HF-Pace-Kopplung (siehe decoupling.py) fuer qualifizierende
+    Lauf-Aktivitaeten, die noch nicht im Cache stehen - gleiches Cache-Muster
+    wie _update_strength_exercises() (dauerhaft je activity_id, damit nicht bei
+    jedem Sync erneut Garmin.get_activity_splits() fuer bereits ausgewertete
+    Einheiten aufgerufen wird). Gibt die Sessions der letzten DECOUPLING_CACHE_DAYS
+    Tage zurueck (fuer Dashboard/Kontext), aeltere bleiben nur im Cache."""
+    cache = _load_decoupling_cache()
+    changed = False
+
+    for act in activities or []:
+        try:
+            if not decoupling.is_eligible_run(act):
+                continue
+            activity_id = act.get("activityId")
+            if activity_id is None:
+                continue
+            key = str(activity_id)
+            if key in cache:
+                continue
+            start_str = act.get("startTimeLocal")
+            if not start_str:
+                continue
+            start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+            raw_splits = client.get_activity_splits(activity_id)
+            result = decoupling.compute_decoupling(raw_splits)
+            if not result:
+                # Nicht genug verwertbare Runden (z.B. keine HF je Runde) -
+                # als "geprueft, aber leer" merken, damit nicht bei jedem
+                # Sync erneut derselbe (aussichtslose) Abruf versucht wird.
+                cache[key] = {"date": start_dt.date().isoformat(), "activity_name": act.get("activityName"), "empty": True}
+                changed = True
+                continue
+            cache[key] = {
+                "date": start_dt.date().isoformat(),
+                "activity_name": act.get("activityName"),
+                **result,
+            }
+            changed = True
+        except Exception as e:
+            print(f"[decoupling] Aktivitaet konnte nicht verarbeitet werden: {e}")
+
+    if changed:
+        cache = _save_decoupling_cache(cache)
+
+    sessions = [v for v in cache.values() if not v.get("empty")]
+    return sorted(sessions, key=lambda s: s.get("date") or "")
+
+
+def _check_endurance_before_strength_interference(activities: list, today_date: datetime.date) -> str:
+    """Prueft, ob am Sync-Tag oder Vortag eine Ausdauer-Einheit (Schwimmen/Rad/
+    Lauf) weniger als INTERFERENCE_WINDOW_HOURS vor einer Kraft-Einheit endete -
+    siehe claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.5.
+
+    Bewusst NUR diese Richtung (Ausdauer -> Kraft), nicht umgekehrt: das
+    AMPK/mTOR-Interferenzfenster (Wojtaszewski et al. 2000, GSSI SSE #136 -
+    3h, nicht die urspruenglich kursierenden 6h) betrifft primaer diese
+    Reihenfolge; Kraft-vor-Ausdauer zeigt laut Murlasits et al. 2017 keinen
+    vergleichbaren VO2max-Nachteil (bereits im Projekt dokumentierte
+    Quellen, siehe wissenschaftliche-quellen-trainingsgrundlagen.md).
+
+    Gibt einen fertigen Kontext-Satz zurueck (oder '' wenn kein Fall
+    vorliegt) - bewusst KEIN neuer Sensor/keine neue Kachel (Entscheidung vom
+    11.09.2026, Konzept-Dokument Abschnitt 5): nur als Kontextsatz in
+    bestehende Coaching-Prompts eingespeist, um keine neue ACWR-artige
+    Ueberpraezisions-Kennzahl zu erzeugen. Betrachtet bewusst nur heute und
+    gestern (der taegliche Sync laeuft morgens, ein spaeterer Fund am
+    Vortag ist zum naechsten Sync noch aktuell genug fuer den Gym-Tipp)."""
+    by_day = {}
+    for act in activities or []:
+        start_str = act.get("startTimeLocal")
+        if not start_str:
+            continue
+        try:
+            start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        day = start_dt.date()
+        if day > today_date or (today_date - day).days > 1:
+            continue
+        type_key = ((act.get("activityType") or {}).get("typeKey", "") or "").lower()
+        duration_s = act.get("duration") or 0
+        by_day.setdefault(day, []).append(
+            (start_dt, duration_s, type_key, act.get("activityName") or "Einheit")
+        )
+
+    for day, day_activities in by_day.items():
+        day_activities.sort(key=lambda a: a[0])
+        for i in range(len(day_activities) - 1):
+            start1, dur1, type1, name1 = day_activities[i]
+            start2, _dur2, type2, name2 = day_activities[i + 1]
+            is_endurance = any(k in type1 for k in ("swim", "bik", "cycl", "ride", "run"))
+            is_strength = any(k in type2 for k in ("strength", "weight", "gym"))
+            if not (is_endurance and is_strength):
+                continue
+            end1 = start1 + datetime.timedelta(seconds=dur1)
+            gap_hours = (start2 - end1).total_seconds() / 3600
+            if 0 <= gap_hours < INTERFERENCE_WINDOW_HOURS:
+                return (
+                    f"Hinweis Trainingsreihenfolge: Am {day.strftime('%d.%m.')} folgte "
+                    f"'{name2}' nur {gap_hours:.1f}h nach '{name1}' (Ausdauer vor Kraft, "
+                    f"unter {INTERFERENCE_WINDOW_HOURS}h). In diesem Fenster kann das "
+                    "Interferenz-Signal (AMPK/mTOR) den Kraft-/Muskelaufbaureiz etwas "
+                    "abschwaechen - kein Problem als Einzelfall, aber bei wiederholtem "
+                    "Muster ggf. groesseren zeitlichen Abstand oder umgekehrte "
+                    "Reihenfolge erwaegen."
+                )
+    return ""
+
+
 def _load_trainingsplan_state() -> dict:
     if not os.path.exists(TRAININGSPLAN_STATE_FILE):
         return {"last_known_phase": None, "last_trigger_dates": {}}
@@ -376,7 +532,7 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
     """Prueft, ob eine Gemini-Kommentierung der Trainingsplaene (Dashboard-Tab
     "Trainingsplaene") gerechtfertigt ist - bewusst NICHT bei jedem Sync,
     siehe claude/status-und-plan.md ("Trigger-Kriterien fuer automatische
-    Gemini-Kommentierung", von Alex am 09.09.2026 so gewuenscht). Zwei
+    Gemini-Kommentierung", von Alex am 09.09.2026 so gewuenscht). Drei
     Trigger-Arten:
 
     1. Phasenwechsel (kalenderbasiert, einmalig je Phasenuebergang) - die
@@ -389,15 +545,16 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
          TRAININGSPLAN_READINESS_LOW_THRESHOLD (moegliches Uebertraining).
        - VO2max im 7-Tage-Schnitt stagniert/sinkt gegenueber dem 7-Tage-
          Schnitt vor ca. 4 Wochen (Reiz greift nicht mehr).
+       - Seit v0.16.0: FTP (Rad) im 7-Tage-Schnitt um mehr als
+         TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT gegenueber vor ca. 4-5 Wochen
+         gestiegen ("Benchmark-Sprung", siehe unten - vorher mangels
+         Datenquelle nicht umsetzbar).
 
-    Zwei in status-und-plan.md ebenfalls dokumentierte Trigger (deutlicher
-    Benchmark-Sprung, konsistente Planabweichung ueber mehrere Wochen) sind
-    hier bewusst NICHT implementiert: dafuer fehlen aktuell verlaessliche
-    Daten (die Zielzeit-Benchmarks liegen nur als manuell gepflegte HA-
-    input_number-Helper vor, auf die dieses Add-on keinen Lesezugriff hat;
-    eine historische Wochenvolumen-Reihe wird bisher nicht persistiert) -
-    lieber ehrlich zwei Trigger auslassen als sie auf duennem Datenboden zu
-    erraten.
+    Ein in status-und-plan.md ebenfalls dokumentierter Trigger (konsistente
+    Planabweichung ueber mehrere Wochen) ist hier weiterhin bewusst NICHT
+    implementiert: dafuer fehlt weiterhin eine persistierte historische
+    Wochenvolumen-Reihe - lieber ehrlich auslassen als auf duennem
+    Datenboden zu raten.
 
     Gibt (trigger_key, klartext_grund) oder (None, None) zurueck; speichert
     bei jedem erkannten Ausloeser sowie beim allerersten Aufruf ueberhaupt
@@ -445,6 +602,29 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
         return "vo2max_stagnation", (
             f"VO2max stagniert/sinkt: {vo2max_recent} ml/kg/min (7-Tage-Schnitt aktuell) vs. "
             f"{vo2max_month_ago} ml/kg/min (7-Tage-Schnitt vor ca. 4 Wochen)"
+        )
+
+    # "Benchmark-Sprung" (FTP) - in status-und-plan.md und Konzept-Dokument
+    # Abschnitt 1.1 lange als Trigger dokumentiert, aber bis v0.16.0 mangels
+    # FTP-Datenquelle nicht umsetzbar (siehe check_trainingsplan_trigger()-
+    # Docstring oben, der diese Luecke bisher explizit benannte). Seit dem
+    # FTP-Sensor (Garmin.get_cycling_ftp(), siehe do_sync) jetzt verfuegbar:
+    # 7-Tage-Schnitt jetzt vs. 7-Tage-Schnitt vor ca. 4-5 Wochen, gleicher
+    # Cooldown-Mechanismus wie bei den anderen Datentriggern.
+    ftp_recent = _history_avg(history, "ftp", 0, 6, today=today_date)
+    ftp_month_ago = _history_avg(history, "ftp", 21, 34, today=today_date)
+    days_since_ftp = _days_since(last_dates.get("ftp_jump"), today_date)
+    if (ftp_recent is not None and ftp_month_ago is not None and ftp_month_ago > 0
+            and ftp_recent >= ftp_month_ago * (1 + TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT / 100)
+            and (days_since_ftp is None
+                 or days_since_ftp >= TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS)):
+        last_dates["ftp_jump"] = today_date.isoformat()
+        state["last_trigger_dates"] = last_dates
+        _save_trainingsplan_state(state)
+        return "ftp_jump", (
+            f"FTP (Rad) deutlich gestiegen: {ftp_recent} W (7-Tage-Schnitt aktuell) vs. "
+            f"{ftp_month_ago} W (7-Tage-Schnitt vor ca. 4-5 Wochen), "
+            f"Schwelle +{TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT}%"
         )
 
     return None, None
@@ -585,6 +765,10 @@ def do_sync(force: bool = False, also_weekly: bool = False):
 
             # Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
             "max_metrics": _fetch_max_metrics(client, today_date),  # VO2max (14-Tage-Fenster)
+            # FTP (Rad) - Garmin.get_cycling_ftp() liefert ohne Parameter die
+            # zuletzt von Garmin/Zwift ermittelte FTP, kein Datum noetig (siehe
+            # claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.1).
+            "ftp_raw": _safe_fetch("ftp", lambda: client.get_cycling_ftp()),
 
             # Rennvorbereitung / Periodisierung (siehe claude/status-und-plan.md)
             "days_to_race": days_to_race(today_date),
@@ -611,6 +795,26 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             "strength_exercises", lambda: _update_strength_exercises(client, recent_activities)
         ) or []
 
+        # HF-Pace-Kopplung (aerobe Entkopplung) je qualifizierender Lauf-
+        # Aktivitaet - siehe decoupling.py. Ueber _safe_fetch, damit ein
+        # Problem hier (z.B. unerwartetes Antwortformat von
+        # get_activity_splits) nie den ganzen Sync killt.
+        wellness["decoupling_sessions"] = _safe_fetch(
+            "decoupling", lambda: _update_decoupling_cache(client, recent_activities)
+        ) or []
+
+        # Interferenz-Hinweis Ausdauer-vor-Kraft <3h (siehe
+        # _check_endurance_before_strength_interference) - reine Berechnung
+        # auf bereits geladenen Aktivitaetsdaten, kein zusaetzlicher
+        # Garmin-Request, trotzdem defensiv behandelt.
+        interference_note = ""
+        try:
+            interference_note = _check_endurance_before_strength_interference(
+                recent_activities, today_date
+            )
+        except Exception as e:
+            print(f"[sync] Interferenz-Pruefung fehlgeschlagen: {e}")
+
         # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
         # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
         # damit das Rate-Limit-Risiko nicht unnoetig zu erhoehen.
@@ -635,6 +839,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_state(wellness)
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
+        publish_decoupling(wellness["decoupling_sessions"])
 
         # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschlaege (Dashboard-Tab
         # "Vorschlaege", siehe suggestions.py) mit der aktuellen Punkteliste
@@ -655,7 +860,9 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             if not any((s.get("exercises") or []) for s in wellness["strength_exercises"]):
                 gym_note = "Noch keine verwertbaren Kraft-Uebungsdaten der letzten 7 Tage fuer einen Gym-Tipp."
             else:
-                gym_note = generate_gym_coaching_note(wellness["strength_exercises"])
+                gym_note = generate_gym_coaching_note(
+                    wellness["strength_exercises"], interference_note=interference_note
+                )
         except Exception as e:
             print(f"[ai_coach] Gym-Coaching-Tipp fehlgeschlagen: {e}")
             gym_note = "Gym-Coaching-Tipp aktuell nicht verfuegbar - Uebungsdaten wurden trotzdem synchronisiert."
@@ -697,6 +904,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 plan_note, plan_vorschlaege = generate_trainingsplan_kommentar(
                     trigger_key, trigger_detail, wellness, history,
                     gym_status=gym_status, decided_context=decided_context,
+                    interference_note=interference_note,
                 )
                 suggestions.sync_suggestions("trainingsplan_kommentar", plan_vorschlaege)
                 publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)

@@ -379,20 +379,27 @@ def _format_strength_sessions_detailed(sessions: list) -> str:
     return "\n".join(lines)
 
 
-def generate_gym_coaching_note(sessions: list) -> str:
+def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> str:
     """Eigener, auf Krafttraining fokussierter KI-Tipp - getrennt vom
     allgemeinen Tages-Coaching-Tipp (generate_coaching_note), weil der sich
     auf Erholung/Tagesplanung ueber alle Disziplinen bezieht, waehrend dieser
     Tipp gezielt die einzelnen Uebungen/Saetze/Gewichte der letzten 7 Tage
     auswertet (Muskelgruppen-Balance, auffaellige Saetze, konkrete Empfehlung
     fuer die naechste Einheit). Nutzt dieselbe Gemini-Anbindung wie die
-    anderen beiden Coaching-Texte."""
+    anderen beiden Coaching-Texte.
+
+    interference_note (optional): Kontext-Satz aus app.py,
+    _check_endurance_before_strength_interference() - siehe dort und
+    claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.5. Leerer
+    String, wenn kein Interferenz-Fall vorliegt (Normalfall)."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
     detail = _format_strength_sessions_detailed(sessions)
     if not detail:
         raise RuntimeError("keine verwertbaren Kraft-Uebungsdaten der letzten 7 Tage")
+
+    interference_block = f"\n\n{interference_note}" if interference_note else ""
 
     prompt = (
         "Du bist ein Kraft-/Fitnesscoach fuer einen Age-Group-Athleten in der "
@@ -403,10 +410,11 @@ def generate_gym_coaching_note(sessions: list) -> str:
         "Erkannte Kraft-Uebungen der letzten 7 Tage (Uebung: Wiederholungen x Gewicht "
         "je Satz - 'Koerpergewicht/ohne Angabe' heisst: keine Zusatzgewichts-Angabe am "
         "Geraet erfasst, nicht zwangslaeufig ein Datenfehler):\n"
-        f"{detail}\n\n"
+        f"{detail}"
+        f"{interference_block}\n\n"
         "Gib mir einen kurzen, konkreten Gym-Coaching-Tipp auf Deutsch - als Stichpunkte "
         "im Markdown-Format, JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN "
-        "Fliesstext und KEIN einleitender Satz davor. Genau 2-3 Punkte:\n"
+        "Fliesstext und KEIN einleitender Satz davor. Genau 2-4 Punkte:\n"
         "- Ein Punkt: Einschaetzung der Muskelgruppen-Balance dieser Woche (Push/Pull/"
         "Beine/Rumpf) - fehlt etwas Wichtiges fuers Ausdauertraining (v.a. Beine/Rumpf)?\n"
         "- Ein Punkt: eine konkrete, umsetzbare Empfehlung fuer die naechste Kraft-Einheit "
@@ -415,6 +423,8 @@ def generate_gym_coaching_note(sessions: list) -> str:
         "- NUR falls Kraftvolumen/-intensitaet auffaellig hoch wirkt und die Erholung "
         "fuers Ausdauertraining gefaehrden koennte: ein dritter Punkt dazu (sonst "
         "weglassen).\n"
+        "- NUR falls oben ein Hinweis zur Trainingsreihenfolge steht: ein eigener Punkt "
+        "dazu, kurz eingeordnet (sonst weglassen).\n"
         "Nenne nicht jeden Satz einzeln, sondern ziehe eine klare Schlussfolgerung. "
         "Gewichtsangaben koennen unvollstaendig sein (siehe Hinweis oben) - baue darauf "
         "keine ueberzogen sichere Aussage."
@@ -453,6 +463,7 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
     s = summary or {}
+    metrics = extract_metrics(data or {})
     phase = data.get("phase") or "unbekannt"
     focus = PHASE_FOCUS.get(phase, "")
     days_left = data.get("days_to_race")
@@ -506,6 +517,7 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         f"- HRV: {_trend(s.get('hrv_avg'), s.get('hrv_avg_prev'), ' ms')}\n"
         f"- Schlaf: {_trend(s.get('sleep_hours_avg'), s.get('sleep_hours_avg_prev'), ' h')}\n"
         f"- Training Readiness: {_trend(s.get('readiness_avg'), s.get('readiness_avg_prev'))}\n"
+        f"- Training Status (aktuell): {_fmt(metrics.get('training_status_phrase'))}\n"
         f"{trend_note}\n\n"
         "Schreibe den woechentlichen Rueckblick auf Deutsch als Stichpunkte im Markdown-Format, "
         "JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN Fliesstext und KEIN einleitender "
@@ -604,14 +616,18 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
         f"- Schlaf: {_fmt(metrics['sleep_hours'], ' h')}, Score {_fmt(metrics['sleep_score'])}\n"
         f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}, 7-Tage-Schnitt: {_fmt(vo2max_7d, ' ml/kg/min')}\n"
         f"- Training Status: {_fmt(metrics['training_status_phrase'])}\n"
+        f"- FTP (Rad, letzter bekannter Wert laut Garmin): {_fmt(metrics.get('ftp'), ' W')}\n"
+        f"- HF-Pace-Kopplung Lauf (Ø letzte qualifizierende Einheiten): "
+        f"{_fmt(metrics.get('decoupling_avg_pct'), '%')}\n"
         f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
         f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
         "WICHTIGE EINSCHRAENKUNG (damit du nichts erfindest): Dir liegen KEINE Sensordaten zu "
-        "Pace (Lauf/Schwimm), Watt/FTP (Rad) oder Koerpergewicht vor, und du hast KEINEN "
-        "Lesezugriff auf die manuell im Dashboard gepflegten Zielzeit-Benchmark-Felder "
-        "(Schwimm-Pace/Rad-Schnitt/Lauf-Pace). Falls die Frage solche Werte braucht, sag das "
-        "ehrlich statt eine Zahl zu erfinden, und beziehe dich stattdessen auf die oben "
-        "genannten tatsaechlich vorliegenden Daten.\n"
+        "Pace (Lauf/Schwimm) oder Koerpergewicht vor (FTP siehe oben, das ist die einzige "
+        "vorliegende Watt-Groesse), und du hast KEINEN Lesezugriff auf die manuell im "
+        "Dashboard gepflegten Zielzeit-Benchmark-Felder (Schwimm-Pace/Rad-Schnitt/Lauf-Pace) "
+        "- diese sind bewusst manuell, siehe Konzept-Dokument. Falls die Frage andere Werte "
+        "braucht, sag das ehrlich statt eine Zahl zu erfinden, und beziehe dich stattdessen "
+        "auf die oben genannten tatsaechlich vorliegenden Daten.\n"
         f"{context_block}\n"
         f"Neue Frage des Athleten: {question}\n\n"
         "Antworte auf Deutsch, direkt und konkret auf die Frage bezogen, nutze die obigen Daten "
@@ -674,6 +690,7 @@ def generate_trainingsplan_kommentar(
     history: list,
     gym_status: dict = None,
     decided_context: str = "",
+    interference_note: str = "",
 ) -> tuple:
     """Phasenspezifischer Gemini-Kommentar zu den Trainingsplaenen im
     Dashboard-Tab 'Trainingsplaene' (View 'plaene'). Anders als die anderen
@@ -691,6 +708,9 @@ def generate_trainingsplan_kommentar(
     decided_context (optional): Text aus suggestions.context_for_prompt(
     "trainingsplan_kommentar") ueber bereits angenommene/abgelehnte fruehere
     Einzelvorschlaege aus DIESEM Kommentar-Kanal.
+    interference_note (optional): Kontext-Satz aus app.py,
+    _check_endurance_before_strength_interference() - siehe dort und
+    Konzept-Dokument Abschnitt 1.5. Leerer String im Normalfall.
 
     Gibt seit v0.14.0 ein Tupel (kommentar_text, vorschlaege) zurueck statt
     nur eines Strings (Dashboard-Tab 'Vorschlaege', siehe suggestions.py):
@@ -711,6 +731,7 @@ def generate_trainingsplan_kommentar(
     wv = data.get("weekly_volumes") or {}
     gym_kritik_text = _render_gym_kritik(gym_status)
     decided_block = f"\n\n{decided_context}" if decided_context else ""
+    interference_block = f"\n\n{interference_note}" if interference_note else ""
 
     prompt = (
         "Du bist ein Ausdauersport-Coach fuer einen Age-Group-Athleten in der Vorbereitung "
@@ -725,9 +746,13 @@ def generate_trainingsplan_kommentar(
         f"AUSLOESER fuer diesen Kommentar JETZT: {trigger_detail}\n\n"
         "Aktuelle Werte: "
         f"Training Readiness {_fmt(metrics['training_readiness_score'], '%')}, "
+        f"Training Status {_fmt(metrics.get('training_status_phrase'))}, "
         f"VO2max {_fmt(metrics['vo2max'], ' ml/kg/min')}, "
+        f"FTP (Rad) {_fmt(metrics.get('ftp'), ' W')}, "
+        f"HF-Pace-Kopplung Lauf (Ø letzte Einheiten) {_fmt(metrics.get('decoupling_avg_pct'), '%')}, "
         f"Wochenvolumen Rad {_fmt(wv.get('bike_km'), ' km')}, "
-        f"Wochenvolumen Lauf {_fmt(wv.get('run_km'), ' km')}.\n\n"
+        f"Wochenvolumen Lauf {_fmt(wv.get('run_km'), ' km')}."
+        f"{interference_block}\n\n"
         "Schreibe einen kurzen Kommentar zu den BESTEHENDEN Trainingsplaenen auf Deutsch. WICHTIG: "
         "Du ersetzt NICHT den Plan, sondern kommentierst ihn - erfinde KEINE komplett neuen "
         "Wocheneinheiten, sondern beziehe dich konkret auf die oben genannten bestehenden Plaene.\n\n"
@@ -743,7 +768,9 @@ def generate_trainingsplan_kommentar(
         "Plan aktuell so bleiben kann.\n"
         "- NUR falls der Ausloeser ein Phasenwechsel ist: ein dritter Punkt, was sich in der NEUEN "
         "Phase laut der Beschreibung oben inhaltlich am staerksten aendert (sonst diesen Punkt "
-        "weglassen).\n\n"
+        "weglassen).\n"
+        "- NUR falls oben ein Hinweis zur Trainingsreihenfolge steht: kurz einordnen, ob das fuer "
+        "diesen Kommentar relevant ist (sonst nicht erwaehnen).\n\n"
         '"vorschlaege": Liste von 0 bis maximal 3 konkreten, einzeln umsetzbaren '
         "Handlungsempfehlungen an einem der vier Plaene (Lauf/Schwimm/Rad/Gym) - NICHT die reine "
         'Einschaetzung/Begruendung (die gehoert in "kommentar"). Leere Liste, wenn der Plan '

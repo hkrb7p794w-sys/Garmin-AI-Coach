@@ -20,6 +20,72 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.16.0
+- **Fünf neue Erweiterungen in einer Runde umgesetzt**, ausgehend von einem gemeinsam mit ChatGPT/
+  Gemini erarbeiteten Konzept (`claude/konzept-erweiterung-metriken-v0.16-plus.md`). Zwei Detailfragen
+  vorab per `AskUserQuestion` geklärt: (1) **FTP-Sensor bleibt reiner Referenzwert**, wird NICHT als
+  aktiver Vorschlag/Automatik in die Zielzeit-Schätzung eingerechnet - es gibt keine verlässliche,
+  allgemeingültige Umrechnung von Watt auf Renngeschwindigkeit ohne zusätzliche Annahmen zu Gewicht,
+  CdA, Rollwiderstand und Kurs. (2) **Interferenz-Hinweis nur in Richtung Ausdauer-vor-Kraft** (<3h
+  Abstand) - die Gegenrichtung (Kraft-vor-Ausdauer) zeigt laut Murlasits et al. 2017 keinen
+  vergleichbaren Effekt und wird bewusst nicht gemeldet.
+  - **1. Neuer FTP-Sensor (Rad).** `client.get_cycling_ftp()` (aus `python-garminconnect`) wird bei
+    jedem Sync abgefragt, neuer Sensor `sensor.garmin_ai_coach_garmin_ftp` (Watt, `device_class:
+    power`) plus Roh-Attribut zur Fehlersuche, falls Garmins Antwortformat abweicht. Auf dem
+    Dashboard-Tab "Trainingspläne" als eigene Referenz-Card unter den Zielzeit-Benchmark-Feldern
+    (nicht als Ersatz für den manuellen Rad-Schnitt), zusätzlich als History-Graph im Tab "Verlauf".
+    Feldnamen der Garmin-API sind nicht durch eine echte Testantwort bestätigt (ähnliche
+    Ausgangslage wie exerciseSets in 0.10.0/0.10.1) - `_extract_ftp_watts()` probiert mehrere
+    plausible Feldnamen defensiv durch und liefert `None` statt zu raten; **nach dem ersten echten
+    Sync bitte das Roh-Attribut prüfen.**
+  - **2. Trainingsplan-Kommentar kennt jetzt zusätzlich Training Status, FTP und HF-Pace-Kopplung.**
+    `generate_trainingsplan_kommentar()` und `generate_chat_answer()` bekommen diese Werte zusätzlich
+    in die "Aktuelle Werte"-Zeile des Prompts; der Wochenreport nennt zusätzlich den aktuellen
+    Training-Status-Text. Ein neuer Trigger **"ftp_jump"** (in `check_trainingsplan_trigger()`, dritter
+    Datentrigger neben Readiness/VO2max) löst einen Kommentar aus, wenn der 7-Tage-FTP-Schnitt
+    gegenüber vor ca. 4-5 Wochen um mehr als 5 % gestiegen ist (gleicher 21-Tage-Cooldown wie die
+    bestehenden Trigger). `history.json` führt dafür ab jetzt zusätzlich `ftp` je Tag mit.
+  - **3. HF-Pace-Kopplung / Aerobic Decoupling für Läufe (neues Modul `decoupling.py`).** Für
+    geeignete Lauf-Einheiten (≥35 min, Name enthält nicht Intervall/Schwelle/VO2max/Tempo) wird über
+    `client.get_activity_splits(activity_id)` die Aufteilung in zwei Streckenhälften berechnet, je
+    Hälfte ein Effizienzfaktor (Pace/Herzfrequenz) gebildet und daraus die prozentuale Kopplung nach
+    dem etablierten Pa:HR-Verfahren (Joe Friel/TrainingPeaks) bestimmt - positiver Wert = Herzfrequenz
+    driftet bei gleichem Tempo nach oben (kardiale Drift/Ermüdung). Dauerhafter Cache
+    `/data/decoupling.json` (analog zum Kraft-Übungs-Cache) vermeidet wiederholte API-Abfragen
+    derselben Aktivität. Neuer Sensor `sensor.garmin_ai_coach_garmin_hf_pace_kopplung` (State =
+    letzter Wert in %, Attribut `sessions` mit den letzten Einheiten). Dashboard-Tab "Verlauf" zeigt
+    die Einzelwerte als Markdown-Liste. Genau wie beim FTP-Sensor sind die exakten Feldnamen der
+    `splits`-API nicht durch eine echte Testantwort bestätigt - defensiv mit Fallback auf leeres
+    Ergebnis statt Rateversuch.
+  - **4. Race-Simulator-Szenario-Tabelle (nur Dashboard, kein neuer Code in `app.py`).** Im Tab
+    "Trainingspläne" unter der bestehenden Zielzeit-Schätzung: eine reine Jinja-Sensitivitätsrechnung
+    ("was bringt +5 % in einem Segment"), die dieselben Eingabewerte wie die Hauptschätzung nutzt -
+    keine neue Logik, keine Trainingsempfehlung, zeigt nur, welcher Hebel (Schwimmen/Rad/Lauf) am
+    meisten Zeit spart.
+  - **5. Interferenz-Hinweis bei Ausdauer direkt vor Krafttraining.** Neue Funktion
+    `_check_endurance_before_strength_interference()` in `app.py`: findet am selben Tag eine
+    Ausdauereinheit (Schwimmen/Rad/Lauf), auf die innerhalb von **3 Stunden** (nicht 6 - siehe
+    Korrektur in `claude/wissenschaftliche-quellen-trainingsgrundlagen.md`, AMPK/mTOR-Interferenzfenster
+    laut Wojtaszewski et al. 2000 sowie GSSI SSE #136) eine Krafteinheit folgt, fließt der Hinweis als
+    zusätzlicher Kontext in den Gym-Coaching-Tipp und den Trainingsplan-Kommentar ein (jeweils nur als
+    eigener Punkt erwähnt, wenn er tatsächlich zutrifft). Die Gegenrichtung Kraft-vor-Ausdauer wird
+    bewusst nicht erkannt/gemeldet (siehe oben).
+  - Alle sechs geänderten/neuen Python-Dateien (`app.py`, `ha_publish.py`, `ai_coach.py`,
+    `decoupling.py`, `Dockerfile`, `config.yaml`) mit `py_compile` verifiziert sowie mit 63
+    synthetischen Tests gegen echte Modul-Instanzen (Stub-Modul für `paho`, wie in den Vorversionen)
+    abgedeckt: FTP-Extraktion (inkl. Sonderfälle), Decoupling-Berechnung (Drift/stabil/zu wenig Daten/
+    ungerade Lap-Anzahl), der neue `ftp_jump`-Trigger inkl. Cooldown, die Interferenz-Erkennung (5
+    Szenarien inkl. der beiden bewusst negativen Fälle "falsche Richtung" und "zu alt"), der
+    Decoupling-Cache (kein doppelter API-Call für dieselbe Aktivität) sowie alle vier erweiterten
+    `ai_coach.py`-Prompt-Funktionen mit den neuen Kontextwerten.
+  - **Dabei gefundener und vor dem Ausliefern korrigierter Bug:** `publish_decoupling()` hätte den
+    State des `%`-Sensors zunächst als String mit angehängtem `"%"` publiziert - bei
+    `unit_of_measurement: "%"` und `state_class: measurement` erwartet Home Assistant hier einen
+    reinen Zahlenwert. Korrigiert auf einen numerischen State (kein State, wenn noch keine
+    qualifizierende Einheit vorliegt, analog zu VO2max/Endurance-Score).
+  - `Dockerfile`: `COPY decoupling.py /decoupling.py` ergänzt - direkt beim Anlegen des neuen Moduls,
+    um den Fehler aus 0.14.1 zu vermeiden.
+
 ### 0.15.0
 - **Neu: freier Gemini-Chat im Dashboard** (neuer Tab "Chat"). Auslöser: Alex wollte gezielte
   Fragen über die API direkt an Gemini stellen können, statt nur die automatisch generierten

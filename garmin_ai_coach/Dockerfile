@@ -8,6 +8,7 @@ COPY ai_coach.py /ai_coach.py
 COPY fit_exercises.py /fit_exercises.py
 COPY suggestions.py /suggestions.py
 COPY chat.py /chat.py
+COPY decoupling.py /decoupling.py
 COPY run.sh /
 RUN chmod a+x /run.sh
 CMD [ "/run.sh" ]
