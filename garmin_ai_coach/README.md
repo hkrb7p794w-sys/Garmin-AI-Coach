@@ -20,6 +20,39 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.17.1
+- **Falsche Umlaut-Schreibweise (ae/oe/ue statt ä/ö/ü) im gesamten Add-on-Quellcode korrigiert.**
+  Auslöser: Alex' Screenshot einer Gym-Coaching-Notiz im Dashboard, die mitten im selben Absatz
+  echte Umlaute (z. B. "während") und die ASCII-Ersatzschreibweise (z. B. "oberkoerper",
+  "Isolationsuebungen") mischte. Ursache: praktisch der gesamte deutsche Text im Repo (Prompts,
+  Kommentare, Sensor-Anzeigenamen) war durchgängig mit ae/oe/ue statt ä/ö/ü geschrieben - Gemini
+  bekommt diesen Stil in jedem Prompt vorgegeben und spiegelt ihn (inkonsistent gemischt mit
+  selbst generierten, korrekt geschriebenen Wörtern) im Dashboard-Text wider. Kein
+  Zeichenkodierungs-Bug (MQTT-Publishes nutzen bereits `ensure_ascii=False`), sondern reine
+  Textstil-Frage im Quellcode.
+  - Alle deutschen Prompt-Texte, Kommentare und Sensor-Anzeigenamen in `ai_coach.py`, `app.py`,
+    `ha_publish.py`, `chat.py`, `decoupling.py`, `fit_exercises.py` und `suggestions.py` auf
+    echte Umlaute umgestellt (systematischer Abgleich aller ae/oe/ue-Vorkommen gegen eine
+    kuratierte Ausnahmeliste für Wörter, bei denen ae/oe/ue korrektes Deutsch ist, z. B.
+    "aktuell", "manuell", "Quelle", "Ausdauer", "neu", "genau", "aerob", "Frequenz" - diese
+    bleiben unverändert).
+  - **Bewusst NICHT verändert:** interne MQTT-Topic-Strings, der `SENSORS`-Dict-Key
+    `"vorschlaege"` (bestimmt `unique_id`/Topic-Pfad, siehe `publish_discovery()`) sowie die
+    stabilen Vorschlags-`id`-Werte in `TRAININGSPLAN_GYM_KRITIK` (z. B. `gym_huefte_kreuzheben`)
+    - eine Änderung hätte die bereits in Home Assistant registrierte Entity bzw. Alex' bereits
+    gespeicherte Annehmen/Ablehnen-Entscheidungen verwaist. Der zugehörige Sensor-Anzeigename
+    ("Garmin Vorschläge") wurde trotzdem korrigiert, da reine Anzeigetexte die Entity-ID nicht
+    beeinflussen.
+  - Allen Gemini-Prompts (Tagesnotiz, Gym-Tipp, Wochenreport, Chat, Trainingsplan-Kommentar)
+    zusätzlich eine explizite Anweisung ergänzt, durchgängig echte Umlaute (ä/ö/ü/ß) statt
+    ae/oe/ue/ss zu verwenden - als zweite Absicherung, falls Gemini unabhängig vom Prompt-Stil
+    wieder zur Ersatzschreibweise greift.
+  - Alle 7 geänderten Python-Dateien kompilieren fehlerfrei; MQTT-Topic-Strings und Entity-IDs
+    per gezieltem Grep gegen versehentlich eingeführte Umlaute geprüft.
+  - **Nicht Teil dieser Änderung:** ß-Schreibweise bei Wörtern ohne begleitenden Umlautfehler
+    (z. B. "grossen" statt "großen") - Alex' Meldung bezog sich ausdrücklich auf ä/ü/ö, nicht auf
+    ß. Optional als separater Folgeschritt möglich.
+
 ### 0.17.0
 - **Automatischer Sync jetzt mehrmals täglich statt nur einmal.** Bisher lief der
   Hintergrund-Scheduler genau einmal pro Tag zur in `sync_hour` konfigurierten Stunde

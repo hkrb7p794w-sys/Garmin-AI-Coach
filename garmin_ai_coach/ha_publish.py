@@ -14,9 +14,9 @@ DEVICE = {
 }
 
 client = mqtt.Client(client_id="garmin_ai_coach")
-# Diagnose: zeigt beim Start, ob Supervisor die MQTT-Zugangsdaten ueberhaupt
+# Diagnose: zeigt beim Start, ob Supervisor die MQTT-Zugangsdaten überhaupt
 # als Umgebungsvariablen injiziert hat (Passwort wird NICHT geloggt, nur ob
-# gesetzt) - hilft bei "not authorised"-Fehlern in core_mosquitto zu klaeren,
+# gesetzt) - hilft bei "not authorised"-Fehlern in core_mosquitto zu klären,
 # ob es an fehlenden Credentials oder an falschen Credentials liegt.
 print(f"[mqtt debug] host={MQTT_HOST} port={MQTT_PORT} "
       f"user_set={'yes (' + MQTT_USER + ')' if MQTT_USER else 'NO - env var MQTT_USERNAME is empty/unset'} "
@@ -24,25 +24,25 @@ print(f"[mqtt debug] host={MQTT_HOST} port={MQTT_PORT} "
 if MQTT_USER:
     client.username_pw_set(MQTT_USER, MQTT_PASS)
 
-# Command-Topic fuer den "Jetzt synchronisieren"-Button (siehe publish_discovery()
+# Command-Topic für den "Jetzt synchronisieren"-Button (siehe publish_discovery()
 # unten sowie app.py, _handle_sync_button_press). Ersetzt den bisherigen
 # Dashboard-Button mit fest verdrahteter Ingress-URL, der bei fehlender/
 # abgelaufener Ingress-Browser-Session mit HTTP 401 scheiterte (siehe
 # claude/status-und-plan.md, "Dashboard-Ingress-URL fragil"). Ein MQTT-Button
 # ist eine normale HA-Entity/ein normaler Service-Call (mqtt.publish) und damit
-# unabhaengig von Ingress-Sessions.
+# unabhängig von Ingress-Sessions.
 SYNC_BUTTON_COMMAND_TOPIC = "garmin_ai_coach/sync_now/set"
 _sync_button_callback = None
 
-# Annehmen/Ablehnen fuer KI-Trainingsplan-Vorschlaege (Dashboard-Tab "Vorschlaege",
+# Annehmen/Ablehnen für KI-Trainingsplan-Vorschläge (Dashboard-Tab "Vorschläge",
 # siehe suggestions.py sowie publish_vorschlaege unten). Bewusst EINE Auswahl-Select-
 # Entity + zwei feste Annehmen/Ablehnen-Buttons statt eigener Button-Entities je
-# Vorschlag - die Anzahl der Vorschlaege ist dynamisch (4 feste Gym-Kritik-Punkte plus
-# eine wechselnde Zahl Gemini-generierter Trainingsplan-Kommentar-Vorschlaege), eine
+# Vorschlag - die Anzahl der Vorschläge ist dynamisch (4 feste Gym-Kritik-Punkte plus
+# eine wechselnde Zahl Gemini-generierter Trainingsplan-Kommentar-Vorschläge), eine
 # feste Dashboard-Card mit fest referenzierten Entities kann das nicht abbilden ohne
-# bei jeder Aenderung neu geschrieben zu werden. Ablauf: Alex waehlt einen Vorschlag im
-# Dropdown (HA published den gewaehlten Options-Text an VORSCHLAG_SELECT_COMMAND_TOPIC),
-# das Add-on merkt sich die dazugehoerige id (_vorschlag_label_map, siehe
+# bei jeder Änderung neu geschrieben zu werden. Ablauf: Alex wählt einen Vorschlag im
+# Dropdown (HA published den gewählten Options-Text an VORSCHLAG_SELECT_COMMAND_TOPIC),
+# das Add-on merkt sich die dazugehörige id (_vorschlag_label_map, siehe
 # publish_vorschlaege), und ein Druck auf Annehmen/Ablehnen wirkt auf diese gemerkte id.
 VORSCHLAG_SELECT_COMMAND_TOPIC = "garmin_ai_coach/vorschlag_auswahl/set"
 VORSCHLAG_ACCEPT_COMMAND_TOPIC = "garmin_ai_coach/vorschlag_annehmen/set"
@@ -55,29 +55,29 @@ _selected_suggestion_id = None
 # Freier Gemini-Chat im Dashboard-Tab "Chat" (siehe chat.py sowie
 # publish_chat_history unten). Ein MQTT-"text"-Entity statt eines HA-
 # input_text-Helpers, weil das Add-on eigene Discovery-Entities selbst
-# verwaltet (analog zum Sync-Button/den Vorschlaegen) statt Alex einen
+# verwaltet (analog zum Sync-Button/den Vorschlägen) statt Alex einen
 # manuell anzulegenden Helper aufzuerlegen. "text"-Entities sind laut
 # offizieller HA-Doku (https://www.home-assistant.io/integrations/text.mqtt/)
-# hart auf max. 255 Zeichen begrenzt - fuer eine getippte Frage ausreichend.
+# hart auf max. 255 Zeichen begrenzt - für eine getippte Frage ausreichend.
 # Bewusst OHNE state_topic (nur optimistic=True, wie bei der Vorschlag-
 # Auswahl) - HA zeigt dann einfach den zuletzt eingegebenen Text weiter an,
-# Alex ueberschreibt ihn fuer die naechste Frage einfach neu.
+# Alex überschreibt ihn für die nächste Frage einfach neu.
 CHAT_QUESTION_COMMAND_TOPIC = "garmin_ai_coach/chat_frage/set"
 _chat_callback = None
 
 
 def set_sync_button_callback(fn):
-    """Registriert die Funktion, die app.py beim Druecken des Sync-Buttons
-    ausfuehren soll (dort: do_sync(force=True, also_weekly=True) in einem
+    """Registriert die Funktion, die app.py beim Drücken des Sync-Buttons
+    ausführen soll (dort: do_sync(force=True, also_weekly=True) in einem
     eigenen Thread). Getrennt von diesem Modul, damit ha_publish.py nicht
-    zirkulaer von app.py importieren muss."""
+    zirkulär von app.py importieren muss."""
     global _sync_button_callback
     _sync_button_callback = fn
 
 
 def set_vorschlag_callbacks(on_accept=None, on_reject=None):
-    """Registriert die Funktionen, die app.py beim Druecken der Annehmen-/
-    Ablehnen-Buttons fuer den aktuell ausgewaehlten Vorschlag ausfuehren soll
+    """Registriert die Funktionen, die app.py beim Drücken der Annehmen-/
+    Ablehnen-Buttons für den aktuell ausgewählten Vorschlag ausführen soll
     (dort: suggestions.set_status(...) + erneutes publish_vorschlaege(), siehe
     _handle_vorschlag_accept/_handle_vorschlag_reject). Analog zu
     set_sync_button_callback. Jede Callback-Funktion bekommt die suggestion_id
@@ -91,8 +91,8 @@ def set_vorschlag_callbacks(on_accept=None, on_reject=None):
 
 def set_chat_callback(fn):
     """Registriert die Funktion, die app.py beim Eingeben/Absenden einer Chat-
-    Frage ausfuehren soll (dort: _handle_chat_question, ruft in einem eigenen
-    Thread ai_coach.generate_chat_answer auf und speichert das Ergebnis ueber
+    Frage ausführen soll (dort: _handle_chat_question, ruft in einem eigenen
+    Thread ai_coach.generate_chat_answer auf und speichert das Ergebnis über
     chat.py). Analog zu set_sync_button_callback. Bekommt die Frage (str) als
     einziges Argument."""
     global _chat_callback
@@ -100,9 +100,9 @@ def set_chat_callback(fn):
 
 
 def _on_connect(client, userdata, flags, rc):
-    """(Re-)Abonniert die Command-Topics und veroeffentlicht die Discovery-
+    """(Re-)Abonniert die Command-Topics und veröffentlicht die Discovery-
     Configs bei jedem (erneuten) Verbindungsaufbau - nicht nur beim ersten. Ein
-    Abonnement ueberlebt einen Reconnect NICHT automatisch, und ein erneutes
+    Abonnement überlebt einen Reconnect NICHT automatisch, und ein erneutes
     Discovery-Publish macht Buttons/Select (und alle Sensoren) robust gegen einen
     Mosquitto-Neustart wie den in claude/status-und-plan.md dokumentierten
     Supervisor-MQTT-Service-Ausfall (Lessons Learned Punkt 10)."""
@@ -128,29 +128,29 @@ def _on_message(client, userdata, msg):
             except Exception as e:
                 print(f"[mqtt] Sync-Button-Callback fehlgeschlagen: {e}")
         else:
-            print("[mqtt] Sync-Button gedrueckt, aber noch kein Callback registriert (App startet noch?)")
+            print("[mqtt] Sync-Button gedrückt, aber noch kein Callback registriert (App startet noch?)")
     elif msg.topic == VORSCHLAG_SELECT_COMMAND_TOPIC:
         label = msg.payload.decode("utf-8", errors="replace")
         _selected_suggestion_id = _vorschlag_label_map.get(label)
-        # optimistic=True in der Discovery-Config reicht theoretisch fuer die
-        # sofortige UI-Anzeige, trotzdem den gewaehlten Wert als state zurueckpublizieren -
+        # optimistic=True in der Discovery-Config reicht theoretisch für die
+        # sofortige UI-Anzeige, trotzdem den gewählten Wert als state zurückpublizieren -
         # so zeigt auch ein zweiter Dashboard-Client/-Tab sofort denselben Stand.
         client.publish("garmin_ai_coach/vorschlag_auswahl/state", label, retain=True)
         if not _selected_suggestion_id:
             print(f"[mqtt] Vorschlag-Auswahl '{label}' nicht (mehr) bekannt")
     elif msg.topic == VORSCHLAG_ACCEPT_COMMAND_TOPIC:
-        print("[mqtt] Vorschlag-Annehmen-Button gedrueckt")
+        print("[mqtt] Vorschlag-Annehmen-Button gedrückt")
         if not _selected_suggestion_id:
-            print("[mqtt] kein Vorschlag ausgewaehlt - ignoriert")
+            print("[mqtt] kein Vorschlag ausgewählt - ignoriert")
         elif _vorschlag_accept_callback:
             try:
                 _vorschlag_accept_callback(_selected_suggestion_id)
             except Exception as e:
                 print(f"[mqtt] Vorschlag-Annehmen-Callback fehlgeschlagen: {e}")
     elif msg.topic == VORSCHLAG_REJECT_COMMAND_TOPIC:
-        print("[mqtt] Vorschlag-Ablehnen-Button gedrueckt")
+        print("[mqtt] Vorschlag-Ablehnen-Button gedrückt")
         if not _selected_suggestion_id:
-            print("[mqtt] kein Vorschlag ausgewaehlt - ignoriert")
+            print("[mqtt] kein Vorschlag ausgewählt - ignoriert")
         elif _vorschlag_reject_callback:
             try:
                 _vorschlag_reject_callback(_selected_suggestion_id)
@@ -171,11 +171,11 @@ def _on_message(client, userdata, msg):
 
 
 # on_connect/on_message MUESSEN vor connect_async()/loop_start() gesetzt werden -
-# sonst koennte der Hintergrund-Thread theoretisch schon verbinden, bevor die
+# sonst könnte der Hintergrund-Thread theoretisch schon verbinden, bevor die
 # Callbacks zugewiesen sind (kleines, aber vermeidbares Race).
 client.on_connect = _on_connect
 client.on_message = _on_message
-# connect_async + loop_start (statt eines blockierenden connect()) laesst den
+# connect_async + loop_start (statt eines blockierenden connect()) lässt den
 # Broker-Verbindungsaufbau im Hintergrund-Thread laufen und automatisch neu
 # versuchen, falls core-mosquitto beim Add-on-Start noch nicht bereit ist.
 client.reconnect_delay_set(min_delay=1, max_delay=60)
@@ -254,7 +254,7 @@ SENSORS = {
         "icon": "mdi:trending-up",
     },
 
-    # Fitness-Fortschritt fuer die Ironman-70.3-Vorbereitung
+    # Fitness-Fortschritt für die Ironman-70.3-Vorbereitung
     "vo2max": {
         "name": "Garmin VO2max",
         "unit": "ml/kg/min",
@@ -317,7 +317,7 @@ SENSORS = {
         "icon": "mdi:calendar-check",
     },
     "strength_exercises": {
-        "name": "Garmin Krafttraining Uebungen",
+        "name": "Garmin Krafttraining Übungen",
         "unit": None,
         "icon": "mdi:dumbbell",
     },
@@ -332,7 +332,7 @@ SENSORS = {
         "icon": "mdi:clipboard-text-clock",
     },
     "vorschlaege": {
-        "name": "Garmin Vorschlaege",
+        "name": "Garmin Vorschläge",
         "unit": None,
         "icon": "mdi:thumbs-up-down",
     },
@@ -343,7 +343,7 @@ SENSORS = {
     },
 }
 
-# Sensoren, die zusaetzlich zum reinen state noch strukturierte Attribute
+# Sensoren, die zusätzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
 ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
@@ -372,10 +372,10 @@ def publish_discovery():
             payload["json_attributes_topic"] = f"garmin_ai_coach/{key}/attributes"
         client.publish(topic, json.dumps(payload), retain=True)
 
-    # Sync-Button: loest ueber MQTT einen Sync + Wochenreport aus (siehe
+    # Sync-Button: löst über MQTT einen Sync + Wochenreport aus (siehe
     # SYNC_BUTTON_COMMAND_TOPIC/_on_message oben sowie app.py,
     # _handle_sync_button_press). Ersetzt den bisherigen Dashboard-Button mit
-    # fest verdrahteter, ingress-session-abhaengiger URL.
+    # fest verdrahteter, ingress-session-abhängiger URL.
     button_payload = {
         "name": "Garmin Jetzt Synchronisieren",
         "unique_id": "garmin_ai_coach_sync_now",
@@ -390,20 +390,20 @@ def publish_discovery():
         retain=True,
     )
 
-    # Annehmen/Ablehnen fuer KI-Trainingsplan-Vorschlaege (Dashboard-Tab "Vorschlaege",
+    # Annehmen/Ablehnen für KI-Trainingsplan-Vorschläge (Dashboard-Tab "Vorschläge",
     # siehe VORSCHLAG_*_COMMAND_TOPIC/_on_message oben sowie publish_vorschlaege unten
     # und suggestions.py). Hier nur die initiale/Fallback-Registrierung mit einer
     # Platzhalter-Optionsliste, damit die drei Entities sofort nach einem Add-on-(Neu-)
     # Start existieren, auch vor dem ersten Sync - publish_vorschlaege() republished die
     # Select-Discovery-Config danach bei jedem Sync sowie nach jedem Annehmen/Ablehnen
     # mit der jeweils aktuellen Optionsliste (die Optionen sind Teil der Discovery-
-    # Config, es gibt dafuer keinen separaten State).
+    # Config, es gibt dafür keinen separaten State).
     select_payload = {
         "name": "Garmin Vorschlag Auswahl",
         "unique_id": "garmin_ai_coach_vorschlag_auswahl",
         "command_topic": VORSCHLAG_SELECT_COMMAND_TOPIC,
         "state_topic": "garmin_ai_coach/vorschlag_auswahl/state",
-        "options": ["(noch keine Vorschlaege - nach dem ersten Sync verfuegbar)"],
+        "options": ["(noch keine Vorschläge - nach dem ersten Sync verfügbar)"],
         "optimistic": True,
         "icon": "mdi:format-list-checks",
         "device": DEVICE,
@@ -442,8 +442,8 @@ def publish_discovery():
 
     # Freier Gemini-Chat (Dashboard-Tab "Chat", siehe CHAT_QUESTION_COMMAND_TOPIC/
     # _on_message oben sowie chat.py und app.py, _handle_chat_question). "max": 255
-    # ist das von HA fest vorgegebene Maximum fuer MQTT-"text"-Entities (siehe
-    # https://www.home-assistant.io/integrations/text.mqtt/) - fuer eine getippte
+    # ist das von HA fest vorgegebene Maximum für MQTT-"text"-Entities (siehe
+    # https://www.home-assistant.io/integrations/text.mqtt/) - für eine getippte
     # Frage ausreichend.
     chat_text_payload = {
         "name": "Garmin Chat Frage",
@@ -465,9 +465,9 @@ def publish_discovery():
 def _vorschlag_options_and_labels(state: dict):
     """Baut die Dropdown-Optionen (Label-Text je Vorschlag: Status-Emoji +
     Titel, sortiert offen -> angenommen -> abgelehnt) sowie die Label->id-
-    Zuordnung fuer die Auswahl-Select-Entity (siehe publish_vorschlaege).
+    Zuordnung für die Auswahl-Select-Entity (siehe publish_vorschlaege).
     Die Zuordnung wird in _vorschlag_label_map gemerkt, damit _on_message
-    eine eingehende Auswahl auf die zugehoerige suggestion_id aufloesen kann."""
+    eine eingehende Auswahl auf die zugehörige suggestion_id auflösen kann."""
     order = {"pending": 0, "accepted": 1, "rejected": 2}
     emoji = {"pending": "⏳", "accepted": "✅", "rejected": "❌"}
     items = sorted(
@@ -479,8 +479,8 @@ def _vorschlag_options_and_labels(state: dict):
     for sid, rec in items:
         base = f"{emoji.get(rec.get('status'), '⏳')} {rec.get('title') or sid}"
         label = base
-        # Eindeutigkeit erzwingen, falls zwei Vorschlaege zufaellig denselben Titel
-        # haetten (Kollisionsschutz fuer die Label->id-Aufloesung).
+        # Eindeutigkeit erzwingen, falls zwei Vorschläge zufällig denselben Titel
+        # hätten (Kollisionsschutz für die Label->id-Auflösung).
         suffix = 2
         while label in label_map:
             label = f"{base} ({suffix})"
@@ -488,14 +488,14 @@ def _vorschlag_options_and_labels(state: dict):
         labels.append(label)
         label_map[label] = sid
     if not labels:
-        labels = ["(keine Vorschlaege vorhanden)"]
+        labels = ["(keine Vorschläge vorhanden)"]
     return labels, label_map
 
 
 def publish_vorschlaege(state: dict):
-    """Published den Annehmen/Ablehnen-Zustand der Trainingsplan-Vorschlaege
-    (siehe suggestions.py, Dashboard-Tab "Vorschlaege") als Sensor-Attribute
-    (fuer die Anzeige) sowie die aktuelle Optionsliste der Auswahl-Select-
+    """Published den Annehmen/Ablehnen-Zustand der Trainingsplan-Vorschläge
+    (siehe suggestions.py, Dashboard-Tab "Vorschläge") als Sensor-Attribute
+    (für die Anzeige) sowie die aktuelle Optionsliste der Auswahl-Select-
     Entity (per erneutem Discovery-Publish - siehe _vorschlag_options_and_labels).
     Aufgerufen von app.py nach jedem Sync sowie sofort nach jedem Annehmen/
     Ablehnen-Tastendruck, damit das Dashboard immer den aktuellen Stand zeigt."""
@@ -540,10 +540,10 @@ def _extract_ftp_watts(raw):
     sind nicht durch eine echte Beispielantwort belegt (nur der verwandte
     Range-Endpunkt liefert laut dessen eigenen Tests {"series": "cycling",
     "value": ...}) - analog zur exerciseSets-Unsicherheit in v0.10.1 wird hier
-    defensiv gegen mehrere plausible Feldnamen geprueft; das komplette
-    Rohobjekt wird zusaetzlich als Attribut publiziert (siehe publish_state),
-    damit sich die tatsaechliche Struktur nach dem ersten echten Sync in Home
-    Assistant (Entwicklerwerkzeuge -> Zustaende) pruefen laesst."""
+    defensiv gegen mehrere plausible Feldnamen geprüft; das komplette
+    Rohobjekt wird zusätzlich als Attribut publiziert (siehe publish_state),
+    damit sich die tatsächliche Struktur nach dem ersten echten Sync in Home
+    Assistant (Entwicklerwerkzeuge -> Zustände) prüfen lässt."""
     if raw is None:
         return None
     entry = raw
@@ -572,8 +572,8 @@ def extract_metrics(data: dict) -> dict:
     steps_today = sum(s.get("steps", 0) for s in data.get("steps", []))
 
     # get_training_readiness() liefert typischerweise eine Liste mit einem
-    # Eintrag fuer den Tag; defensiv behandeln, falls Garmin das Format aendert
-    # oder fuer den Tag (noch) nichts liefert.
+    # Eintrag für den Tag; defensiv behandeln, falls Garmin das Format ändert
+    # oder für den Tag (noch) nichts liefert.
     readiness_score = None
     readiness_level = None
     try:
@@ -612,7 +612,7 @@ def extract_metrics(data: dict) -> dict:
     try:
         stress_avg = (data.get("stress") or {}).get("avgStressLevel")
         if stress_avg is not None and stress_avg < 0:
-            # Garmin nutzt -1/-2 fuer "kein Wert"/"nicht genug Daten"
+            # Garmin nutzt -1/-2 für "kein Wert"/"nicht genug Daten"
             stress_avg = None
     except AttributeError:
         pass
@@ -645,8 +645,8 @@ def extract_metrics(data: dict) -> dict:
         pass
 
     # Training Status: get_training_status() -> verschachtelt unter einem
-    # dynamischen Geraete-Key, den wir nicht im Voraus kennen -> ersten Eintrag
-    # nehmen, egal welche Geraete-ID Garmin verwendet.
+    # dynamischen Geräte-Key, den wir nicht im Voraus kennen -> ersten Eintrag
+    # nehmen, egal welche Geräte-ID Garmin verwendet.
     training_status_phrase = None
     try:
         latest = (
@@ -660,7 +660,7 @@ def extract_metrics(data: dict) -> dict:
     except (AttributeError, StopIteration):
         pass
 
-    # VO2max: Liste von Tageseintraegen mit "generic": {"vo2MaxPreciseValue": ...}.
+    # VO2max: Liste von Tageseinträgen mit "generic": {"vo2MaxPreciseValue": ...}.
     # Garmin berechnet VO2max nur nach qualifizierenden Einheiten, viele Tage sind
     # daher leer - deshalb den JUENGSTEN Eintrag mit Wert nehmen statt einfach [0]
     # (das war der Grund, warum der Sensor dauerhaft "unbekannt" blieb).
@@ -681,9 +681,9 @@ def extract_metrics(data: dict) -> dict:
         pass
 
     # Endurance Score: die Einzeltag-Abfrage liefert "overallScore", die Zeitraum-
-    # Variante stattdessen avg/max/groupMap. Frueher wurde der Zeitraum abgefragt,
+    # Variante stattdessen avg/max/groupMap. Früher wurde der Zeitraum abgefragt,
     # aber nach "overallScore" gesucht - der Sensor konnte also nie einen Wert
-    # bekommen. Jetzt werden beide Antwortformen unterstuetzt.
+    # bekommen. Jetzt werden beide Antwortformen unterstützt.
     endurance_score = None
     try:
         es = data.get("endurance_score") or {}
@@ -699,10 +699,10 @@ def extract_metrics(data: dict) -> dict:
     ftp_raw = data.get("ftp_raw")
     ftp = _extract_ftp_watts(ftp_raw)
 
-    # HF-Pace-Kopplung: rollierender Schnitt (letzte 5 qualifizierende Laeufe)
-    # sowie der juengste Einzelwert - siehe decoupling.py und app.py,
+    # HF-Pace-Kopplung: rollierender Schnitt (letzte 5 qualifizierende Läufe)
+    # sowie der jüngste Einzelwert - siehe decoupling.py und app.py,
     # _update_decoupling_cache(). Sessions sind aufsteigend nach Datum
-    # sortiert (siehe app.py), der letzte Eintrag ist damit der juengste.
+    # sortiert (siehe app.py), der letzte Eintrag ist damit der jüngste.
     decoupling_sessions = data.get("decoupling_sessions") or []
     decoupling_values = [
         s.get("decoupling_pct") for s in decoupling_sessions
@@ -797,8 +797,8 @@ def publish_state(data: dict, coaching_note: str = None):
     if metrics.get("ftp_raw") is not None:
         # Rohobjekt IMMER als Attribut mitschicken, auch wenn _extract_ftp_watts()
         # keinen Wert erkennen konnte - siehe dortiger Docstring zur Feldnamen-
-        # Unsicherheit, das macht die tatsaechliche Struktur in Home Assistant
-        # (Entwicklerwerkzeuge -> Zustaende) direkt pruefbar.
+        # Unsicherheit, das macht die tatsächliche Struktur in Home Assistant
+        # (Entwicklerwerkzeuge -> Zustände) direkt prüfbar.
         client.publish(
             "garmin_ai_coach/ftp/attributes",
             json.dumps({"raw": metrics["ftp_raw"]}, ensure_ascii=False, default=str),
@@ -831,7 +831,7 @@ def publish_coaching_note(note: str):
     """Publiziert nur die Coaching-Notiz.
 
     Bewusst getrennt von publish_state(): die Garmin-Messwerte gehen sofort nach
-    dem Abruf raus und haengen nicht mehr an der (teils >30s dauernden oder ganz
+    dem Abruf raus und hängen nicht mehr an der (teils >30s dauernden oder ganz
     fehlschlagenden) KI-Anfrage."""
     if not note:
         return
@@ -842,11 +842,11 @@ def publish_coaching_note(note: str):
 
 
 def publish_weekly_report(text: str, summary: dict = None):
-    """Publiziert den Wochenreport plus die zugehoerigen Kennzahlen als Attribute.
+    """Publiziert den Wochenreport plus die zugehörigen Kennzahlen als Attribute.
 
     Die Kennzahlen wandern bewusst in die Attribute statt in je einen eigenen Sensor:
-    sie werden nur woechentlich aktualisiert und gehoeren inhaltlich zusammen, das
-    haelt die Entity-Liste in Home Assistant uebersichtlich."""
+    sie werden nur wöchentlich aktualisiert und gehören inhaltlich zusammen, das
+    hält die Entity-Liste in Home Assistant übersichtlich."""
     if not text:
         return
     short = text[:250] + ("…" if len(text) > 250 else "")
@@ -861,18 +861,18 @@ def publish_weekly_report(text: str, summary: dict = None):
 
 def publish_strength_exercises(sessions: list):
     """Publiziert die je Kraft-Einheit dieser Woche per FIT-Datei erkannten
-    Uebungen/Saetze (siehe fit_exercises.py) als Attribute - strukturierte
-    Liste, deshalb Attribute statt eigener Sensor je Uebung. Best-Effort:
-    ohne verwertbare Uebungsdetails (z.B. Auto-Satzerkennung der Uhr war aus)
+    Übungen/Sätze (siehe fit_exercises.py) als Attribute - strukturierte
+    Liste, deshalb Attribute statt eigener Sensor je Übung. Best-Effort:
+    ohne verwertbare Übungsdetails (z.B. Auto-Satzerkennung der Uhr war aus)
     bleibt der state ehrlich statt eine leere Liste zu verschweigen."""
     sessions = sessions or []
     total_exercises = sum(len(s.get("exercises") or []) for s in sessions)
     if not sessions:
         state = "keine Kraft-Einheiten diese Woche"
     elif total_exercises == 0:
-        state = f"{len(sessions)} Einheit(en), keine Uebungsdetails erkannt"
+        state = f"{len(sessions)} Einheit(en), keine Übungsdetails erkannt"
     else:
-        state = f"{len(sessions)} Einheit(en), {total_exercises} Uebungen erkannt"
+        state = f"{len(sessions)} Einheit(en), {total_exercises} Übungen erkannt"
     client.publish("garmin_ai_coach/strength_exercises/state", state[:250], retain=True)
     client.publish(
         "garmin_ai_coach/strength_exercises/attributes",
@@ -884,14 +884,14 @@ def publish_strength_exercises(sessions: list):
 def publish_decoupling(sessions: list):
     """Publiziert die HF-Pace-Kopplung (aerobe Entkopplung, siehe decoupling.py)
     qualifizierender Lauf-Einheiten als Sensor-Attribute (strukturierte Liste,
-    analog zu publish_strength_exercises). State ist der juengste Einzelwert
+    analog zu publish_strength_exercises). State ist der jüngste Einzelwert
     als reine Zahl (Sensor hat unit_of_measurement "%" und state_class
-    "measurement" - ein Text-Suffix im State wuerde HA als ungueltigen
+    "measurement" - ein Text-Suffix im State würde HA als ungültigen
     Messwert ablehnen, siehe SENSORS["hf_pace_kopplung"]). Ohne qualifizierende
-    Einheit bleibt der State bewusst unveroeffentlicht (zeigt "unbekannt" statt
+    Einheit bleibt der State bewusst unveröffentlicht (zeigt "unbekannt" statt
     einer erfundenen Zahl) - analog zu vo2max/endurance_score oben. Der
-    rollierende Schnitt der letzten 5 Einheiten steht zusaetzlich als Attribut
-    zur Verfuegung."""
+    rollierende Schnitt der letzten 5 Einheiten steht zusätzlich als Attribut
+    zur Verfügung."""
     sessions = sessions or []
     values = [
         s.get("decoupling_pct") for s in sessions
@@ -913,7 +913,7 @@ def publish_decoupling(sessions: list):
 def publish_gym_coaching_note(note: str):
     """Publiziert den separaten, auf Krafttraining fokussierten Coaching-Tipp
     (siehe ai_coach.generate_gym_coaching_note). Eigener Sensor statt Teil
-    von publish_coaching_note(): so kann der Gym-Tipp unabhaengig vom
+    von publish_coaching_note(): so kann der Gym-Tipp unabhängig vom
     allgemeinen Tages-Tipp im eigenen Gym-Dashboard-Tab angezeigt werden."""
     if not note:
         return
@@ -925,11 +925,11 @@ def publish_gym_coaching_note(note: str):
 
 def publish_trainingsplan_kommentar(note: str, trigger_key: str = None, trigger_detail: str = None):
     """Publiziert den phasenspezifischen Gemini-Kommentar zu den
-    Trainingsplaenen (Tab 'Trainingsplaene', siehe ai_coach.
+    Trainingsplänen (Tab 'Trainingspläne', siehe ai_coach.
     generate_trainingsplan_kommentar). Anders als die anderen Coaching-Texte
     wird diese Funktion NICHT bei jedem Sync aufgerufen, sondern nur wenn
-    app.check_trainingsplan_trigger() einen konkreten Ausloeser erkennt -
-    ein Sync ohne Ausloeser ruft diese Funktion also gar nicht auf und laesst
+    app.check_trainingsplan_trigger() einen konkreten Auslöser erkennt -
+    ein Sync ohne Auslöser ruft diese Funktion also gar nicht auf und lässt
     den zuletzt publizierten (retained) Kommentar im Dashboard einfach
     stehen, statt ihn durch einen leeren/generischen Text zu ersetzen."""
     if not note:
@@ -951,7 +951,7 @@ def publish_trainingsplan_kommentar(note: str, trigger_key: str = None, trigger_
 def publish_chat_history(entries: list):
     """Publiziert den Gemini-Chatverlauf (Dashboard-Tab "Chat", siehe chat.py
     und app.py, _handle_chat_question) als Sensor-Attribute. Aufgerufen nach
-    jeder beantworteten Chat-Frage, unabhaengig vom normalen Sync-Zyklus -
+    jeder beantworteten Chat-Frage, unabhängig vom normalen Sync-Zyklus -
     analog zu publish_vorschlaege() nach einem Annehmen/Ablehnen-Tastendruck."""
     entries = entries or []
     last_asked = entries[-1].get("asked_at") if entries else None

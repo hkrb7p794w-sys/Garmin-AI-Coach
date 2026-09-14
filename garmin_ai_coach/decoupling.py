@@ -1,49 +1,49 @@
-"""Berechnet aerobe HF-Pace-Kopplung ("aerobic decoupling") fuer laengere,
-gleichmaessige Laufeinheiten.
+"""Berechnet aerobe HF-Pace-Kopplung ("aerobic decoupling") für längere,
+gleichmäßige Laufeinheiten.
 
 Siehe claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.3.
 
 Methode (Joe Friel / TrainingPeaks "Pa:HR decoupling", siehe
 https://www.trainingpeaks.com/blog/aerobic-endurance-and-decoupling/):
-Die Einheit wird nach zurueckgelegter Distanz (nicht nach Rundenzahl - eine
-kuerzere Schlussrunde soll das Ergebnis nicht verzerren) in zwei Haelften
-geteilt. Je Haelfte wird ein Effizienzfaktor aus Geschwindigkeit und
+Die Einheit wird nach zurückgelegter Distanz (nicht nach Rundenzahl - eine
+kürzere Schlussrunde soll das Ergebnis nicht verzerren) in zwei Hälften
+geteilt. Je Hälfte wird ein Effizienzfaktor aus Geschwindigkeit und
 Herzfrequenz gebildet:
 
-    EF1 = Durchschnittsgeschwindigkeit erste Haelfte / Durchschnitts-HF erste Haelfte
-    EF2 = Durchschnittsgeschwindigkeit zweite Haelfte / Durchschnitts-HF zweite Haelfte
+    EF1 = Durchschnittsgeschwindigkeit erste Hälfte / Durchschnitts-HF erste Hälfte
+    EF2 = Durchschnittsgeschwindigkeit zweite Hälfte / Durchschnitts-HF zweite Hälfte
     Entkopplung % = (EF1 - EF2) / EF1 * 100
 
 Positive Werte: die HF steigt im Verlauf der Einheit relativ zur Pace
-(Ermuedung bzw. fuer diese Dauer noch unzureichende aerobe Basis). Werte nahe
+(Ermüdung bzw. für diese Dauer noch unzureichende aerobe Basis). Werte nahe
 0 oder negativ: stabile Kopplung. Als grobe Faustregel gilt < 5% als gute
-aerobe Basis fuer die jeweilige Dauer - eine Orientierung, keine exakte,
+aerobe Basis für die jeweilige Dauer - eine Orientierung, keine exakte,
 wissenschaftlich scharf abgegrenzte Kennzahl.
 
 WICHTIG (Datenunsicherheit, analog zur exerciseSets-Vorsicht in v0.10.1):
 Garmin.get_activity_splits() liefert laut python-garminconnect-Quellcode ein
-dict; das genaue Feld fuer die Rundenliste ("lapDTOs") sowie die Feldnamen je
+dict; das genaue Feld für die Rundenliste ("lapDTOs") sowie die Feldnamen je
 Runde sind nicht durch eine echte Beispielantwort belegt. Die Extraktion
 unten ist deshalb bewusst defensiv (mehrere plausible Feldnamen) und liefert
 {} statt eines erfundenen Werts, wenn sich keine verwertbaren Runden finden
 lassen. Nach dem ersten echten Sync mit qualifizierender Lauf-Einheit bitte
 die Attribute von sensor.garmin_ai_coach_garmin_hf_pace_kopplung
-(Entwicklerwerkzeuge -> Zustaende) pruefen.
+(Entwicklerwerkzeuge -> Zustände) prüfen.
 """
 
-# Nur laengere, gleichmaessige Laeufe eignen sich fuer diese Kennzahl -
+# Nur längere, gleichmäßige Läufe eignen sich für diese Kennzahl -
 # Intervall-/Schwellen-/VO2max-Einheiten haben absichtlich wechselnde
-# Intensitaet, dort wuerde die Kennzahl nur Rauschen statt Ermuedung zeigen.
-# Filterung ueber den Aktivitaetsnamen (best effort) plus eine Mindestdauer,
-# unter der ein Entkopplungssignal ohnehin nicht belastbar waere. Diese
-# Heuristik muss nach den ersten echten Syncs gegen reale Aktivitaetsnamen/
-# -dauern geprueft werden (gleiche Vorsicht wie beim v0.10.0-FIT-Parsing).
+# Intensität, dort würde die Kennzahl nur Rauschen statt Ermüdung zeigen.
+# Filterung über den Aktivitätsnamen (best effort) plus eine Mindestdauer,
+# unter der ein Entkopplungssignal ohnehin nicht belastbar wäre. Diese
+# Heuristik muss nach den ersten echten Syncs gegen reale Aktivitätsnamen/
+# -dauern geprüft werden (gleiche Vorsicht wie beim v0.10.0-FIT-Parsing).
 EXCLUDED_NAME_KEYWORDS = ("intervall", "schwelle", "vo2max", "tempo")
 MIN_DURATION_MIN = 35
 
 
 def is_eligible_run(activity: dict) -> bool:
-    """Grobfilter, ob eine Aktivitaet fuer die Entkopplungs-Berechnung infrage
+    """Grobfilter, ob eine Aktivität für die Entkopplungs-Berechnung infrage
     kommt - siehe Moduldocstring."""
     type_key = ((activity.get("activityType") or {}).get("typeKey", "") or "").lower()
     if "run" not in type_key:
@@ -72,7 +72,7 @@ def _laps_from_splits(raw) -> list:
 def _lap_metrics(lap: dict):
     """(distanz_m, dauer_s, avg_hf) aus einem einzelnen Rundeneintrag -
     defensiv gegen mehrere plausible Feldnamen. None, wenn eine der drei
-    Groessen fehlt oder nicht plausibel ist."""
+    Größen fehlt oder nicht plausibel ist."""
     distance = lap.get("distance")
     duration = lap.get("duration") or lap.get("movingDuration") or lap.get("elapsedDuration")
     hr = lap.get("averageHR") or lap.get("avgHr") or lap.get("averageHeartRate")
@@ -87,9 +87,9 @@ def _lap_metrics(lap: dict):
 
 def compute_decoupling(raw_splits) -> dict:
     """Berechnet die aerobe HF-Pace-Kopplung (siehe Moduldocstring) aus der
-    Antwort von Garmin.get_activity_splits(). Gibt {} zurueck, wenn nicht
+    Antwort von Garmin.get_activity_splits(). Gibt {} zurück, wenn nicht
     genug verwertbare Runden vorliegen (z.B. keine HF je Runde) - die
-    Aktivitaet wird dann einfach uebersprungen statt eine unbelastbare Zahl
+    Aktivität wird dann einfach übersprungen statt eine unbelastbare Zahl
     zu erfinden."""
     laps = []
     for lap in _laps_from_splits(raw_splits):
@@ -109,9 +109,9 @@ def compute_decoupling(raw_splits) -> dict:
     for lap in laps:
         cumulative += lap[0]
         (first_half if cumulative <= half_distance else second_half).append(lap)
-    # Randfall: die Haelften-Grenze faellt (bei wenigen, ungleichen Runden)
+    # Randfall: die Hälften-Grenze fällt (bei wenigen, ungleichen Runden)
     # so, dass eine Seite leer bleibt - dann stattdessen nach Rundenzahl
-    # aufteilen, damit beide Haelften mindestens eine Runde haben.
+    # aufteilen, damit beide Hälften mindestens eine Runde haben.
     if not first_half or not second_half:
         mid = len(laps) // 2 or 1
         first_half, second_half = laps[:mid], laps[mid:]

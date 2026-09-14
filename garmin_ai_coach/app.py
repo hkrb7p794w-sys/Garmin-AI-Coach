@@ -33,23 +33,23 @@ import decoupling
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
-# Rollierende Tages-Historie fuer Wochentrends (Ruhepuls, HRV, Schlaf, Readiness).
+# Rollierende Tages-Historie für Wochentrends (Ruhepuls, HRV, Schlaf, Readiness).
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 HISTORY_DAYS = 60
-# Cache der per FIT-Datei extrahierten Kraft-Uebungen je Aktivitaet (siehe
+# Cache der per FIT-Datei extrahierten Kraft-Übungen je Aktivität (siehe
 # fit_exercises.py) - dauerhaft, damit nicht bei jedem Sync erneut die
-# Original-Datei jeder Kraft-Aktivitaet von Garmin geladen wird.
+# Original-Datei jeder Kraft-Aktivität von Garmin geladen wird.
 STRENGTH_FILE = os.path.join(DATA_DIR, "strength_exercises.json")
 STRENGTH_CACHE_DAYS = 21
 # Cache der HF-Pace-Kopplung (aerobe Entkopplung) je qualifizierender
-# Lauf-Aktivitaet - siehe decoupling.py und claude/konzept-erweiterung-
+# Lauf-Aktivität - siehe decoupling.py und claude/konzept-erweiterung-
 # metriken-v0.16-plus.md, Abschnitt 1.3. Gleiches Muster wie STRENGTH_FILE.
 DECOUPLING_FILE = os.path.join(DATA_DIR, "decoupling.json")
 DECOUPLING_CACHE_DAYS = 60
-# Zustand der Trainingsplan-Kommentierung (Tab "Trainingsplaene", siehe
+# Zustand der Trainingsplan-Kommentierung (Tab "Trainingspläne", siehe
 # check_trainingsplan_trigger unten) - welche Phase zuletzt bekannt war und
-# wann welcher Trigger zuletzt ausgeloest hat, damit nicht jeder Sync erneut
-# denselben Grund meldet, solange der Zustand anhaelt.
+# wann welcher Trigger zuletzt ausgelöst hat, damit nicht jeder Sync erneut
+# denselben Grund meldet, solange der Zustand anhält.
 TRAININGSPLAN_STATE_FILE = os.path.join(DATA_DIR, "trainingsplan_state.json")
 TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS = 21
 TRAININGSPLAN_READINESS_LOW_THRESHOLD = 60
@@ -58,7 +58,7 @@ TRAININGSPLAN_VO2MAX_STAGNATION_TOLERANCE = 0.3
 # ca. 4-5 Wochen) der bisher shelvte "Benchmark-Sprung"-Trigger auslöst - siehe
 # claude/status-und-plan.md und Konzept-Dokument Abschnitt 1.1.
 TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT = 5
-# Interferenzfenster Ausdauer-vor-Kraft (AMPK/mTOR) - 3h, nicht die urspruenglich
+# Interferenzfenster Ausdauer-vor-Kraft (AMPK/mTOR) - 3h, nicht die ursprünglich
 # kursierenden 6h (siehe Wojtaszewski et al. 2000 / GSSI SSE #136, im
 # Konzept-Dokument Abschnitt 3 sowie wissenschaftliche-quellen-
 # trainingsgrundlagen.md dokumentiert). Bewusst nur diese Richtung, siehe
@@ -71,9 +71,9 @@ os.environ["GARMINTOKENS"] = TOKEN_DIR
 def _parse_sync_hours(raw: str) -> list:
     """Parst die kommagetrennte Add-on-Option "sync_hours" (z. B. "6,12,18,20") zu einer
     sortierten Liste eindeutiger Stunden (0-23, lokale Zeit des Containers). Einzelne
-    ungueltige/leere Eintraege werden uebersprungen statt den Start abzubrechen (gleiches
-    Verteidigungsprinzip wie beim Rest des Add-ons); bleibt am Ende nichts Gueltiges uebrig,
-    wird auf 6 Uhr zurueckgefallen."""
+    ungültige/leere Einträge werden übersprungen statt den Start abzubrechen (gleiches
+    Verteidigungsprinzip wie beim Rest des Add-ons); bleibt am Ende nichts Gültiges übrig,
+    wird auf 6 Uhr zurückgefallen."""
     hours = []
     for part in (raw or "").split(","):
         part = part.strip()
@@ -82,7 +82,7 @@ def _parse_sync_hours(raw: str) -> list:
         try:
             hour = int(part)
         except ValueError:
-            print(f"[scheduler] Ungueltiger Eintrag in sync_hours ignoriert: {part!r}")
+            print(f"[scheduler] Ungültiger Eintrag in sync_hours ignoriert: {part!r}")
             continue
         if 0 <= hour <= 23 and hour not in hours:
             hours.append(hour)
@@ -92,7 +92,7 @@ def _parse_sync_hours(raw: str) -> list:
 
 
 # Stunden (0-23, lokale Zeit des Containers), zu denen automatisch synchronisiert wird -
-# mehrere pro Tag moeglich. Wird von run.sh aus der Add-on-Option "sync_hours" befuellt
+# mehrere pro Tag möglich. Wird von run.sh aus der Add-on-Option "sync_hours" befüllt
 # (kommagetrennt, z. B. "6,12,18,20"; Default hier deckt sich mit dem Default in config.yaml).
 SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,12,18,20"))
 RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
@@ -138,16 +138,16 @@ def days_to_race(today: datetime.date) -> int:
 # Garmin sperrt Konten zeitweise nach zu vielen Login-Versuchen in kurzer Zeit
 # (das war vermutlich die Ursache des vorherigen "Garmin-Sperre"-Ausfalls).
 # do_sync() loggt sich bei jedem Aufruf neu ein, daher hier eine Mindestpause
-# zwischen zwei Versuchen - auch fuer den manuellen "Jetzt synchronisieren"-Button.
+# zwischen zwei Versuchen - auch für den manuellen "Jetzt synchronisieren"-Button.
 MIN_SYNC_INTERVAL = datetime.timedelta(minutes=15)
 _last_sync_attempt = None
 
 
 def _safe_fetch(label, fn):
     """Ruft eine einzelne Garmin-Metrik ab; loggt Fehler statt den ganzen Sync
-    abzubrechen. Jede zusaetzliche Metrik ist ein eigener HTTPS-Call an Garmin,
-    daher soll ein einzelner fehlschlagender Endpoint (z.B. weil ein Geraet
-    einen Sensor nicht unterstuetzt) nicht den kompletten Sync killen."""
+    abzubrechen. Jede zusätzliche Metrik ist ein eigener HTTPS-Call an Garmin,
+    daher soll ein einzelner fehlschlagender Endpoint (z.B. weil ein Gerät
+    einen Sensor nicht unterstützt) nicht den kompletten Sync killen."""
     try:
         return fn()
     except Exception as e:
@@ -155,7 +155,7 @@ def _safe_fetch(label, fn):
         return None
 
 def _volumes_in_window(activities, window_start, window_end):
-    """Summiert Aktivitaeten in einem Zeitfenster je Disziplin (km/Minuten).
+    """Summiert Aktivitäten in einem Zeitfenster je Disziplin (km/Minuten).
 
     window_start/window_end sind konkrete datetime-Grenzen (start inklusiv,
     end exklusiv) - so lassen sich echte Kalenderwochen (Mo-So) abbilden statt
@@ -182,12 +182,12 @@ def _volumes_in_window(activities, window_start, window_end):
                 totals["swim_min"] += duration_min
                 totals["swim_sessions"] += 1
             elif "bik" in type_key or "cycl" in type_key or "ride" in type_key:
-                # Alex faehrt auf Zwift (das laedt die Einheit inkl. echter Distanz
-                # nach Garmin hoch) und laesst parallel zur Herzfrequenzmessung eine
-                # zweite Aktivitaet auf der Uhr mitlaufen, die er selbst als "Indoor
-                # Radfahren" ohne km einordnet - dieselbe Fahrt wuerde sonst doppelt
-                # als zwei Rad-Einheiten gezaehlt (Sessions UND Minuten). Nur
-                # Aktivitaeten mit echter Distanz > 0 zaehlen als Rad-Einheit; die
+                # Alex fährt auf Zwift (das lädt die Einheit inkl. echter Distanz
+                # nach Garmin hoch) und lässt parallel zur Herzfrequenzmessung eine
+                # zweite Aktivität auf der Uhr mitlaufen, die er selbst als "Indoor
+                # Radfahren" ohne km einordnet - dieselbe Fahrt würde sonst doppelt
+                # als zwei Rad-Einheiten gezählt (Sessions UND Minuten). Nur
+                # Aktivitäten mit echter Distanz > 0 zählen als Rad-Einheit; die
                 # reine Herzfrequenz-Zweitaufzeichnung (0 km) wird ignoriert.
                 if distance_km <= 0:
                     continue
@@ -202,14 +202,14 @@ def _volumes_in_window(activities, window_start, window_end):
                 totals["strength_min"] += duration_min
                 totals["strength_sessions"] += 1
         except Exception as e:
-            print(f"[sync] Aktivitaet konnte nicht ausgewertet werden: {e}")
+            print(f"[sync] Aktivität konnte nicht ausgewertet werden: {e}")
     return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in totals.items()}
 
 def _fetch_max_metrics(client, today_date):
-    """Holt VO2max ueber ein 14-Tage-Fenster statt nur fuer heute.
+    """Holt VO2max über ein 14-Tage-Fenster statt nur für heute.
 
     Garmin berechnet VO2max nur nach qualifizierenden Einheiten, der Tageseintrag
-    fuer 'heute' ist deshalb meistens leer - genau daran lag es, dass der VO2max-
+    für 'heute' ist deshalb meistens leer - genau daran lag es, dass der VO2max-
     Sensor dauerhaft 'unbekannt' blieb. Die Bibliothek fragt fest cdate/cdate ab,
     der Endpunkt kann aber einen Zeitraum: ein Request statt 14 einzelner (schont
     das Garmin-Rate-Limit)."""
@@ -223,10 +223,10 @@ def _fetch_max_metrics(client, today_date):
 
 
 def _update_history(wellness):
-    """Fuehrt eine rollierende Tages-Historie in /data/history.json.
+    """Führt eine rollierende Tages-Historie in /data/history.json.
 
-    Damit kann der Wochenreport Trends (Ruhepuls, HRV, Schlaf, Readiness) ueber
-    mehrere Tage bilden, ohne fuer jeden Tag erneut bei Garmin anzufragen."""
+    Damit kann der Wochenreport Trends (Ruhepuls, HRV, Schlaf, Readiness) über
+    mehrere Tage bilden, ohne für jeden Tag erneut bei Garmin anzufragen."""
     metrics = extract_metrics(wellness)
     entry = {
         "date": wellness.get("date"),
@@ -238,15 +238,15 @@ def _update_history(wellness):
         "readiness": metrics["training_readiness_score"],
         "stress_avg": metrics["stress_avg"],
         "steps": metrics["steps_today"],
-        # Seit v0.12.0: fuer den VO2max-Stagnations-Trigger der
+        # Seit v0.12.0: für den VO2max-Stagnations-Trigger der
         # Trainingsplan-Kommentierung (siehe check_trainingsplan_trigger).
-        # Aeltere Historieneintraege haben dieses Feld noch nicht - das ist
-        # unproblematisch, _history_avg() ueberspringt fehlende Werte einfach.
+        # Ältere Historieneinträge haben dieses Feld noch nicht - das ist
+        # unproblematisch, _history_avg() überspringt fehlende Werte einfach.
         "vo2max": metrics["vo2max"],
-        # Seit v0.16.0: fuer den FTP-"Benchmark-Sprung"-Trigger (siehe
+        # Seit v0.16.0: für den FTP-"Benchmark-Sprung"-Trigger (siehe
         # check_trainingsplan_trigger) sowie den Verlauf im Dashboard-Tab
-        # "Verlauf". Aeltere Eintraege ohne dieses Feld werden wie bei vo2max
-        # einfach uebersprungen.
+        # "Verlauf". Ältere Einträge ohne dieses Feld werden wie bei vo2max
+        # einfach übersprungen.
         "ftp": metrics.get("ftp"),
     }
     history = []
@@ -269,7 +269,7 @@ def _update_history(wellness):
 
 
 def _history_avg(history, key, offset_from: int, offset_to: int, today=None):
-    """Mittelwert eines Feldes ueber Tage mit Abstand offset_from..offset_to zu heute."""
+    """Mittelwert eines Feldes über Tage mit Abstand offset_from..offset_to zu heute."""
     today = today or datetime.date.today()
     values = []
     for entry in history or []:
@@ -285,7 +285,7 @@ def _history_avg(history, key, offset_from: int, offset_to: int, today=None):
 
 
 def _pct_change(current, previous):
-    """Prozentuale Veraenderung; None wenn die Vorwoche keine Basis hergibt."""
+    """Prozentuale Veränderung; None wenn die Vorwoche keine Basis hergibt."""
     if not previous or current is None:
         return None
     return round((current - previous) / previous * 100)
@@ -307,9 +307,9 @@ def _load_strength_cache() -> dict:
 
 
 def _save_strength_cache(cache: dict) -> dict:
-    """Speichert den Uebungs-Cache, begrenzt auf STRENGTH_CACHE_DAYS Tage
+    """Speichert den Übungs-Cache, begrenzt auf STRENGTH_CACHE_DAYS Tage
     (analog zu HISTORY_DAYS bei der Wellness-Historie), damit die Datei nicht
-    unbegrenzt waechst."""
+    unbegrenzt wächst."""
     cutoff = (datetime.date.today() - datetime.timedelta(days=STRENGTH_CACHE_DAYS)).isoformat()
     cache = {k: v for k, v in cache.items() if (v.get("date") or "") >= cutoff}
     try:
@@ -321,36 +321,36 @@ def _save_strength_cache(cache: dict) -> dict:
 
 
 def _is_broken_strength_entry(entry: dict) -> bool:
-    """Erkennt Cache-Eintraege aus der fehlgeschlagenen v0.10.0-FIT-Extraktion
-    (leere Uebungsliste oder nur der Codename-Platzhalter „Uebung (Code ...)"),
+    """Erkennt Cache-Einträge aus der fehlgeschlagenen v0.10.0-FIT-Extraktion
+    (leere Übungsliste oder nur der Codename-Platzhalter „Übung (Code ...)"),
     damit sie nach dem v0.10.1-Fix (exerciseSets-API statt eigenem FIT-Parsing)
     automatisch einmalig neu abgerufen werden, statt dauerhaft als kaputter
-    Eintrag im Cache haengen zu bleiben (siehe claude/status-und-plan.md,
-    Abschnitt v0.10.1 - live bestaetigt: 2 von 4 Kraft-Einheiten des ersten
+    Eintrag im Cache hängen zu bleiben (siehe claude/status-und-plan.md,
+    Abschnitt v0.10.1 - live bestätigt: 2 von 4 Kraft-Einheiten des ersten
     echten Syncs blieben unter v0.10.0 leer bzw. nur mit Codename-Platzhalter)."""
     exercises = entry.get("exercises") or []
     if not exercises:
         return True
     return any(
-        str((ex or {}).get("exercise", "")).startswith("Uebung (Code")
+        str((ex or {}).get("exercise", "")).startswith("Übung (Code")
         for ex in exercises
     )
 
 
 def _update_strength_exercises(client, activities: list) -> list:
-    """Laedt fuer Kraft-Aktivitaeten der laufenden Woche, die noch nicht im
+    """Lädt für Kraft-Aktivitäten der laufenden Woche, die noch nicht im
     Cache stehen (oder deren Cache-Eintrag als fehlgeschlagen erkannt wurde,
-    siehe _is_broken_strength_entry), die Uebungsdaten ueber Garmins
-    exerciseSets-API (siehe fit_exercises.py) - die normale Aktivitaetenliste
-    liefert dafuer nur Aggregatwerte (total_sets/total_reps/total_volume),
-    keine Aufschluesselung je Uebung. Gibt die Sessions der laufenden Woche
-    zurueck (fuer Wochenreport/Dashboard), aeltere bleiben nur im Cache."""
+    siehe _is_broken_strength_entry), die Übungsdaten über Garmins
+    exerciseSets-API (siehe fit_exercises.py) - die normale Aktivitätenliste
+    liefert dafür nur Aggregatwerte (total_sets/total_reps/total_volume),
+    keine Aufschlüsselung je Übung. Gibt die Sessions der laufenden Woche
+    zurück (für Wochenreport/Dashboard), ältere bleiben nur im Cache."""
     cache = _load_strength_cache()
     broken_keys = [k for k, v in cache.items() if _is_broken_strength_entry(v)]
     for k in broken_keys:
         del cache[k]
     if broken_keys:
-        print(f"[strength] {len(broken_keys)} kaputte Cache-Eintraege (v0.10.0) verworfen, werden neu abgerufen: {broken_keys}")
+        print(f"[strength] {len(broken_keys)} kaputte Cache-Einträge (v0.10.0) verworfen, werden neu abgerufen: {broken_keys}")
     now = datetime.datetime.now()
     window_start = now - datetime.timedelta(days=7)
     changed = bool(broken_keys)
@@ -380,7 +380,7 @@ def _update_strength_exercises(client, activities: list) -> list:
             }
             changed = True
         except Exception as e:
-            print(f"[strength] Aktivitaet konnte nicht verarbeitet werden: {e}")
+            print(f"[strength] Aktivität konnte nicht verarbeitet werden: {e}")
 
     if changed:
         cache = _save_strength_cache(cache)
@@ -415,12 +415,12 @@ def _save_decoupling_cache(cache: dict) -> dict:
 
 
 def _update_decoupling_cache(client, activities: list) -> list:
-    """Berechnet die HF-Pace-Kopplung (siehe decoupling.py) fuer qualifizierende
-    Lauf-Aktivitaeten, die noch nicht im Cache stehen - gleiches Cache-Muster
+    """Berechnet die HF-Pace-Kopplung (siehe decoupling.py) für qualifizierende
+    Lauf-Aktivitäten, die noch nicht im Cache stehen - gleiches Cache-Muster
     wie _update_strength_exercises() (dauerhaft je activity_id, damit nicht bei
-    jedem Sync erneut Garmin.get_activity_splits() fuer bereits ausgewertete
+    jedem Sync erneut Garmin.get_activity_splits() für bereits ausgewertete
     Einheiten aufgerufen wird). Gibt die Sessions der letzten DECOUPLING_CACHE_DAYS
-    Tage zurueck (fuer Dashboard/Kontext), aeltere bleiben nur im Cache."""
+    Tage zurück (für Dashboard/Kontext), ältere bleiben nur im Cache."""
     cache = _load_decoupling_cache()
     changed = False
 
@@ -442,7 +442,7 @@ def _update_decoupling_cache(client, activities: list) -> list:
             result = decoupling.compute_decoupling(raw_splits)
             if not result:
                 # Nicht genug verwertbare Runden (z.B. keine HF je Runde) -
-                # als "geprueft, aber leer" merken, damit nicht bei jedem
+                # als "geprüft, aber leer" merken, damit nicht bei jedem
                 # Sync erneut derselbe (aussichtslose) Abruf versucht wird.
                 cache[key] = {"date": start_dt.date().isoformat(), "activity_name": act.get("activityName"), "empty": True}
                 changed = True
@@ -454,7 +454,7 @@ def _update_decoupling_cache(client, activities: list) -> list:
             }
             changed = True
         except Exception as e:
-            print(f"[decoupling] Aktivitaet konnte nicht verarbeitet werden: {e}")
+            print(f"[decoupling] Aktivität konnte nicht verarbeitet werden: {e}")
 
     if changed:
         cache = _save_decoupling_cache(cache)
@@ -464,24 +464,24 @@ def _update_decoupling_cache(client, activities: list) -> list:
 
 
 def _check_endurance_before_strength_interference(activities: list, today_date: datetime.date) -> str:
-    """Prueft, ob am Sync-Tag oder Vortag eine Ausdauer-Einheit (Schwimmen/Rad/
+    """Prüft, ob am Sync-Tag oder Vortag eine Ausdauer-Einheit (Schwimmen/Rad/
     Lauf) weniger als INTERFERENCE_WINDOW_HOURS vor einer Kraft-Einheit endete -
     siehe claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.5.
 
     Bewusst NUR diese Richtung (Ausdauer -> Kraft), nicht umgekehrt: das
     AMPK/mTOR-Interferenzfenster (Wojtaszewski et al. 2000, GSSI SSE #136 -
-    3h, nicht die urspruenglich kursierenden 6h) betrifft primaer diese
+    3h, nicht die ursprünglich kursierenden 6h) betrifft primär diese
     Reihenfolge; Kraft-vor-Ausdauer zeigt laut Murlasits et al. 2017 keinen
     vergleichbaren VO2max-Nachteil (bereits im Projekt dokumentierte
     Quellen, siehe wissenschaftliche-quellen-trainingsgrundlagen.md).
 
-    Gibt einen fertigen Kontext-Satz zurueck (oder '' wenn kein Fall
+    Gibt einen fertigen Kontext-Satz zurück (oder '' wenn kein Fall
     vorliegt) - bewusst KEIN neuer Sensor/keine neue Kachel (Entscheidung vom
     11.09.2026, Konzept-Dokument Abschnitt 5): nur als Kontextsatz in
     bestehende Coaching-Prompts eingespeist, um keine neue ACWR-artige
-    Ueberpraezisions-Kennzahl zu erzeugen. Betrachtet bewusst nur heute und
-    gestern (der taegliche Sync laeuft morgens, ein spaeterer Fund am
-    Vortag ist zum naechsten Sync noch aktuell genug fuer den Gym-Tipp)."""
+    Überpräzisions-Kennzahl zu erzeugen. Betrachtet bewusst nur heute und
+    gestern (der tägliche Sync läuft morgens, ein späterer Fund am
+    Vortag ist zum nächsten Sync noch aktuell genug für den Gym-Tipp)."""
     by_day = {}
     for act in activities or []:
         start_str = act.get("startTimeLocal")
@@ -517,9 +517,9 @@ def _check_endurance_before_strength_interference(activities: list, today_date: 
                     f"'{name2}' nur {gap_hours:.1f}h nach '{name1}' (Ausdauer vor Kraft, "
                     f"unter {INTERFERENCE_WINDOW_HOURS}h). In diesem Fenster kann das "
                     "Interferenz-Signal (AMPK/mTOR) den Kraft-/Muskelaufbaureiz etwas "
-                    "abschwaechen - kein Problem als Einzelfall, aber bei wiederholtem "
-                    "Muster ggf. groesseren zeitlichen Abstand oder umgekehrte "
-                    "Reihenfolge erwaegen."
+                    "abschwächen - kein Problem als Einzelfall, aber bei wiederholtem "
+                    "Muster ggf. größeren zeitlichen Abstand oder umgekehrte "
+                    "Reihenfolge erwägen."
                 )
     return ""
 
@@ -553,35 +553,35 @@ def _days_since(date_str, today: datetime.date):
 
 
 def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: list):
-    """Prueft, ob eine Gemini-Kommentierung der Trainingsplaene (Dashboard-Tab
-    "Trainingsplaene") gerechtfertigt ist - bewusst NICHT bei jedem Sync,
-    siehe claude/status-und-plan.md ("Trigger-Kriterien fuer automatische
-    Gemini-Kommentierung", von Alex am 09.09.2026 so gewuenscht). Drei
+    """Prüft, ob eine Gemini-Kommentierung der Trainingspläne (Dashboard-Tab
+    "Trainingspläne") gerechtfertigt ist - bewusst NICHT bei jedem Sync,
+    siehe claude/status-und-plan.md ("Trigger-Kriterien für automatische
+    Gemini-Kommentierung", von Alex am 09.09.2026 so gewünscht). Drei
     Trigger-Arten:
 
-    1. Phasenwechsel (kalenderbasiert, einmalig je Phasenuebergang) - die
-       Basis-Kadenz, faellt mit den echten Mesozyklus-Grenzen der
+    1. Phasenwechsel (kalenderbasiert, einmalig je Phasenübergang) - die
+       Basis-Kadenz, fällt mit den echten Mesozyklus-Grenzen der
        Periodisierung zusammen (PHASES oben, alle ~8-13 Wochen).
     2. Datenbasiert, mit Cooldown (TRAININGSPLAN_TRIGGER_COOLDOWN_DAYS),
        damit ein anhaltender Zustand nicht bei jedem einzelnen Sync erneut
-       ausloest:
+       auslöst:
        - Training Readiness im 14-Tage-Schnitt unter
-         TRAININGSPLAN_READINESS_LOW_THRESHOLD (moegliches Uebertraining).
-       - VO2max im 7-Tage-Schnitt stagniert/sinkt gegenueber dem 7-Tage-
+         TRAININGSPLAN_READINESS_LOW_THRESHOLD (mögliches Übertraining).
+       - VO2max im 7-Tage-Schnitt stagniert/sinkt gegenüber dem 7-Tage-
          Schnitt vor ca. 4 Wochen (Reiz greift nicht mehr).
        - Seit v0.16.0: FTP (Rad) im 7-Tage-Schnitt um mehr als
-         TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT gegenueber vor ca. 4-5 Wochen
+         TRAININGSPLAN_FTP_JUMP_THRESHOLD_PCT gegenüber vor ca. 4-5 Wochen
          gestiegen ("Benchmark-Sprung", siehe unten - vorher mangels
          Datenquelle nicht umsetzbar).
 
     Ein in status-und-plan.md ebenfalls dokumentierter Trigger (konsistente
-    Planabweichung ueber mehrere Wochen) ist hier weiterhin bewusst NICHT
-    implementiert: dafuer fehlt weiterhin eine persistierte historische
-    Wochenvolumen-Reihe - lieber ehrlich auslassen als auf duennem
+    Planabweichung über mehrere Wochen) ist hier weiterhin bewusst NICHT
+    implementiert: dafür fehlt weiterhin eine persistierte historische
+    Wochenvolumen-Reihe - lieber ehrlich auslassen als auf dünnem
     Datenboden zu raten.
 
-    Gibt (trigger_key, klartext_grund) oder (None, None) zurueck; speichert
-    bei jedem erkannten Ausloeser sowie beim allerersten Aufruf ueberhaupt
+    Gibt (trigger_key, klartext_grund) oder (None, None) zurück; speichert
+    bei jedem erkannten Auslöser sowie beim allerersten Aufruf überhaupt
     (Phase nur merken) den aktualisierten Zustand."""
     state = _load_trainingsplan_state()
     last_dates = state.get("last_trigger_dates") or {}
@@ -594,7 +594,7 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
         _save_trainingsplan_state(state)
         return "phase_change", f"Phasenwechsel von '{old_phase}' zu '{phase}'"
     if not state.get("last_known_phase"):
-        # Erster Sync ueberhaupt (oder erster nach diesem Feature-Update):
+        # Erster Sync überhaupt (oder erster nach diesem Feature-Update):
         # Phase nur merken, nicht sofort als "Wechsel" werten.
         state["last_known_phase"] = phase
         _save_trainingsplan_state(state)
@@ -631,8 +631,8 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
     # "Benchmark-Sprung" (FTP) - in status-und-plan.md und Konzept-Dokument
     # Abschnitt 1.1 lange als Trigger dokumentiert, aber bis v0.16.0 mangels
     # FTP-Datenquelle nicht umsetzbar (siehe check_trainingsplan_trigger()-
-    # Docstring oben, der diese Luecke bisher explizit benannte). Seit dem
-    # FTP-Sensor (Garmin.get_cycling_ftp(), siehe do_sync) jetzt verfuegbar:
+    # Docstring oben, der diese Lücke bisher explizit benannte). Seit dem
+    # FTP-Sensor (Garmin.get_cycling_ftp(), siehe do_sync) jetzt verfügbar:
     # 7-Tage-Schnitt jetzt vs. 7-Tage-Schnitt vor ca. 4-5 Wochen, gleicher
     # Cooldown-Mechanismus wie bei den anderen Datentriggern.
     ftp_recent = _history_avg(history, "ftp", 0, 6, today=today_date)
@@ -657,7 +657,7 @@ def check_trainingsplan_trigger(today_date: datetime.date, phase: str, history: 
 def build_weekly_summary(wellness: dict, history: list) -> dict:
     """Stellt die Kennzahlen des Wochenreports zusammen (laufende Woche vs. Vorwoche).
 
-    Bewusst eine flache Struktur aus Zahlen: so laesst sie sich 1:1 als
+    Bewusst eine flache Struktur aus Zahlen: so lässt sie sich 1:1 als
     MQTT-Attribute mitschicken und im Dashboard direkt anzeigen."""
     cur = wellness.get("weekly_volumes") or {}
     prev = wellness.get("weekly_volumes_prev") or {}
@@ -668,11 +668,11 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
 
     # Datumsbereiche der beiden Fenster als Klartext - die Tabelle im Dashboard nannte
     # diese Fenster bisher "Diese Woche"/"Vorwoche", was auf den Kopf zeigt, wenn der
-    # Report (wie vorgesehen) montags ueber die gerade abgeschlossene Woche laeuft:
-    # dann ist "diese Woche" fuer den Betrachter eigentlich schon "letzte Woche". Ein
-    # konkretes Datum statt einer relativen Woche-Bezeichnung raeumt die Verwirrung aus,
-    # unabhaengig davon, an welchem Wochentag der Report erzeugt wird (auch /weekly
-    # kann jederzeit manuell ausgeloest werden, nicht nur montags).
+    # Report (wie vorgesehen) montags über die gerade abgeschlossene Woche läuft:
+    # dann ist "diese Woche" für den Betrachter eigentlich schon "letzte Woche". Ein
+    # konkretes Datum statt einer relativen Woche-Bezeichnung räumt die Verwirrung aus,
+    # unabhängig davon, an welchem Wochentag der Report erzeugt wird (auch /weekly
+    # kann jederzeit manuell ausgelöst werden, nicht nur montags).
     
     try:
         today = datetime.date.fromisoformat(wellness.get("date")) if wellness.get("date") else datetime.date.today()
@@ -707,8 +707,8 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
         "sleep_hours_avg_prev": _history_avg(history, "sleep_hours", dsm + 1, dsm + 7),
         "readiness_avg": _history_avg(history, "readiness", 0, dsm),
         "readiness_avg_prev": _history_avg(history, "readiness", dsm + 1, dsm + 7),
-        # Wie viele Tage die Historie ueberhaupt schon abdeckt - der Report soll
-        # nicht so tun, als waeren Trends belastbar, wenn erst 2 Tage erfasst sind.
+        # Wie viele Tage die Historie überhaupt schon abdeckt - der Report soll
+        # nicht so tun, als wären Trends belastbar, wenn erst 2 Tage erfasst sind.
         "history_days": len(history or []),
     }
     return summary
@@ -738,7 +738,7 @@ def do_weekly_report(wellness: dict = None, history: list = None) -> str:
         text = generate_weekly_report(wellness, summary)
     except Exception as e:
         print(f"[weekly] Wochenreport fehlgeschlagen: {e}")
-        text = "Wochenreport aktuell nicht verfuegbar - Kennzahlen siehe Attribute."
+        text = "Wochenreport aktuell nicht verfügbar - Kennzahlen siehe Attribute."
     publish_weekly_report(text, summary)
     return text
 
@@ -747,13 +747,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
     """Holt aktuelle Garmin-Daten, speichert sie lokal und published sie
     (inkl. KI-Coaching-Notiz) nach MQTT/Home Assistant.
 
-    Wird sowohl vom manuellen /sync-Aufruf als auch vom taeglichen
+    Wird sowohl vom manuellen /sync-Aufruf als auch vom täglichen
     Hintergrund-Scheduler genutzt, damit beide Wege garantiert
-    tatsaechlich bei Home Assistant ankommen. `force=True` umgeht die
-    Mindestpause (z.B. fuer gezieltes Testen ueber /sync?force=1).
-    `also_weekly=True` erzeugt zusaetzlich unabhaengig vom Wochentag den
+    tatsächlich bei Home Assistant ankommen. `force=True` umgeht die
+    Mindestpause (z.B. für gezieltes Testen über /sync?force=1).
+    `also_weekly=True` erzeugt zusätzlich unabhängig vom Wochentag den
     Wochenreport (siehe "Jetzt synchronisieren"-Button/Handler unten) -
-    normalerweise laeuft der Wochenreport nur montags automatisch mit.
+    normalerweise läuft der Wochenreport nur montags automatisch mit.
     """
     global _last_sync_attempt
     if not is_logged_in():
@@ -761,8 +761,8 @@ def do_sync(force: bool = False, also_weekly: bool = False):
 
     now = datetime.datetime.now()
     if not force and _last_sync_attempt and now - _last_sync_attempt < MIN_SYNC_INTERVAL:
-        print("[sync] uebersprungen: letzter Versuch liegt weniger als "
-              f"{MIN_SYNC_INTERVAL} zurueck (Schutz vor Garmin-Kontosperre).")
+        print("[sync] übersprungen: letzter Versuch liegt weniger als "
+              f"{MIN_SYNC_INTERVAL} zurück (Schutz vor Garmin-Kontosperre).")
         return None
     _last_sync_attempt = now
 
@@ -778,7 +778,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             "steps": client.get_steps_data(today),
             "training_readiness": client.get_training_readiness(today),
 
-            # Erholung / Belastung - fuer Uebertrainings-Fruehwarnung
+            # Erholung / Belastung - für Übertrainings-Frühwarnung
             "training_status": _safe_fetch("training_status", lambda: client.get_training_status(today)),
             "hrv": _safe_fetch("hrv", lambda: client.get_hrv_data(today)),
             "body_battery": _safe_fetch("body_battery", lambda: client.get_body_battery(today, today)),
@@ -787,10 +787,10 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             "spo2": _safe_fetch("spo2", lambda: client.get_spo2_data(today)),
             "sleep": _safe_fetch("sleep", lambda: client.get_sleep_data(today)),
 
-            # Fitness-Fortschritt - fuer die Ironman-70.3-Vorbereitung
+            # Fitness-Fortschritt - für die Ironman-70.3-Vorbereitung
             "max_metrics": _fetch_max_metrics(client, today_date),  # VO2max (14-Tage-Fenster)
             # FTP (Rad) - Garmin.get_cycling_ftp() liefert ohne Parameter die
-            # zuletzt von Garmin/Zwift ermittelte FTP, kein Datum noetig (siehe
+            # zuletzt von Garmin/Zwift ermittelte FTP, kein Datum nötig (siehe
             # claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.1).
             "ftp_raw": _safe_fetch("ftp", lambda: client.get_cycling_ftp()),
 
@@ -801,7 +801,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
 
         recent_activities = _safe_fetch("activities", lambda: client.get_activities(0, 50)) or []
         # Kalenderwoche Mo-So statt rollierender 7-Tage-Fenster: Montag 00:00 dieser
-        # Woche bis (exklusiv) naechsten Montag; Vorwoche entsprechend 7 Tage davor.
+        # Woche bis (exklusiv) nächsten Montag; Vorwoche entsprechend 7 Tage davor.
         week_start = datetime.datetime.combine(
             today_date - datetime.timedelta(days=today_date.weekday()), datetime.time.min
         )
@@ -809,18 +809,18 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         prev_week_start = week_start - datetime.timedelta(days=7)
         prev_week_end = week_start
         wellness["weekly_volumes"] = _volumes_in_window(recent_activities, week_start, week_end)
-        # Vorwoche aus denselben Aktivitaetsdaten - Basis fuer den Soll/Ist-Vergleich
-        # im Wochenreport, ohne einen einzigen zusaetzlichen Garmin-Request.
+        # Vorwoche aus denselben Aktivitätsdaten - Basis für den Soll/Ist-Vergleich
+        # im Wochenreport, ohne einen einzigen zusätzlichen Garmin-Request.
         wellness["weekly_volumes_prev"] = _volumes_in_window(recent_activities, prev_week_start, prev_week_end)
-        # Einzelne Uebungen/Saetze je Kraft-Einheit dieser Woche (Best-Effort ueber
-        # die Original-FIT-Datei, siehe fit_exercises.py) - ueber _safe_fetch, damit
+        # Einzelne Übungen/Sätze je Kraft-Einheit dieser Woche (Best-Effort über
+        # die Original-FIT-Datei, siehe fit_exercises.py) - über _safe_fetch, damit
         # ein Problem hier (z.B. neues Garmin-Dateiformat) nie den ganzen Sync killt.
         wellness["strength_exercises"] = _safe_fetch(
             "strength_exercises", lambda: _update_strength_exercises(client, recent_activities)
         ) or []
 
         # HF-Pace-Kopplung (aerobe Entkopplung) je qualifizierender Lauf-
-        # Aktivitaet - siehe decoupling.py. Ueber _safe_fetch, damit ein
+        # Aktivität - siehe decoupling.py. Über _safe_fetch, damit ein
         # Problem hier (z.B. unerwartetes Antwortformat von
         # get_activity_splits) nie den ganzen Sync killt.
         wellness["decoupling_sessions"] = _safe_fetch(
@@ -829,7 +829,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
 
         # Interferenz-Hinweis Ausdauer-vor-Kraft <3h (siehe
         # _check_endurance_before_strength_interference) - reine Berechnung
-        # auf bereits geladenen Aktivitaetsdaten, kein zusaetzlicher
+        # auf bereits geladenen Aktivitätsdaten, kein zusätzlicher
         # Garmin-Request, trotzdem defensiv behandelt.
         interference_note = ""
         try:
@@ -837,13 +837,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 recent_activities, today_date
             )
         except Exception as e:
-            print(f"[sync] Interferenz-Pruefung fehlgeschlagen: {e}")
+            print(f"[sync] Interferenz-Prüfung fehlgeschlagen: {e}")
 
-        # Diese beiden aendern sich nur langsam (Tage/Wochen) -> nur einmal
-        # woechentlich (montags) abrufen, um zusaetzliche Garmin-Calls und
-        # damit das Rate-Limit-Risiko nicht unnoetig zu erhoehen.
+        # Diese beiden ändern sich nur langsam (Tage/Wochen) -> nur einmal
+        # wöchentlich (montags) abrufen, um zusätzliche Garmin-Calls und
+        # damit das Rate-Limit-Risiko nicht unnötig zu erhöhen.
         if today_date.weekday() == 0:  # Montag
-            # Einzeltag-Abfrage: liefert "overallScore" direkt. Die frueher genutzte
+            # Einzeltag-Abfrage: liefert "overallScore" direkt. Die früher genutzte
             # Zeitraum-Variante liefert stattdessen avg/max/groupMap - deren Feld
             # "overallScore" gibt es dort gar nicht, der Sensor konnte also nie
             # einen Wert bekommen.
@@ -858,19 +858,19 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_discovery()
 
         # Messwerte SOFORT publizieren - vor der KI-Anfrage. Die Gemini-Antwort kann
-        # je nach Modell deutlich ueber eine Minute dauern oder ganz fehlschlagen; die
+        # je nach Modell deutlich über eine Minute dauern oder ganz fehlschlagen; die
         # Garmin-Daten sollen davon nicht aufgehalten oder mitgerissen werden.
         publish_state(wellness)
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
         publish_decoupling(wellness["decoupling_sessions"])
 
-        # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschlaege (Dashboard-Tab
-        # "Vorschlaege", siehe suggestions.py) mit der aktuellen Punkteliste
+        # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschläge (Dashboard-Tab
+        # "Vorschläge", siehe suggestions.py) mit der aktuellen Punkteliste
         # abgleichen - VOR dem Trainingsplan-Kommentar-Block unten, damit
         # generate_trainingsplan_kommentar() dort bereits den aktuellen Status kennt
         # (angenommene/abgelehnte Punkte werden im Prompt ausgeblendet bzw. markiert,
-        # siehe ai_coach._render_gym_kritik). Guenstig genug, um bei jedem Sync zu
+        # siehe ai_coach._render_gym_kritik). Günstig genug, um bei jedem Sync zu
         # laufen (reine Dict-/Datei-Operation, kein Gemini-Aufruf).
         suggestions.sync_suggestions("gym_kritik", TRAININGSPLAN_GYM_KRITIK)
 
@@ -882,14 +882,14 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             if not os.environ.get("GEMINI_API_KEY"):
                 raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
             if not any((s.get("exercises") or []) for s in wellness["strength_exercises"]):
-                gym_note = "Noch keine verwertbaren Kraft-Uebungsdaten der letzten 7 Tage fuer einen Gym-Tipp."
+                gym_note = "Noch keine verwertbaren Kraft-Übungsdaten der letzten 7 Tage für einen Gym-Tipp."
             else:
                 gym_note = generate_gym_coaching_note(
                     wellness["strength_exercises"], interference_note=interference_note
                 )
         except Exception as e:
             print(f"[ai_coach] Gym-Coaching-Tipp fehlgeschlagen: {e}")
-            gym_note = "Gym-Coaching-Tipp aktuell nicht verfuegbar - Uebungsdaten wurden trotzdem synchronisiert."
+            gym_note = "Gym-Coaching-Tipp aktuell nicht verfügbar - Übungsdaten wurden trotzdem synchronisiert."
         publish_gym_coaching_note(gym_note)
 
         try:
@@ -900,14 +900,14 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             # Technischen Fehler nur ins Log schreiben, nicht in die Notiz, die
             # im Dashboard landet - dort sollen keine Exception-Details/Keys auftauchen.
             print(f"[ai_coach] Coaching-Notiz fehlgeschlagen: {e}")
-            note = "Coaching-Tipp aktuell nicht verfuegbar - Werte wurden trotzdem synchronisiert."
+            note = "Coaching-Tipp aktuell nicht verfügbar - Werte wurden trotzdem synchronisiert."
         publish_coaching_note(note)
 
         history = _update_history(wellness)
 
-        # Trainingsplan-Kommentierung (Tab "Trainingsplaene") - anders als die
+        # Trainingsplan-Kommentierung (Tab "Trainingspläne") - anders als die
         # anderen Coaching-Texte NICHT bei jedem Sync, sondern nur wenn ein
-        # konkreter Ausloeser vorliegt (siehe check_trainingsplan_trigger).
+        # konkreter Auslöser vorliegt (siehe check_trainingsplan_trigger).
         # Kein Trigger -> Funktion wird gar nicht erst aufgerufen, der zuletzt
         # publizierte (retained) Kommentar bleibt im Dashboard einfach stehen.
         try:
@@ -917,10 +917,10 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             if trigger_key:
                 if not os.environ.get("GEMINI_API_KEY"):
                     raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
-                # Aktueller Annehmen/Ablehnen-Stand als Kontext fuer den Prompt (siehe
+                # Aktueller Annehmen/Ablehnen-Stand als Kontext für den Prompt (siehe
                 # suggestions.py): Gym-Status blendet abgelehnte Punkte aus, decided_context
-                # nennt bereits entschiedene fruehere Einzelvorschlaege aus DIESEM Kanal, damit
-                # Gemini angenommene nicht erneut vorschlaegt und abgelehnte nicht wiederholt.
+                # nennt bereits entschiedene frühere Einzelvorschläge aus DIESEM Kanal, damit
+                # Gemini angenommene nicht erneut vorschlägt und abgelehnte nicht wiederholt.
                 gym_status = {
                     sid: rec["status"] for sid, rec in suggestions.by_source("gym_kritik").items()
                 }
@@ -932,27 +932,27 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 )
                 suggestions.sync_suggestions("trainingsplan_kommentar", plan_vorschlaege)
                 publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)
-                print(f"[trainingsplan] Kommentar publiziert (Ausloeser: {trigger_key}, "
-                      f"{len(plan_vorschlaege)} Einzelvorschlag/-vorschlaege)")
+                print(f"[trainingsplan] Kommentar publiziert (Auslöser: {trigger_key}, "
+                      f"{len(plan_vorschlaege)} Einzelvorschlag/-vorschläge)")
         except Exception as e:
             # Bewusst KEIN publish_trainingsplan_kommentar(...) mit Fehlertext:
             # anders als bei den anderen Coaching-Texten soll bei einem Fehler
             # hier der zuletzt erfolgreich generierte Kommentar (falls
             # vorhanden) im Dashboard stehen bleiben statt durch eine
-            # Fehlermeldung ersetzt zu werden - der naechste ausgeloeste Sync
+            # Fehlermeldung ersetzt zu werden - der nächste ausgelöste Sync
             # versucht es erneut.
             print(f"[trainingsplan] Kommentar fehlgeschlagen: {e}")
 
         # Aktuellen Annehmen/Ablehnen-Gesamtzustand publizieren (Dashboard-Tab
-        # "Vorschlaege") - unabhaengig davon, ob oben ein Trainingsplan-Kommentar-
-        # Trigger ausgeloest hat: die Gym-Kritik wurde weiter oben in jedem Fall
+        # "Vorschläge") - unabhängig davon, ob oben ein Trainingsplan-Kommentar-
+        # Trigger ausgelöst hat: die Gym-Kritik wurde weiter oben in jedem Fall
         # abgeglichen, und selbst ohne neuen Trigger soll das Dashboard den zuletzt
-        # bekannten Stand (inkl. frueherer Annahme-/Ablehnungs-Entscheidungen) zeigen.
+        # bekannten Stand (inkl. früherer Annahme-/Ablehnungs-Entscheidungen) zeigen.
         publish_vorschlaege(suggestions.all_suggestions())
 
-        # Wochenreport montags automatisch (Rueckblick auf die abgeschlossene Woche);
-        # jederzeit manuell ueber /weekly ausloesbar, oder ueber also_weekly=True
-        # gebuendelt mit diesem Sync (siehe "Jetzt synchronisieren"-Button).
+        # Wochenreport montags automatisch (Rückblick auf die abgeschlossene Woche);
+        # jederzeit manuell über /weekly auslösbar, oder über also_weekly=True
+        # gebündelt mit diesem Sync (siehe "Jetzt synchronisieren"-Button).
         if today_date.weekday() == 0 or also_weekly:
             do_weekly_report(wellness, history)
         return wellness
@@ -963,29 +963,29 @@ def do_sync(force: bool = False, also_weekly: bool = False):
 
 
 def _handle_sync_button_press():
-    """Wird ueber MQTT ausgeloest (Button-Entity "Garmin AI Coach Jetzt
+    """Wird über MQTT ausgelöst (Button-Entity "Garmin AI Coach Jetzt
     synchronisieren" aus ha_publish.publish_discovery(), Topic
-    garmin_ai_coach/sync_now/set) statt wie bisher ueber einen Dashboard-Klick
+    garmin_ai_coach/sync_now/set) statt wie bisher über einen Dashboard-Klick
     auf eine fest verdrahtete Ingress-URL. Diese URL scheiterte mit HTTP 401,
-    sobald der Browser keine gueltige (kurzlebige) Ingress-Session mehr hatte -
-    z.B. weil der Tap-Action-Typ "url" den Link in einem neuen Tab oeffnet, der
+    sobald der Browser keine gültige (kurzlebige) Ingress-Session mehr hatte -
+    z.B. weil der Tap-Action-Typ "url" den Link in einem neuen Tab öffnet, der
     nie eine Ingress-Session aufgebaut hat (siehe claude/status-und-plan.md,
     "Dashboard-Ingress-URL fragil"). Ein MQTT-Button ist eine normale
-    HA-Entity, die ueber einen ganz normalen Service-Call (mqtt.publish)
-    ausgeloest wird - unabhaengig von Ingress-Sessions.
+    HA-Entity, die über einen ganz normalen Service-Call (mqtt.publish)
+    ausgelöst wird - unabhängig von Ingress-Sessions.
 
-    Laeuft in einem eigenen Thread, damit der MQTT-Netzwerk-Thread (der diesen
+    Läuft in einem eigenen Thread, damit der MQTT-Netzwerk-Thread (der diesen
     Callback aufruft) nicht blockiert wird - ein Sync inkl. Gemini-Aufrufen
-    kann mehrere zehn Sekunden dauern. Loest bewusst IMMER auch den
-    Wochenreport aus (also_weekly=True, siehe do_sync) - Alex' ausdruecklicher
+    kann mehrere zehn Sekunden dauern. Löst bewusst IMMER auch den
+    Wochenreport aus (also_weekly=True, siehe do_sync) - Alex' ausdrücklicher
     Wunsch, damit ein Klick auf "Jetzt synchronisieren" beides gleichzeitig
-    anstoesst, unabhaengig vom Wochentag."""
+    anstößt, unabhängig vom Wochentag."""
     def _run():
-        print("[mqtt] Sync-Button gedrueckt - starte Sync + Wochenreport")
+        print("[mqtt] Sync-Button gedrückt - starte Sync + Wochenreport")
         try:
             do_sync(force=True, also_weekly=True)
         except Exception as e:
-            print(f"[mqtt] Sync ueber Button fehlgeschlagen: {e}")
+            print(f"[mqtt] Sync über Button fehlgeschlagen: {e}")
     threading.Thread(target=_run, daemon=True).start()
 
 
@@ -993,52 +993,52 @@ set_sync_button_callback(_handle_sync_button_press)
 
 
 def _handle_vorschlag_accept(suggestion_id: str):
-    """Wird ueber MQTT ausgeloest (Button "Garmin Vorschlag Annehmen", Topic
+    """Wird über MQTT ausgelöst (Button "Garmin Vorschlag Annehmen", Topic
     garmin_ai_coach/vorschlag_annehmen/set), wirkt auf den zuletzt im Dropdown
-    "Garmin Vorschlag Auswahl" ausgewaehlten Vorschlag (siehe ha_publish.
+    "Garmin Vorschlag Auswahl" ausgewählten Vorschlag (siehe ha_publish.
     _on_message). Setzt dessen Status auf "accepted" (suggestions.py) - wird
-    kuenftigen Trainingsplan-Kommentar-Prompts als bereits angenommen/
+    künftigen Trainingsplan-Kommentar-Prompts als bereits angenommen/
     umgesetzt mitgegeben, siehe suggestions.context_for_prompt und
     ai_coach._render_gym_kritik. Publiziert danach sofort den neuen
-    Gesamtzustand, damit das Dashboard nicht bis zum naechsten Sync auf die
+    Gesamtzustand, damit das Dashboard nicht bis zum nächsten Sync auf die
     Aktualisierung warten muss. Schnelle reine Datei-/MQTT-Operation, deshalb
     (anders als der Sync-Button) ohne eigenen Thread."""
     try:
         if suggestions.set_status(suggestion_id, suggestions.STATUS_ACCEPTED):
-            print(f"[vorschlaege] '{suggestion_id}' angenommen")
+            print(f"[vorschläge] '{suggestion_id}' angenommen")
         else:
-            print(f"[vorschlaege] Annehmen fehlgeschlagen: id '{suggestion_id}' unbekannt "
+            print(f"[vorschläge] Annehmen fehlgeschlagen: id '{suggestion_id}' unbekannt "
                   "(veraltete Dashboard-Auswahl nach einem zwischenzeitlichen Sync?)")
         publish_vorschlaege(suggestions.all_suggestions())
     except Exception as e:
-        print(f"[vorschlaege] Annehmen fehlgeschlagen: {e}")
+        print(f"[vorschläge] Annehmen fehlgeschlagen: {e}")
 
 
 def _handle_vorschlag_reject(suggestion_id: str):
-    """Analog zu _handle_vorschlag_accept, aber fuer den "Garmin Vorschlag
+    """Analog zu _handle_vorschlag_accept, aber für den "Garmin Vorschlag
     Ablehnen"-Button - setzt den Status auf "rejected". Der Vorschlag bleibt
-    im Dashboard-Tab "Vorschlaege" unter "Abgelehnt" sichtbar und laesst sich
-    dort jederzeit wieder auswaehlen und per erneutem Annehmen reaktivieren."""
+    im Dashboard-Tab "Vorschläge" unter "Abgelehnt" sichtbar und lässt sich
+    dort jederzeit wieder auswählen und per erneutem Annehmen reaktivieren."""
     try:
         if suggestions.set_status(suggestion_id, suggestions.STATUS_REJECTED):
-            print(f"[vorschlaege] '{suggestion_id}' abgelehnt")
+            print(f"[vorschläge] '{suggestion_id}' abgelehnt")
         else:
-            print(f"[vorschlaege] Ablehnen fehlgeschlagen: id '{suggestion_id}' unbekannt "
+            print(f"[vorschläge] Ablehnen fehlgeschlagen: id '{suggestion_id}' unbekannt "
                   "(veraltete Dashboard-Auswahl nach einem zwischenzeitlichen Sync?)")
         publish_vorschlaege(suggestions.all_suggestions())
     except Exception as e:
-        print(f"[vorschlaege] Ablehnen fehlgeschlagen: {e}")
+        print(f"[vorschläge] Ablehnen fehlgeschlagen: {e}")
 
 
 set_vorschlag_callbacks(on_accept=_handle_vorschlag_accept, on_reject=_handle_vorschlag_reject)
 
 
 def _load_latest_wellness_and_history():
-    """Laedt die zuletzt gespeicherten Sync-Daten + Tages-Historie von der
+    """Lädt die zuletzt gespeicherten Sync-Daten + Tages-Historie von der
     Platte - gleiche Quelle/gleiches Muster wie do_weekly_report() ohne
-    Parameter. Fuer den Chat (_handle_chat_question unten) gebraucht, damit
-    eine Frage NICHT extra einen neuen Garmin-Sync ausloest (waere zu
-    langsam/unnoetiges Rate-Limit-Risiko fuer eine reine Textfrage)."""
+    Parameter. Für den Chat (_handle_chat_question unten) gebraucht, damit
+    eine Frage NICHT extra einen neuen Garmin-Sync auslöst (wäre zu
+    langsam/unnötiges Rate-Limit-Risiko für eine reine Textfrage)."""
     wellness = {}
     if os.path.exists(DATA_FILE):
         try:
@@ -1057,14 +1057,14 @@ def _load_latest_wellness_and_history():
 
 
 def _handle_chat_question(question: str):
-    """Wird ueber MQTT ausgeloest (text-Entity "Garmin Chat Frage", Topic
+    """Wird über MQTT ausgelöst (text-Entity "Garmin Chat Frage", Topic
     garmin_ai_coach/chat_frage/set, siehe ha_publish.py). Ruft Gemini MIT dem
     aktuellen Trainingskontext auf (ai_coach.generate_chat_answer - Alex'
-    ausdruecklicher Wunsch, damit z.B. "Wie war meine Woche?" ohne weitere
-    Erklaerung funktioniert), haengt Frage+Antwort an den gespeicherten
+    ausdrücklicher Wunsch, damit z.B. "Wie war meine Woche?" ohne weitere
+    Erklärung funktioniert), hängt Frage+Antwort an den gespeicherten
     Verlauf an (chat.py) und published das Ergebnis sofort.
 
-    Laeuft in einem eigenen Thread (wie _handle_sync_button_press) - der
+    Läuft in einem eigenen Thread (wie _handle_sync_button_press) - der
     Gemini-Aufruf kann mehrere Sekunden bis über eine Minute dauern und darf
     den MQTT-Netzwerk-Thread nicht blockieren. Ein Fehler landet NICHT als
     Exception im Dashboard, sondern als ehrliche, kurze Fehlermeldung in der
@@ -1080,7 +1080,7 @@ def _handle_chat_question(question: str):
             answer = generate_chat_answer(question, wellness, history, chat_context)
         except Exception as e:
             print(f"[chat] Antwort fehlgeschlagen: {e}")
-            answer = "Antwort aktuell nicht verfuegbar (Gemini-Fehler). Frag gern gleich nochmal."
+            answer = "Antwort aktuell nicht verfügbar (Gemini-Fehler). Frag gern gleich nochmal."
         entries = chat.add_exchange(question, answer)
         publish_chat_history(entries)
     threading.Thread(target=_run, daemon=True).start()
@@ -1147,8 +1147,8 @@ def sync():
 
 @app.route("/weekly")
 def weekly():
-    """Wochenreport manuell ausloesen (laeuft sonst automatisch montags).
-    Nutzt die zuletzt gesyncten Daten, loest also KEINE Garmin-Abfrage aus."""
+    """Wochenreport manuell auslösen (läuft sonst automatisch montags).
+    Nutzt die zuletzt gesyncten Daten, löst also KEINE Garmin-Abfrage aus."""
     if not is_logged_in():
         return redirect(".")
     do_weekly_report()
@@ -1156,8 +1156,8 @@ def weekly():
 
 
 def _seconds_until_next_run(hours: list) -> float:
-    """Sekunden bis zum naechsten Termin unter mehreren taeglichen Stunden - also bis zur
-    zeitlich naechstgelegenen noch ausstehenden Stunde aus `hours` (heute, sonst morgen)."""
+    """Sekunden bis zum nächsten Termin unter mehreren täglichen Stunden - also bis zur
+    zeitlich nächstgelegenen noch ausstehenden Stunde aus `hours` (heute, sonst morgen)."""
     now = datetime.datetime.now()
     targets = []
     for hour in hours:
@@ -1169,8 +1169,8 @@ def _seconds_until_next_run(hours: list) -> float:
 
 
 def _scheduler_loop():
-    """Laeuft im Hintergrund und ruft do_sync() zu jeder in SYNC_HOURS konfigurierten Stunde
-    auf (Default 6/12/18/20 Uhr), damit "automatischer Sync" auch wirklich mehrfach taeglich
+    """Läuft im Hintergrund und ruft do_sync() zu jeder in SYNC_HOURS konfigurierten Stunde
+    auf (Default 6/12/18/20 Uhr), damit "automatischer Sync" auch wirklich mehrfach täglich
     automatisch passiert, nicht nur einmal."""
     while True:
         time.sleep(_seconds_until_next_run(SYNC_HOURS))
