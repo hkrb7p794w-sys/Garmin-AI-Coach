@@ -1,5 +1,5 @@
 name: "Garmin AI Coach"
-version: "0.16.0"
+version: "0.17.0"
 slug: "garmin_ai_coach"
 description: "Garmin Trainings-/Recovery-Daten plus KI-Coaching-Notiz für die Ironman-70.3-Vorbereitung"
 arch:
@@ -16,13 +16,13 @@ services:
   - mqtt:want
 options:
   garmin_email: ""
-  sync_hour: 6
+  sync_hours: "6,12,18,20"
   gemini_api_key: ""
   race_date: "2027-08-29"
   race_goal: "Finish in 5:30-6:00 h"
 schema:
   garmin_email: "str"
-  sync_hour: "int(0,23)"
+  sync_hours: "str"
   gemini_api_key: "password"
   race_date: "str"
   race_goal: "str"

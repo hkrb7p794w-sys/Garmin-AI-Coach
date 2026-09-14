@@ -68,9 +68,33 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(TOKEN_DIR, exist_ok=True)
 os.environ["GARMINTOKENS"] = TOKEN_DIR
 
-# Stunde (0-23, lokale Zeit des Containers), zu der automatisch synchronisiert wird.
-# Wird von run.sh aus der Add-on-Option "sync_hour" befuellt.
-SYNC_HOUR = int(os.environ.get("SYNC_HOUR", 6))
+def _parse_sync_hours(raw: str) -> list:
+    """Parst die kommagetrennte Add-on-Option "sync_hours" (z. B. "6,12,18,20") zu einer
+    sortierten Liste eindeutiger Stunden (0-23, lokale Zeit des Containers). Einzelne
+    ungueltige/leere Eintraege werden uebersprungen statt den Start abzubrechen (gleiches
+    Verteidigungsprinzip wie beim Rest des Add-ons); bleibt am Ende nichts Gueltiges uebrig,
+    wird auf 6 Uhr zurueckgefallen."""
+    hours = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            hour = int(part)
+        except ValueError:
+            print(f"[scheduler] Ungueltiger Eintrag in sync_hours ignoriert: {part!r}")
+            continue
+        if 0 <= hour <= 23 and hour not in hours:
+            hours.append(hour)
+        else:
+            print(f"[scheduler] Stunde ausserhalb 0-23 in sync_hours ignoriert: {part!r}")
+    return sorted(hours) or [6]
+
+
+# Stunden (0-23, lokale Zeit des Containers), zu denen automatisch synchronisiert wird -
+# mehrere pro Tag moeglich. Wird von run.sh aus der Add-on-Option "sync_hours" befuellt
+# (kommagetrennt, z. B. "6,12,18,20"; Default hier deckt sich mit dem Default in config.yaml).
+SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,12,18,20"))
 RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
 
 # Periodisierung Ironman 70.3 (siehe claude/status-und-plan.md im Projekt) - grobe Monats-Phasen.
@@ -1131,19 +1155,25 @@ def weekly():
     return redirect(".")
 
 
-def _seconds_until_next_run(hour: int) -> float:
+def _seconds_until_next_run(hours: list) -> float:
+    """Sekunden bis zum naechsten Termin unter mehreren taeglichen Stunden - also bis zur
+    zeitlich naechstgelegenen noch ausstehenden Stunde aus `hours` (heute, sonst morgen)."""
     now = datetime.datetime.now()
-    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-    if target <= now:
-        target += datetime.timedelta(days=1)
-    return (target - now).total_seconds()
+    targets = []
+    for hour in hours:
+        target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target += datetime.timedelta(days=1)
+        targets.append(target)
+    return (min(targets) - now).total_seconds()
 
 
 def _scheduler_loop():
-    """Laeuft im Hintergrund und ruft do_sync() einmal taeglich um SYNC_HOUR auf,
-    damit "automatischer Sync" auch wirklich automatisch passiert."""
+    """Laeuft im Hintergrund und ruft do_sync() zu jeder in SYNC_HOURS konfigurierten Stunde
+    auf (Default 6/12/18/20 Uhr), damit "automatischer Sync" auch wirklich mehrfach taeglich
+    automatisch passiert, nicht nur einmal."""
     while True:
-        time.sleep(_seconds_until_next_run(SYNC_HOUR))
+        time.sleep(_seconds_until_next_run(SYNC_HOURS))
         try:
             do_sync()
         except Exception as e:

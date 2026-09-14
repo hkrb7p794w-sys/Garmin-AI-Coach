@@ -20,6 +20,41 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.17.0
+- **Automatischer Sync jetzt mehrmals täglich statt nur einmal.** Bisher lief der
+  Hintergrund-Scheduler genau einmal pro Tag zur in `sync_hour` konfigurierten Stunde
+  (Default 6 Uhr). Auf Wunsch ergänzt um feste automatische Syncs um **12, 18 und 20 Uhr** -
+  zusätzlich zum bisherigen 6-Uhr-Sync, nicht statt ihm.
+  - Add-on-Option `sync_hour` (einzelne Zahl `int(0,23)`) ersetzt durch `sync_hours`
+    (kommagetrennte Zeichenkette, z. B. `"6,12,18,20"`), neuer Default exakt dieser vier
+    Stunden. `run.sh` exportiert jetzt `SYNC_HOURS` statt `SYNC_HOUR`.
+  - Neue Funktion `_parse_sync_hours()` in `app.py` parst die Option defensiv (nach demselben
+    Prinzip wie der Rest des Add-ons, siehe Lessons Learned): führende/nachgestellte
+    Leerzeichen werden ignoriert, leere Einträge zwischen Kommas übersprungen, ungültige/
+    nicht-numerische Einträge und Stunden außerhalb 0-23 werden einzeln übersprungen und
+    geloggt statt den Start abzubrechen, Duplikate werden entfernt, das Ergebnis sortiert.
+    Bleibt am Ende nichts Gültiges übrig, greift der Fallback auf 6 Uhr.
+  - `_seconds_until_next_run()` nimmt jetzt eine Liste von Stunden entgegen und ermittelt
+    den zeitlich nächstgelegenen noch ausstehenden Termin (heute, sonst morgen) - bei exakt
+    voller Stunde zählt dieser Termin bereits als "vorbei" (gleiches Verhalten wie zuvor bei
+    einer einzelnen Stunde), damit ein Sync nicht doppelt zur selben Minute ausgelöst wird.
+    `_scheduler_loop()` ruft danach wie bisher `do_sync()` auf und schläft anschließend erneut
+    bis zum nächsten Termin.
+  - Der bestehende 15-Minuten-Mindestabstand zwischen zwei Sync-Versuchen
+    (`MIN_SYNC_INTERVAL`, Schutz vor Garmin-Kontosperre) bleibt unverändert - bei einem
+    Stundenabstand von mindestens 2h zwischen den vier konfigurierten Zeiten besteht hier
+    kein Konflikt.
+  - Mit 13 synthetischen Tests gegen die echten Funktionen in `app.py` verifiziert (Stub für
+    `paho.mqtt.client`, da in der Cloud-Sandbox nicht installierbar): `_parse_sync_hours`
+    (Standardfall, Leerzeichen, unsortierte Eingabe, Duplikate, leere Einträge, ungültige
+    Einträge, Stunden außerhalb 0-23, komplett leere/ungültige Eingabe) sowie
+    `_seconds_until_next_run` mit eingefrorener Uhrzeit (nächster Termin heute, exakte
+    volle Stunde zählt als vorbei, alle Termine heute bereits vorbei -> morgen, früh
+    morgens vor der ersten Stunde, unsortierte Stundenliste, Rückwärtskompatibilität mit
+    nur einer einzelnen Stunde) - alle 13 bestanden.
+- Version 0.17.0, `config.yaml`-Option `sync_hours` (Default `"6,12,18,20"`), Betriebshinweise
+  im Projekt-Statusdokument entsprechend aktualisiert.
+
 ### 0.16.0
 - **Fünf neue Erweiterungen in einer Runde umgesetzt**, ausgehend von einem gemeinsam mit ChatGPT/
   Gemini erarbeiteten Konzept (`claude/konzept-erweiterung-metriken-v0.16-plus.md`). Zwei Detailfragen

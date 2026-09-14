@@ -10,7 +10,7 @@ export PYTHONUNBUFFERED=1
 
 export GEMINI_API_KEY=$(bashio::config 'gemini_api_key')
 export GARMIN_EMAIL=$(bashio::config 'garmin_email')
-export SYNC_HOUR=$(bashio::config 'sync_hour')
+export SYNC_HOURS=$(bashio::config 'sync_hours')
 export RACE_DATE=$(bashio::config 'race_date')
 export RACE_GOAL=$(bashio::config 'race_goal')
 
