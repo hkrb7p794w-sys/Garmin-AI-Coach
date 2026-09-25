@@ -9,6 +9,9 @@ COPY fit_exercises.py /fit_exercises.py
 COPY suggestions.py /suggestions.py
 COPY chat.py /chat.py
 COPY decoupling.py /decoupling.py
+COPY plan.py /plan.py
+COPY recommendation.py /recommendation.py
+COPY progress.py /progress.py
 COPY run.sh /
 RUN chmod a+x /run.sh
 CMD [ "/run.sh" ]

@@ -12,6 +12,10 @@ from ha_publish import (
     publish_vorschlaege,
     publish_chat_history,
     publish_decoupling,
+    publish_plan,
+    publish_recommendation,
+    publish_coach_status,
+    publish_kraftwerte,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -26,6 +30,9 @@ from ai_coach import (
     TRAININGSPLAN_GYM_KRITIK,
 )
 import fit_exercises
+import plan
+import recommendation
+import progress
 import suggestions
 import chat
 import decoupling
@@ -94,17 +101,14 @@ def _parse_sync_hours(raw: str) -> list:
 # Stunden (0-23, lokale Zeit des Containers), zu denen automatisch synchronisiert wird -
 # mehrere pro Tag möglich. Wird von run.sh aus der Add-on-Option "sync_hours" befüllt
 # (kommagetrennt, z. B. "6,12,18,20"; Default hier deckt sich mit dem Default in config.yaml).
-SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,12,18,20"))
+# Seit v0.18.0 Default "6,20" (Review-Punkt 27): Erholungswerte stehen morgens
+# fest, neue Aktivitäten kommen abends dazu; weitere Syncs bringen kaum Neues,
+# kosten aber Aufrufe an Garmins inoffiziellen Login und Gemini-Kontingent.
+SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,20"))
 RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
+RACE_DATE_OBJ = plan.parse_race_date(RACE_DATE)
 
-# Periodisierung Ironman 70.3 (siehe claude/status-und-plan.md im Projekt) - grobe Monats-Phasen.
-PHASES = [
-    (datetime.date(2026, 9, 1), datetime.date(2026, 12, 31), "Grundlagenausdauer"),
-    (datetime.date(2027, 1, 1), datetime.date(2027, 3, 31), "Aufbau 1"),
-    (datetime.date(2027, 4, 1), datetime.date(2027, 6, 30), "Aufbau 2 (spezifisch)"),
-    (datetime.date(2027, 7, 1), datetime.date(2027, 7, 31), "Peak"),
-    (datetime.date(2027, 8, 1), datetime.date(2027, 12, 31), "Taper/Rennwoche"),
-]
+# Periodisierung: seit v0.18.0 in plan.py (einzige Quelle, Taper jetzt 14 Tage).
 
 app = Flask(__name__)
 
@@ -121,18 +125,11 @@ def get_client():
 
 
 def current_phase(today: datetime.date) -> str:
-    for start, end, name in PHASES:
-        if start <= today <= end:
-            return name
-    return "Grundlagenausdauer"
+    return plan.current_phase(today, RACE_DATE_OBJ)
 
 
 def days_to_race(today: datetime.date) -> int:
-    try:
-        race = datetime.date.fromisoformat(RACE_DATE)
-    except ValueError:
-        race = datetime.date(2027, 8, 29)
-    return (race - today).days
+    return (RACE_DATE_OBJ - today).days
 
 
 # Garmin sperrt Konten zeitweise nach zu vielen Login-Versuchen in kurzer Zeit
@@ -163,9 +160,13 @@ def _volumes_in_window(activities, window_start, window_end):
     totals = {"swim_km": 0.0, "bike_km": 0.0, "run_km": 0.0,
               "swim_min": 0.0, "bike_min": 0.0, "run_min": 0.0, "strength_min": 0.0,
               "swim_sessions": 0, "bike_sessions": 0, "run_sessions": 0,
-              "strength_sessions": 0}
+              "strength_sessions": 0,
+              # Seit v0.18.0 (Review-Punkt 18): Minuten je HF-Zonenbereich über alle
+              # Ausdauereinheiten - statt nur Einheiten zu zählen.
+              "zone_low_min": 0.0, "zone_mid_min": 0.0, "zone_high_min": 0.0,
+              "zone_sessions": 0}
     if not activities:
-        return totals
+        return _finish_totals(totals)
     for act in activities:
         try:
             start_str = act.get("startTimeLocal")
@@ -177,6 +178,15 @@ def _volumes_in_window(activities, window_start, window_end):
             type_key = ((act.get("activityType") or {}).get("typeKey", "") or "").lower()
             distance_km = (act.get("distance") or 0) / 1000.0
             duration_min = (act.get("duration") or 0) / 60.0
+            is_endurance = ("swim" in type_key or "run" in type_key or
+                            (("bik" in type_key or "cycl" in type_key or "ride" in type_key) and distance_km > 0))
+            if is_endurance:
+                zones = decoupling.zone_seconds(act)
+                if zones:
+                    totals["zone_low_min"] += (zones[0] + zones[1]) / 60.0
+                    totals["zone_mid_min"] += zones[2] / 60.0
+                    totals["zone_high_min"] += (zones[3] + zones[4]) / 60.0
+                    totals["zone_sessions"] += 1
             if "swim" in type_key:
                 totals["swim_km"] += distance_km
                 totals["swim_min"] += duration_min
@@ -203,6 +213,14 @@ def _volumes_in_window(activities, window_start, window_end):
                 totals["strength_sessions"] += 1
         except Exception as e:
             print(f"[sync] Aktivität konnte nicht ausgewertet werden: {e}")
+    return _finish_totals(totals)
+
+
+def _finish_totals(totals: dict) -> dict:
+    total_zone = totals["zone_low_min"] + totals["zone_mid_min"] + totals["zone_high_min"]
+    totals["zone_total_min"] = total_zone
+    for key in ("low", "mid", "high"):
+        totals[f"zone_{key}_pct"] = round(totals[f"zone_{key}_min"] / total_zone * 100) if total_zone else None
     return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in totals.items()}
 
 def _fetch_max_metrics(client, today_date):
@@ -266,6 +284,37 @@ def _update_history(wellness):
     except Exception as e:
         print(f"[history] konnte nicht geschrieben werden: {e}")
     return history
+
+
+def _load_history() -> list:
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    try:
+        with open(HISTORY_FILE) as f:
+            return json.load(f) or []
+    except Exception as e:
+        print(f"[history] nicht lesbar: {e}")
+        return []
+
+
+def _publish_coach_status():
+    """Coach-Status-Sensor (Review-Punkte 1 und 21) - eigener Sensor statt
+    sync_status, damit ein KI-Ausfall nicht hinter "ok" verschwindet."""
+    try:
+        state = progress.coach_status()
+        c = state.get("coaching") or {}
+        publish_coach_status(progress.overall_status(state), {
+            "last_success": c.get("last_success"),
+            "last_failure": c.get("last_failure"),
+            "consecutive_failures": c.get("consecutive_failures") or 0,
+            "last_error": c.get("last_error"),
+            "last_model": c.get("last_model"),
+            "privacy_mode": os.environ.get("AI_PRIVACY_MODE") or "reduziert",
+            "details": {k: {kk: vv for kk, vv in v.items() if kk != "last_text"}
+                        for k, v in state.items() if isinstance(v, dict)},
+        })
+    except Exception as e:
+        print(f"[coach_status] konnte nicht publiziert werden: {e}")
 
 
 def _history_avg(history, key, offset_from: int, offset_to: int, today=None):
@@ -415,43 +464,51 @@ def _save_decoupling_cache(cache: dict) -> dict:
 
 
 def _update_decoupling_cache(client, activities: list) -> list:
-    """Berechnet die HF-Pace-Kopplung (siehe decoupling.py) für qualifizierende
-    Lauf-Aktivitäten, die noch nicht im Cache stehen - gleiches Cache-Muster
-    wie _update_strength_exercises() (dauerhaft je activity_id, damit nicht bei
-    jedem Sync erneut Garmin.get_activity_splits() für bereits ausgewertete
-    Einheiten aufgerufen wird). Gibt die Sessions der letzten DECOUPLING_CACHE_DAYS
-    Tage zurück (für Dashboard/Kontext), ältere bleiben nur im Cache."""
+    """HF-Pace-/HF-Watt-Kopplung für qualifizierende Läufe und Zwift-Fahrten
+    (seit v0.18.0: Filter über HF-Zonen, Aufwärmen abgeschnitten, Zeitreihe -
+    siehe decoupling.py). Einträge der alten Methode werden verworfen."""
     cache = _load_decoupling_cache()
-    changed = False
+    old_keys = [k for k, v in cache.items() if v.get("method") != decoupling.METHOD_VERSION]
+    for k in old_keys:
+        del cache[k]
+    changed = bool(old_keys)
+    if old_keys:
+        print(f"[decoupling] {len(old_keys)} Einträge der alten Methode verworfen, werden neu bewertet")
 
     for act in activities or []:
         try:
-            if not decoupling.is_eligible_run(act):
-                continue
             activity_id = act.get("activityId")
-            if activity_id is None:
+            start_str = act.get("startTimeLocal")
+            if activity_id is None or not start_str:
                 continue
             key = str(activity_id)
             if key in cache:
                 continue
-            start_str = act.get("startTimeLocal")
-            if not start_str:
-                continue
             start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-            raw_splits = client.get_activity_splits(activity_id)
-            result = decoupling.compute_decoupling(raw_splits)
-            if not result:
-                # Nicht genug verwertbare Runden (z.B. keine HF je Runde) -
-                # als "geprüft, aber leer" merken, damit nicht bei jedem
-                # Sync erneut derselbe (aussichtslose) Abruf versucht wird.
-                cache[key] = {"date": start_dt.date().isoformat(), "activity_name": act.get("activityName"), "empty": True}
+            if (datetime.datetime.now() - start_dt).days > DECOUPLING_CACHE_DAYS:
+                continue
+            sport = decoupling.classify(act)
+            base = {"date": start_dt.date().isoformat(), "activity_name": act.get("activityName"),
+                    "method": decoupling.METHOD_VERSION}
+            if not sport:
+                # "geprüft, nicht geeignet" merken (zu intensiv, zu kurz, keine Zonendaten)
+                cache[key] = {**base, "empty": True,
+                              "high_zone_share": decoupling.high_zone_share(act)}
                 changed = True
                 continue
-            cache[key] = {
-                "date": start_dt.date().isoformat(),
-                "activity_name": act.get("activityName"),
-                **result,
-            }
+            result = {}
+            try:
+                details = client.get_activity_details(activity_id, maxchart=2000)
+                result = decoupling.compute_from_details(details, sport)
+            except Exception as e:
+                print(f"[decoupling] Zeitreihe für {activity_id} nicht verfügbar: {e}")
+            if not result and sport == "run":
+                result = decoupling.compute_from_laps_trimmed(client.get_activity_splits(activity_id))
+            if not result:
+                cache[key] = {**base, "empty": True, "sport": sport}
+            else:
+                cache[key] = {**base, "sport": sport, **result,
+                              "high_zone_share": round(decoupling.high_zone_share(act) * 100, 1)}
             changed = True
         except Exception as e:
             print(f"[decoupling] Aktivität konnte nicht verarbeitet werden: {e}")
@@ -710,6 +767,11 @@ def build_weekly_summary(wellness: dict, history: list) -> dict:
         # Wie viele Tage die Historie überhaupt schon abdeckt - der Report soll
         # nicht so tun, als wären Trends belastbar, wenn erst 2 Tage erfasst sind.
         "history_days": len(history or []),
+        "zone_low_pct": cur.get("zone_low_pct"),
+        "zone_mid_pct": cur.get("zone_mid_pct"),
+        "zone_high_pct": cur.get("zone_high_pct"),
+        "zone_total_min": round(cur.get("zone_total_min") or 0),
+        "zone_sessions": cur.get("zone_sessions"),
     }
     return summary
 
@@ -736,7 +798,9 @@ def do_weekly_report(wellness: dict = None, history: list = None) -> str:
         if not os.environ.get("GEMINI_API_KEY"):
             raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
         text = generate_weekly_report(wellness, summary)
+        progress.record_ai_result("weekly", True)
     except Exception as e:
+        progress.record_ai_result("weekly", False, error=str(e))
         print(f"[weekly] Wochenreport fehlgeschlagen: {e}")
         text = "Wochenreport aktuell nicht verfügbar - Kennzahlen siehe Attribute."
     publish_weekly_report(text, summary)
@@ -887,21 +951,45 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 gym_note = generate_gym_coaching_note(
                     wellness["strength_exercises"], interference_note=interference_note
                 )
+                progress.record_ai_result("gym", True)
         except Exception as e:
+            progress.record_ai_result("gym", False, error=str(e))
             print(f"[ai_coach] Gym-Coaching-Tipp fehlgeschlagen: {e}")
             gym_note = "Gym-Coaching-Tipp aktuell nicht verfügbar - Übungsdaten wurden trotzdem synchronisiert."
         publish_gym_coaching_note(gym_note)
 
+        # Plan, Tagesampel, Kraftwerte (v0.18.0) - reine Berechnung, kein Netzwerk.
+        metrics_now = extract_metrics(wellness)
+        history_before = _load_history()
+        plan_state = plan.build_plan_state(today_date, RACE_DATE_OBJ, wellness["weekly_volumes"])
+        publish_plan(plan_state)
+        rec = recommendation.evaluate(
+            metrics_now,
+            rhr_7d_avg=_history_avg(history_before, "resting_hr", 1, 7, today_date),
+            hrv_baseline=metrics_now.get("hrv_baseline"),
+            hrv_7d=metrics_now.get("hrv_weekly_avg"),
+        )
+        publish_recommendation(rec)
         try:
-            if not os.environ.get("GEMINI_API_KEY"):
-                raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
-            note = generate_coaching_note(wellness)
+            publish_kraftwerte(progress.e1rm_summary(progress.update_e1rm(list(_load_strength_cache().values()))))
         except Exception as e:
-            # Technischen Fehler nur ins Log schreiben, nicht in die Notiz, die
-            # im Dashboard landet - dort sollen keine Exception-Details/Keys auftauchen.
+            print(f"[kraftwerte] fehlgeschlagen: {e}")
+
+        # Tagesnotiz: KI formuliert, Regeln entscheiden. Fällt Gemini aus, steht die
+        # regelbasierte Notiz im Dashboard - plus die letzte erfolgreiche KI-Notiz.
+        try:
+            note, model_used = generate_coaching_note(wellness, rec=rec, plan_state=plan_state)
+            state = progress.record_ai_result("coaching", True, text=note, model=model_used)
+            publish_coaching_note(note, source="ki")
+        except Exception as e:
             print(f"[ai_coach] Coaching-Notiz fehlgeschlagen: {e}")
-            note = "Coaching-Tipp aktuell nicht verfügbar - Werte wurden trotzdem synchronisiert."
-        publish_coaching_note(note)
+            state = progress.record_ai_result("coaching", False, error=str(e))
+            last = state.get("coaching") or {}
+            publish_coaching_note(
+                recommendation.fallback_note(rec, plan_state), source="regeln",
+                last_ai_note=last.get("last_text"), last_ai_at=last.get("last_success"),
+            )
+        _publish_coach_status()
 
         history = _update_history(wellness)
 
@@ -930,6 +1018,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                     gym_status=gym_status, decided_context=decided_context,
                     interference_note=interference_note,
                 )
+                progress.record_ai_result("plan", True)
                 suggestions.sync_suggestions("trainingsplan_kommentar", plan_vorschlaege)
                 publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)
                 print(f"[trainingsplan] Kommentar publiziert (Auslöser: {trigger_key}, "
@@ -941,6 +1030,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             # vorhanden) im Dashboard stehen bleiben statt durch eine
             # Fehlermeldung ersetzt zu werden - der nächste ausgelöste Sync
             # versucht es erneut.
+            progress.record_ai_result("plan", False, error=str(e))
             print(f"[trainingsplan] Kommentar fehlgeschlagen: {e}")
 
         # Aktuellen Annehmen/Ablehnen-Gesamtzustand publizieren (Dashboard-Tab
@@ -1078,11 +1168,14 @@ def _handle_chat_question(question: str):
             if not os.environ.get("GEMINI_API_KEY"):
                 raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
             answer = generate_chat_answer(question, wellness, history, chat_context)
+            progress.record_ai_result("chat", True)
         except Exception as e:
+            progress.record_ai_result("chat", False, error=str(e))
             print(f"[chat] Antwort fehlgeschlagen: {e}")
             answer = "Antwort aktuell nicht verfügbar (Gemini-Fehler). Frag gern gleich nochmal."
         entries = chat.add_exchange(question, answer)
         publish_chat_history(entries)
+        _publish_coach_status()
     threading.Thread(target=_run, daemon=True).start()
 
 

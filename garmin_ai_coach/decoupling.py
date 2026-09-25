@@ -154,3 +154,182 @@ def compute_decoupling(raw_splits) -> dict:
         "avg_pace_first_half_min_km": _pace_min_km(speed1),
         "avg_pace_second_half_min_km": _pace_min_km(speed2),
     }
+
+
+# ===========================================================================
+# v0.18.0 - Überarbeitung nach dem Dashboard-Review (Punkte 5 und 17)
+# ===========================================================================
+#
+# Problem der bisherigen Version: Der Namensfilter griff nie, weil Garmin alle
+# Läufe schlicht "<Ort> Laufen" nennt. Dadurch landete z. B. ein Lauf vom
+# 13.09.2026 mit 4:46 min/km (schneller als die eigene Schwelle) und HF 159 ->
+# 179 als "Grundlagenlauf" mit 16,8 % Entkopplung in der Anzeige. Die Kennzahl
+# ist aber nur für komplett aerobe, gleichmäßige Einheiten aussagekräftig
+# (TrainingPeaks/Friel: "the workout ... must have been fully aerobic ... and
+# steady"; > 10 % deutet eher auf eine Einheit über der aeroben Schwelle hin).
+#
+# Neu:
+# 1. Filter über die Herzfrequenzzonen der Aktivität (hrTimeInZone_1..5 aus der
+#    Aktivitätsliste) statt über den Namen: höchstens 10 % der Zeit in Zone 4-5.
+#    Fehlen die Zonenfelder, wird die Aktivität NICHT gewertet (lieber keine
+#    Zahl als eine falsche) - die Feldnamen sind nach dem ersten Sync zu prüfen.
+# 2. Die ersten 10 Minuten (Aufwärmen, HF läuft erst hoch) werden abgeschnitten.
+# 3. Zusätzlich Zwift-Einheiten mit Leistungsmessung (Pw:HR statt Pa:HR) -
+#    konstante Watt ohne Wind/Steigung sind der ideale Fall für diese Kennzahl.
+# 4. Berechnung bevorzugt aus der Zeitreihe (get_activity_details), weil
+#    Zwift-Fahrten oft nur eine einzige Runde haben; Rundenmethode nur als
+#    Fallback für Läufe.
+# 5. Cache-Einträge der alten Methode werden verworfen und neu berechnet
+#    (Lessons Learned 6: ein Fix muss das Alte aktiv erkennen und verwerfen).
+
+METHOD_VERSION = 2
+WARMUP_SECONDS = 600
+MAX_HIGH_ZONE_SHARE = 0.10
+MIN_RIDE_DURATION_MIN = 45
+
+
+def zone_seconds(activity: dict):
+    """[z1..z5] in Sekunden aus der Aktivitätszusammenfassung oder None."""
+    vals = []
+    for i in range(1, 6):
+        v = activity.get(f"hrTimeInZone_{i}")
+        if not isinstance(v, (int, float)):
+            return None
+        vals.append(float(v))
+    return vals if sum(vals) > 0 else None
+
+
+def high_zone_share(activity: dict):
+    z = zone_seconds(activity)
+    if not z:
+        return None
+    return (z[3] + z[4]) / sum(z)
+
+
+def classify(activity: dict):
+    """'run' | 'ride' | None - ob und als was die Aktivität für die
+    Entkopplung infrage kommt."""
+    type_key = ((activity.get("activityType") or {}).get("typeKey", "") or "").lower()
+    duration_min = (activity.get("duration") or 0) / 60.0
+    if "run" in type_key:
+        sport = "run"
+        if duration_min < MIN_DURATION_MIN:
+            return None
+    elif "bik" in type_key or "cycl" in type_key or "ride" in type_key:
+        sport = "ride"
+        if duration_min < MIN_RIDE_DURATION_MIN:
+            return None
+        # Nur die Zwift-Aufzeichnung mit Distanz und Leistung, nicht die
+        # parallele HF-Zweitaufzeichnung der Uhr (siehe app._volumes_in_window).
+        if (activity.get("distance") or 0) <= 0:
+            return None
+        if not isinstance(activity.get("avgPower") or activity.get("averagePower"), (int, float)):
+            return None
+    else:
+        return None
+    share = high_zone_share(activity)
+    if share is None or share > MAX_HIGH_ZONE_SHARE:
+        return None
+    return sport
+
+
+def _series_from_details(details: dict) -> dict:
+    """Zerlegt get_activity_details() in {key: [werte]} anhand der
+    metricDescriptors. Feldnamen laut Garmin-Connect-Antwortformat
+    (directHeartRate, directSpeed, directPower, sumDuration) - defensiv."""
+    if not isinstance(details, dict):
+        return {}
+    descriptors = details.get("metricDescriptors") or []
+    rows = details.get("activityDetailMetrics") or []
+    index = {}
+    for d in descriptors:
+        if isinstance(d, dict) and "metricsIndex" in d and d.get("key"):
+            index[d["key"]] = d["metricsIndex"]
+    series = {k: [] for k in index}
+    for row in rows:
+        metrics = (row or {}).get("metrics") if isinstance(row, dict) else None
+        if not isinstance(metrics, list):
+            continue
+        for key, i in index.items():
+            series[key].append(metrics[i] if i < len(metrics) else None)
+    return series
+
+
+def compute_from_details(details: dict, sport: str) -> dict:
+    """Entkopplung aus der Zeitreihe: Aufwärmen abschneiden, Rest nach Zeit
+    halbieren, Effizienzfaktor (Tempo bzw. Leistung / HF) je Hälfte."""
+    s = _series_from_details(details)
+    hr = s.get("directHeartRate")
+    out_key = "directPower" if sport == "ride" else "directSpeed"
+    out = s.get(out_key)
+    t = s.get("sumDuration") or s.get("sumElapsedDuration")
+    if not hr or not out or not t or len(hr) != len(out) or len(t) != len(hr):
+        return {}
+    points = [
+        (tt, o, h) for tt, o, h in zip(t, out, hr)
+        if isinstance(tt, (int, float)) and isinstance(o, (int, float)) and isinstance(h, (int, float))
+        and h > 0 and tt >= WARMUP_SECONDS
+    ]
+    if len(points) < 20:
+        return {}
+    t0, t1 = points[0][0], points[-1][0]
+    if t1 - t0 < 20 * 60:
+        return {}
+    mid = t0 + (t1 - t0) / 2
+    first = [(o, h) for tt, o, h in points if tt < mid]
+    second = [(o, h) for tt, o, h in points if tt >= mid]
+    if not first or not second:
+        return {}
+    o1 = sum(o for o, _ in first) / len(first)
+    h1 = sum(h for _, h in first) / len(first)
+    o2 = sum(o for o, _ in second) / len(second)
+    h2 = sum(h for _, h in second) / len(second)
+    if o1 <= 0 or h1 <= 0 or h2 <= 0:
+        return {}
+    ef1, ef2 = o1 / h1, o2 / h2
+    res = {
+        "decoupling_pct": round((ef1 - ef2) / ef1 * 100, 1),
+        "avg_hr_first_half": round(h1, 1),
+        "avg_hr_second_half": round(h2, 1),
+        "source": "zeitreihe",
+    }
+    if sport == "ride":
+        res["avg_power_first_half_w"] = round(o1)
+        res["avg_power_second_half_w"] = round(o2)
+    else:
+        res["avg_pace_first_half"] = pace_mmss(o1)
+        res["avg_pace_second_half"] = pace_mmss(o2)
+    return res
+
+
+def compute_from_laps_trimmed(raw_splits) -> dict:
+    """Fallback für Läufe: Rundenmethode wie bisher, aber ohne die Runden der
+    ersten 10 Minuten."""
+    laps = _laps_from_splits(raw_splits)
+    kept, elapsed = [], 0.0
+    for lap in laps:
+        dur = lap.get("duration") or lap.get("movingDuration") or lap.get("elapsedDuration") or 0
+        if elapsed >= WARMUP_SECONDS:
+            kept.append(lap)
+        elapsed += dur if isinstance(dur, (int, float)) else 0
+    res = compute_decoupling({"lapDTOs": kept})
+    if not res:
+        return {}
+    res["avg_pace_first_half"] = pace_mmss_from_minkm(res.pop("avg_pace_first_half_min_km", None))
+    res["avg_pace_second_half"] = pace_mmss_from_minkm(res.pop("avg_pace_second_half_min_km", None))
+    res["source"] = "runden"
+    return res
+
+
+def pace_mmss(speed_m_s):
+    if not isinstance(speed_m_s, (int, float)) or speed_m_s <= 0:
+        return None
+    sec = round(1000 / speed_m_s)
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def pace_mmss_from_minkm(minkm):
+    if not isinstance(minkm, (int, float)) or minkm <= 0:
+        return None
+    sec = round(minkm * 60)
+    return f"{sec // 60}:{sec % 60:02d}"

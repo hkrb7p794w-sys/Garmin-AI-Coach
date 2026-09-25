@@ -3,7 +3,9 @@ import re
 import json
 import datetime
 import requests
+import time
 from ha_publish import extract_metrics
+import plan
 
 # Google Gemini API - kostenloses Kontingent (Stand 09/2026: keine Kreditkarte nötig,
 # siehe https://ai.google.dev/gemini-api/docs/pricing). Key kommt aus den Add-on-Optionen.
@@ -23,80 +25,24 @@ GEMINI_URL_TEMPLATE = (
 # Rennziel - per Add-on-Option änderbar.
 RACE_GOAL = os.environ.get("RACE_GOAL", "Finish in 5:30-6:00 h")
 
-# Realer Wochenrahmen des Athleten (von ihm selbst vorgegeben). Der Coach soll
-# INNERHALB dieses Rahmens optimieren und niemals einfach "mehr Zeit" fordern.
-ATHLETE_PROFILE = """Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar):
-- Dienstag + Donnerstag sind Bürotage: dort passen 1x Schwimmen und 1x Beintraining,
-  jeweils vor der Arbeit.
-- An den übrigen Werktagen Homeoffice mit eigenem Home-Gym: dort laufen die
-  Push/Pull-Krafteinheiten (zusammen 3-4x pro Woche).
-- Laufen: mindestens 1x lockerer Zone-2-Lauf (gemeinsam mit der Freundin) und
-  1x Intervall- oder Schwellenlauf.
-- Wochenende: NUR wenn Zeit bleibt, entweder ein Longrun ODER eine längere
-  Zwift-Ausfahrt auf dem Rad.
-- Der Athlet will bewusst nicht mehr Zeit investieren. Diese Struktur ist der Idealfall
-  und lässt sich in der Realität oft nicht vollständig umsetzen - fehlende Einheiten
-  sind normal und kein Anlass für Vorwürfe.
+# Seit v0.18.0: Wochenrahmen, Phasenfokus und Phasenpläne kommen aus plan.py
+# (einzige Quelle der Wahrheit, dieselben Daten rendert das Dashboard).
+ATHLETE_PROFILE = plan.ATHLETE_PROFILE
+PHASE_FOCUS = plan.PHASE_FOCUS
+TRAININGSPLAN_PHASE_DETAIL = {name: plan.phase_detail_text(name) for name in plan.PHASE_ORDER}
 
-Coaching-Regeln daraus:
-- Niemals mehr Gesamtzeit oder zusätzliche Einheiten fordern. Wenn etwas fehlt, sage
-  was innerhalb des bestehenden Rahmens umgeschichtet werden sollte (Prioritäten setzen).
-- Berücksichtige den Wochentag: Schwimmen und Beine sind an Bürotagen (Di/Do) machbar,
-  Push/Pull an Homeoffice-Tagen, längere Rad-/Laufeinheiten am Wochenende.
-- Das Rad ist beim 70.3 der größte Zeitblock des Rennens. Wenn das Radvolumen dauerhaft
-  sehr niedrig ist, benenne das klar als größtes Risiko fürs Zeitziel - und schlage die
-  Umschichtung aus einer Krafteinheit vor, statt zusätzliche Zeit zu verlangen."""
+# Renndatum für Prompts (vorher an vier Stellen fest "29.08.2027").
+RACE_DATE_TEXT = plan.parse_race_date(os.environ.get("RACE_DATE", "")).strftime("%d.%m.%Y")
 
-# Fokus je Trainingsphase (siehe claude/status-und-plan.md im Projekt).
-PHASE_FOCUS = {
-    "Grundlagenausdauer": "aerobe Basis (Zone 1-2), Schwimmtechnik, 3x/Woche je Disziplin, 2x Kraft",
-    "Aufbau 1": "Schwellentraining, erste Bricks, Rad-Grundkraft",
-    "Aufbau 2 (spezifisch)": "Wettkampftempo, lange Einheiten (Rad 90-100km, Lauf 18-20km)",
-    "Peak": "höchstes Volumen, Formtest",
-    "Taper/Rennwoche": "Volumen -40 bis -60%, Intensität halten, Rennwoche",
-}
-
-# Kompakte, phasenabhängige Zusammenfassung der Trainingspläne aus dem
-# Dashboard-Tab "Trainingspläne" (View "pläne" im Dashboard "garmin-coach",
-# siehe claude/status-und-plan.md) - bewusst nur die Kernpunkte je Disziplin,
-# nicht die volle Markdown-Tabelle, damit der Prompt für
-# generate_trainingsplan_kommentar() nicht unnötig gross wird. WICHTIG: Bei
-# einer inhaltlichen Änderung der Pläne im Dashboard muss dieser Text
-# manuell nachgezogen werden, sonst kommentiert Gemini einen veralteten Stand.
-TRAININGSPLAN_PHASE_DETAIL = {
-    "Grundlagenausdauer": (
-        "Lauf: Zone-2 fix (mit der Freundin) + 4x8min Schwelle (2min Trabpause) oder Fahrtspiel "
-        "30-40min, Wochenende optional Longrun 60-75min. Schwimmen: Technik-Fokus, 12-16x50m an "
-        "CSS-Pace, 15s Pause, CSS-Test alle 4-6 Wochen. Rad (Zwift): 45-60min Zone 2 (Endurance) fest, "
-        "Wochenende optional 60-90min locker. Kraft: bestehender Split (Push A/B, Pull A/B, Lower), "
-        "2x12 Standard-Wiederholungsbereich."
-    ),
-    "Aufbau 1": (
-        "Lauf: Zone-2 fix + 3-4x10min Schwellenpace, Longrun bis 90min (alle 3-4 Wochen mit 15-20min "
-        "Tempo). Schwimmen: längere Intervalle, 6-8x100m an CSS-Pace, 20s Pause. Rad (Zwift): 60min "
-        "Sweet-Spot (2x15min @88-94% FTP) fest, optional Longride bis 90min, FTP-Test zu Phasenbeginn. "
-        "Kraft: bei den 5 Grundübungen (Bankdrücken, Dips, Beinpressen, enges Rudern, Lat-Ziehen eng) "
-        "phasenweise (2 von 4 Wochen) auf 3x6-8 schwerer wechseln statt durchgehend 2x12."
-    ),
-    "Aufbau 2 (spezifisch)": (
-        "Lauf: Zone-2 fix + 6x3min knapp über Schwelle (VO2max-Reiz, wechselt mit Schwelleneinheit), "
-        "Longrun 100-110min inkl. 20min Renntempo (ideal als Brick direkt nach einer Radeinheit). "
-        "Schwimmen: wettkampfnah, 4x400m renntemponah, wenn möglich Freiwasser-/Neopren-Gewöhnung. "
-        "Rad (Zwift): Race-Simulation 60-90min bei 70-75% FTP konstant fest, danach Brick-Lauf "
-        "20-30min locker. Kraft: weiter phasenweise schwerer bei den Grundübungen."
-    ),
-    "Peak": (
-        "Lauf: Zone-2 fix + Formtest (10km oder Halbmarathon als Tempolauf), höchstes Wochenvolumen "
-        "der gesamten Vorbereitung. Schwimmen: kurz halten, Frische bewahren, 8x50m zügig mit viel "
-        "Pause. Rad (Zwift): längste Ausfahrt der Vorbereitung, 2:30-3:00h bei Zielwatt. Kraft: "
-        "Volumen reduzieren, Fokus auf Erholung statt neuen Reizen."
-    ),
-    "Taper/Rennwoche": (
-        "Lauf: Zone-2 fix, aber kürzer (30-40min) + 2-3x5min Renntempo, Rest locker, kein Longrun "
-        "mehr. Schwimmen: kurz halten, viel Pause. Rad (Zwift): 30-40min mit kurzen "
-        "Intensitätsspitzen. Kraft und Gesamtvolumen: -40 bis -60%, Intensität halten, Rennwoche."
-    ),
-}
+# Datenschutz (Review-Punkt 23): Im kostenlosen Gemini-Kontingent darf Google
+# Eingaben und Antworten zur Produktverbesserung nutzen, menschliche Prüfer
+# dürfen sie lesen; Google rät dort ausdrücklich von sensiblen/persönlichen
+# Daten ab (Gemini API Additional Terms, Abschnitt "Unpaid Services").
+# "reduziert" (Standard) schickt deshalb keine Roh-Gesundheitswerte (Ruhepuls,
+# HRV-ms, Schlafstunden, SpO2, Atemfrequenz, Stress), sondern nur abgeleitete
+# Einordnungen. "voll" = bisheriges Verhalten, sinnvoll z. B. mit aktivierter
+# Abrechnung (bezahlte Stufe: keine Nutzung zur Produktverbesserung).
+AI_PRIVACY_MODE = (os.environ.get("AI_PRIVACY_MODE") or "reduziert").strip().lower()
 
 # Bereits im Dashboard dokumentierte, gezielte Gym-Anpassungsvorschläge (siehe
 # claude/status-und-plan.md) - Umsetzung liegt bei Alex, nicht automatisch
@@ -192,7 +138,7 @@ def _model_from_404(message: str, tried_model: str):
     return None
 
 
-def _call_gemini(model: str, prompt: str):
+def _call_gemini(model: str, prompt: str, json_mode: bool = False):
     """Ein Gemini-Aufruf. Gibt (status_code, body_text_or_json) zurück."""
     resp = requests.post(
         GEMINI_URL_TEMPLATE.format(model=model),
@@ -207,7 +153,10 @@ def _call_gemini(model: str, prompt: str):
             # Denken verbrauchen und einen Kandidaten ganz ohne Text-Part zurückliefern
             # (finishReason MAX_TOKENS) - ohne HTTP-Fehler. Daher großzügige Obergrenze;
             # der sichtbare Text bleibt kurz, weil der Prompt 3-4 Sätze vorgibt.
-            "generationConfig": {"maxOutputTokens": 2000},
+            "generationConfig": (
+                {"maxOutputTokens": 2000, "responseMimeType": "application/json"}
+                if json_mode else {"maxOutputTokens": 2000}
+            ),
         },
         # Thinking-Modelle brauchen für diesen Prompt teils deutlich mehr als 30s
         # (genau daran ist der erste Versuch mit gemini-3.6-flash gescheitert:
@@ -218,92 +167,238 @@ def _call_gemini(model: str, prompt: str):
     return resp
 
 
-def generate_coaching_note(data: dict) -> str:
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
+# ---------------------------------------------------------------------------
+# Robuster Gemini-Aufruf (seit v0.18.0, Review-Punkt 1)
+# ---------------------------------------------------------------------------
+# Live-Befund 25.09.2026: seit Tagen fast jeder Aufruf HTTP 503 "This model is
+# currently experiencing high demand ... try again later", vereinzelt 429.
+# Bisher gab es genau einen Versuch und keinen Fallback - der Coach war damit
+# faktisch aus. Jetzt: Wiederholung mit Wartezeit bei vorübergehenden Fehlern,
+# danach automatisch ein anderes verfügbares Flash-Modell (aus der Modellliste
+# der API, gleiches Selbstheilungsprinzip wie beim 404-Nachfolger).
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+RETRY_DELAYS = [0, 15, 45]
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "").strip()
+_fallback_cache = {"model": None, "primary_down_until": 0.0}
+# Nach einem dauerhaften Ausfall des Hauptmodells 30 min direkt das
+# Ausweichmodell nutzen, statt jedes Mal erst drei Fehlversuche abzuwarten.
+PRIMARY_COOLDOWN_SECONDS = 1800
 
-    metrics = extract_metrics(data)
-    phase = data.get("phase") or "unbekannt"
-    focus = PHASE_FOCUS.get(phase, "")
-    wv = data.get("weekly_volumes") or {}
 
-    weekdays = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-    today_name = weekdays[datetime.date.today().weekday()]
+class GeminiError(RuntimeError):
+    pass
 
-    prompt = (
-        "Du bist ein Ausdauersport-Coach für einen Age-Group-Athleten in der Vorbereitung "
-        f"auf einen Ironman 70.3 am 29.08.2027. Zielzeit: {RACE_GOAL}.\n\n"
-        f"{ATHLETE_PROFILE}\n\n"
-        f"Heute ist {today_name}.\n"
-        f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}). "
-        f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n\n"
-        "Heutige Werte:\n"
-        f"- Ruhepuls: {_fmt(metrics['resting_hr'], ' bpm')}\n"
-        f"- Schritte bisher: {_fmt(metrics['steps_today'])}\n"
-        f"- Training Readiness: {_fmt(metrics['training_readiness_score'], '%')} "
-        f"({_fmt(metrics['training_readiness_level'])})\n"
-        f"- Training Status: {_fmt(metrics['training_status_phrase'])}\n"
-        f"- HRV letzte Nacht: {_fmt(metrics['hrv_avg'], ' ms')} ({_fmt(metrics['hrv_status'])})\n"
-        f"- Body Battery: {_fmt(metrics['body_battery'], '%')}\n"
-        f"- Stresslevel: {_fmt(metrics['stress_avg'])}\n"
-        f"- Atemfrequenz: {_fmt(metrics['respiration_avg'], ' brpm')}\n"
-        f"- SpO2: {_fmt(metrics['spo2_avg'], '%')}\n"
-        f"- Schlaf: {_fmt(metrics['sleep_hours'], ' h')}, Score {_fmt(metrics['sleep_score'])}\n"
-        f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}\n"
-        f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
-        f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
-        "Gib mir einen kurzen, ehrlichen Coaching-Tipp für heute auf Deutsch - als Stichpunkte im "
-        "Markdown-Format, JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN Fliesstext und "
-        "KEIN einleitender Satz davor. Genau 2-3 Punkte:\n"
-        "- Ein Punkt: kurze Einschätzung der Erholungslage (1 Satz).\n"
-        "- Ein Punkt: eine konkrete Trainingsempfehlung für heute, die zur aktuellen Phase UND zum "
-        "heutigen Wochentag passt (siehe Wochenstruktur oben) (1 Satz).\n"
-        "- NUR falls Erholungswerte (Readiness, HRV, Body Battery, Schlaf) auf Übertraining oder "
-        "unzureichende Erholung hindeuten: ein dritter Punkt mit explizit leichterem Training oder "
-        "einem Ruhetag statt eines harten Reizes (sonst diesen Punkt weglassen).\n"
-        "Nenne nicht jeden einzelnen Rohwert einzeln, sondern ziehe pro Punkt eine klare, direkt "
-        "umsetzbare Schlussfolgerung. Schreibe durchgängig in korrektem Deutsch mit echten "
-        "Umlauten (ä, ö, ü, ß) - niemals die Ersatzschreibweisen ae/oe/ue/ss."
-    )
 
-    model = GEMINI_MODEL
-    resp = _call_gemini(model, prompt)
+def _list_flash_models() -> list:
+    """Verfügbare Modelle mit generateContent, deren Name 'flash' enthält."""
+    try:
+        resp = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            headers={"x-goog-api-key": GEMINI_API_KEY},
+            params={"pageSize": 200},
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            return []
+        names = []
+        for m in resp.json().get("models") or []:
+            name = str(m.get("name", "")).replace("models/", "")
+            methods = m.get("supportedGenerationMethods") or []
+            if "generateContent" not in methods or "flash" not in name:
+                continue
+            if any(x in name for x in ("image", "tts", "audio", "live", "embedding", "exp")):
+                continue
+            names.append(name)
+        return names
+    except Exception as e:
+        print(f"[ai_coach] Modellliste nicht abrufbar: {e}")
+        return []
 
-    if resp.status_code == 404:
-        # Google zieht Modelle für neue Accounts zurück und nennt in der 404-Antwort
-        # das Nachfolgemodell. Einmal automatisch nachziehen, statt den Coaching-Tipp
-        # ausfallen zu lassen, bis jemand die Version händisch anpasst.
-        successor = _model_from_404(resp.text, model)
-        if successor:
-            print(f"[ai_coach] Modell '{model}' nicht verfügbar, wechsle auf '{successor}'")
-            model = successor
-            resp = _call_gemini(model, prompt)
 
-    if resp.status_code >= 400:
-        # Antwortkörper mitloggen: Gemini erklärt darin präzise, was fehlt
-        # (ungültiger Key, unbekanntes Modell, Quota erschöpft, ...).
-        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
-    body = resp.json()
+def _pick_fallback(current: str):
+    if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != current:
+        return GEMINI_FALLBACK_MODEL
+    if _fallback_cache["model"] and _fallback_cache["model"] != current:
+        return _fallback_cache["model"]
+    candidates = [n for n in _list_flash_models() if n != current]
+    # "lite"-Varianten zuerst: laut Fehlerbild ist das Hauptmodell überlastet,
+    # die kleinere Variante hat meist freie Kapazität.
+    candidates.sort(key=lambda n: (0 if "lite" in n else 1, "preview" in n, n))
+    choice = candidates[0] if candidates else None
+    _fallback_cache["model"] = choice
+    return choice
+
+
+def _extract_text(body: dict, model: str) -> str:
     candidates = body.get("candidates") or []
     if not candidates:
-        # Gemini liefert bei Safety-Blocks o.ae. leere candidates statt eines Fehlers -
-        # dann lieber eine klare Meldung als ein KeyError.
         reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
+        raise GeminiError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
     candidate = candidates[0]
     parts = (candidate.get("content") or {}).get("parts") or []
     text = "".join(p.get("text", "") for p in parts).strip()
     if not text:
-        # Nicht still "" zurückgeben: publish_state() published leere Notizen gar nicht,
-        # dann bleibt im Dashboard kommentarlos die alte Notiz stehen und der Fehler
-        # bleibt unsichtbar - genau die Klasse von Bug, die dieses Projekt schon zweimal
-        # ausgebremst hat.
-        raise RuntimeError(
+        raise GeminiError(
             f"Gemini ({model}) hat leeren Text geliefert "
-            f"(finishReason: {candidate.get('finishReason')}, "
-            f"usageMetadata: {body.get('usageMetadata')})"
+            f"(finishReason: {candidate.get('finishReason')})"
         )
     return text
+
+
+def _try_model(model: str, prompt: str, json_mode: bool):
+    """Mehrere Versuche mit einem Modell. Gibt (text, model) oder wirft
+    GeminiError; .retryable sagt, ob ein anderes Modell sinnvoll ist."""
+    last_err = None
+    for attempt, delay in enumerate(RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        try:
+            resp = _call_gemini(model, prompt, json_mode=json_mode)
+        except requests.exceptions.RequestException as e:
+            last_err = GeminiError(f"Netzwerkfehler/Timeout ({model}): {e}")
+            last_err.retryable = True
+            continue
+        if resp.status_code == 404:
+            successor = _model_from_404(resp.text, model)
+            if successor:
+                print(f"[ai_coach] Modell '{model}' nicht verfügbar, wechsle auf '{successor}'")
+                return _try_model(successor, prompt, json_mode)
+        if resp.status_code in RETRYABLE_STATUS:
+            last_err = GeminiError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:200]}")
+            last_err.retryable = True
+            print(f"[ai_coach] Versuch {attempt + 1}/{len(RETRY_DELAYS)} mit {model}: HTTP {resp.status_code}")
+            continue
+        if resp.status_code >= 400:
+            err = GeminiError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
+            err.retryable = False
+            raise err
+        return _extract_text(resp.json(), model), model
+    raise last_err
+
+
+def _generate(prompt: str, label: str, json_mode: bool = False):
+    """Zentraler Aufruf für alle Texte. Gibt (text, verwendetes_modell) zurück."""
+    if not GEMINI_API_KEY:
+        raise GeminiError("GEMINI_API_KEY ist nicht gesetzt")
+    if time.time() < _fallback_cache["primary_down_until"]:
+        fallback = _pick_fallback(GEMINI_MODEL)
+        if fallback:
+            try:
+                return _try_model(fallback, prompt, json_mode)
+            except GeminiError as e:
+                print(f"[ai_coach] {label}: Ausweichmodell {fallback} fehlgeschlagen ({e}), versuche Hauptmodell")
+    try:
+        result = _try_model(GEMINI_MODEL, prompt, json_mode)
+        _fallback_cache["primary_down_until"] = 0.0
+        return result
+    except GeminiError as e:
+        if not getattr(e, "retryable", False):
+            raise
+        fallback = _pick_fallback(GEMINI_MODEL)
+        if not fallback:
+            raise
+        print(f"[ai_coach] {label}: {GEMINI_MODEL} dauerhaft überlastet, versuche {fallback}")
+        _fallback_cache["primary_down_until"] = time.time() + PRIMARY_COOLDOWN_SECONDS
+        return _try_model(fallback, prompt, json_mode)
+
+
+# ---------------------------------------------------------------------------
+# Erholungswerte für Prompts - je nach Datenschutzmodus roh oder eingeordnet
+# ---------------------------------------------------------------------------
+
+def _band(value, bands):
+    if not isinstance(value, (int, float)):
+        return "keine Daten"
+    for limit, text in bands:
+        if value < limit:
+            return text
+    return bands[-1][1]
+
+
+def vitals_block(metrics: dict, rec: dict = None) -> str:
+    """Erholungsblock für Prompts. Im Modus 'reduziert' ohne Rohwerte."""
+    if AI_PRIVACY_MODE == "voll":
+        return (
+            f"- Ruhepuls: {_fmt(metrics.get('resting_hr'), ' bpm')}\n"
+            f"- Training Readiness: {_fmt(metrics.get('training_readiness_score'), '%')} "
+            f"({_fmt(metrics.get('training_readiness_level'))})\n"
+            f"- HRV letzte Nacht: {_fmt(metrics.get('hrv_avg'), ' ms')}, 7-Tage-Schnitt "
+            f"{_fmt(metrics.get('hrv_weekly_avg'), ' ms')} (Status {_fmt(metrics.get('hrv_status'))})\n"
+            f"- Body Battery: {_fmt(metrics.get('body_battery'), '%')}\n"
+            f"- Schlaf: {_fmt(metrics.get('sleep_hours'), ' h')}, Score {_fmt(metrics.get('sleep_score'))}\n"
+            f"- Training Status: {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}\n"
+        )
+    return (
+        f"- Readiness-Stufe (Garmin): {_fmt(metrics.get('training_readiness_level'))}\n"
+        f"- HRV-Status (7-Tage-Schnitt vs. Baseline): {_fmt(metrics.get('hrv_status'))}\n"
+        f"- Schlaf: {_band(metrics.get('sleep_hours'), [(6, 'kurz'), (7.5, 'normal'), (99, 'gut')])}\n"
+        f"- Body Battery: {_band(metrics.get('body_battery'), [(30, 'niedrig'), (60, 'mittel'), (101, 'hoch')])}\n"
+        f"- Training Status (Garmin): {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}\n"
+        + (f"- Regelbasierte Tagesampel: {rec['label']} ({'; '.join(rec['reasons'])})\n" if rec else "")
+    )
+
+
+def generate_coaching_note(data: dict, rec: dict = None, plan_state: dict = None):
+    """Tages-Coaching-Notiz (seit v0.18.0 strukturiert, Review-Punkt 15).
+
+    Die Entscheidung normal/locker/Pause kommt aus recommendation.evaluate()
+    (rec) - Gemini darf sie NICHT ändern, sondern formuliert nur die Umsetzung
+    für den heutigen Tag. Antwort als JSON {"punkte": [...]} (responseMimeType
+    application/json), damit das Format nicht mehr vom Modell abhängt.
+    Gibt (markdown_text, modell) zurück."""
+    metrics = extract_metrics(data)
+    phase = data.get("phase") or "unbekannt"
+    focus = PHASE_FOCUS.get(phase, "")
+    wv = data.get("weekly_volumes") or {}
+    ps = plan_state or {}
+    today_items = ", ".join(i["text"] for i in ps.get("today_fixed") or []) or "nichts Festes"
+    open_items = ", ".join(ps.get("week_open") or []) or "nichts"
+    rec_text = (
+        f"{rec['label']} - {rec['advice']} Gründe: {'; '.join(rec['reasons'])}."
+        if rec else "keine"
+    )
+
+    prompt = (
+        "Du bist ein Ausdauersport-Coach für einen Age-Group-Athleten in der Vorbereitung "
+        f"auf einen Ironman 70.3 am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
+        f"{ATHLETE_PROFILE}\n\n"
+        f"Heute ist {ps.get('weekday') or ''}. Trainingsphase: {phase} (Fokus: {focus}). "
+        f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n"
+        f"Laut Wochenrahmen heute: {today_items}. Diese Woche noch offen: {open_items} "
+        f"(noch {ps.get('days_left_in_week', '?')} Tage in der Woche).\n"
+        f"Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), ' km')}, "
+        f"Rad {_fmt(wv.get('bike_km'), ' km')}, Lauf {_fmt(wv.get('run_km'), ' km')}.\n\n"
+        "Erholung:\n"
+        f"{vitals_block(metrics, rec)}\n"
+        f"VERBINDLICHE Tagesentscheidung (regelbasiert, nicht ändern): {rec_text}\n\n"
+        "Aufgabe: Formuliere daraus eine kurze, konkrete Umsetzung für heute. Antworte "
+        'AUSSCHLIESSLICH mit JSON der Form {"punkte": ["...", "..."]} mit 2-3 Punkten, je '
+        "ein Satz, ohne Aufzählungszeichen im Text:\n"
+        "1. Was heute konkret trainiert wird (passend zu Wochentag, offener Woche und der "
+        "Tagesentscheidung - bei 'locker' eine entschärfte Variante, bei 'Ruhetag' nichts Hartes).\n"
+        "2. Ein Satz zur Einordnung der Erholung (keine Rohzahlen aufzählen).\n"
+        "3. Optional: ein Hinweis, wie die offene Woche im bestehenden Rahmen noch sinnvoll "
+        "aufgeht - keine zusätzlichen Einheiten fordern.\n"
+        "Schreibe durchgängig in korrektem Deutsch mit echten Umlauten (ä, ö, ü, ß)."
+    )
+    text, model = _generate(prompt, "coaching", json_mode=True)
+    return parse_points(text), model
+
+
+def parse_points(text: str) -> str:
+    """{"punkte": [...]} -> Markdown-Stichpunkte. Fallback: Rohtext."""
+    raw = (text or "").strip()
+    m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", raw, re.DOTALL)
+    candidate = m.group(1) if m else raw
+    try:
+        parsed = json.loads(candidate)
+        points = parsed.get("punkte") if isinstance(parsed, dict) else None
+        points = [str(p).strip().lstrip("-• ").strip() for p in (points or []) if str(p).strip()]
+        if points:
+            return "\n".join(f"- {p}" for p in points[:3])
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        pass
+    return raw
 
 
 def _trend(current, previous, unit="", better="hoch"):
@@ -432,29 +527,7 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> s
         "Umlauten (ä, ö, ü, ß) - niemals die Ersatzschreibweisen ae/oe/ue/ss."
     )
 
-    model = GEMINI_MODEL
-    resp = _call_gemini(model, prompt)
-    if resp.status_code == 404:
-        successor = _model_from_404(resp.text, model)
-        if successor:
-            print(f"[ai_coach] Modell '{model}' nicht verfügbar, wechsle auf '{successor}'")
-            model = successor
-            resp = _call_gemini(model, prompt)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
-    body = resp.json()
-    candidates = body.get("candidates") or []
-    if not candidates:
-        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
-    candidate = candidates[0]
-    parts = (candidate.get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts).strip()
-    if not text:
-        raise RuntimeError(
-            f"Gemini ({model}) hat leeren Text geliefert "
-            f"(finishReason: {candidate.get('finishReason')})"
-        )
+    text, model = _generate(prompt, "gym")
     return text
 
 
@@ -489,14 +562,45 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         if strength_detail else ""
     )
 
+    if AI_PRIVACY_MODE == "voll":
+        weekly_recovery = (
+            "Erholung im Wochenmittel:\n"
+            f"- Ruhepuls: {_trend(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), ' bpm')}\n"
+            f"- HRV: {_trend(s.get('hrv_avg'), s.get('hrv_avg_prev'), ' ms')}\n"
+            f"- Schlaf: {_trend(s.get('sleep_hours_avg'), s.get('sleep_hours_avg_prev'), ' h')}\n"
+            f"- Training Readiness: {_trend(s.get('readiness_avg'), s.get('readiness_avg_prev'))}\n"
+            f"- Training Status (aktuell): {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}\n"
+        )
+    else:
+        def _dir(cur, prev, better_high=True):
+            if not isinstance(cur, (int, float)) or not isinstance(prev, (int, float)) or not prev:
+                return "keine Vergleichsdaten"
+            d = (cur - prev) / prev * 100
+            if abs(d) < 3:
+                return "stabil"
+            up = d > 0
+            return "besser als Vorwoche" if up == better_high else "schlechter als Vorwoche"
+        weekly_recovery = (
+            "Erholung im Wochenvergleich (ohne Rohwerte, Datenschutzmodus):\n"
+            f"- Ruhepuls: {_dir(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), better_high=False)}\n"
+            f"- HRV: {_dir(s.get('hrv_avg'), s.get('hrv_avg_prev'))}\n"
+            f"- Schlaf: {_dir(s.get('sleep_hours_avg'), s.get('sleep_hours_avg_prev'))}\n"
+            f"- Training Status (aktuell): {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}\n"
+        )
+    zones = data.get("weekly_volumes") or {}
+    if zones.get("zone_total_min"):
+        weekly_recovery += (
+            f"- Intensitätsverteilung Ausdauer (HF-Zonen): {zones.get('zone_low_pct')} % locker (Z1-2), "
+            f"{zones.get('zone_mid_pct')} % mittel (Z3), {zones.get('zone_high_pct')} % hart (Z4-5)\n"
+        )
+
     prompt = (
         "Du bist ein Ausdauersport-Coach und schreibst den wöchentlichen Rückblick für "
-        f"einen Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am 29.08.2027. "
+        f"einen Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am {RACE_DATE_TEXT}. "
         f"Zielzeit: {RACE_GOAL}.\n\n"
         f"{ATHLETE_PROFILE}\n\n"
         f"Trainingsphase: {phase} (Fokus: {focus}). Noch {_fmt(days_left, ' Tage')} bis zum Rennen.\n\n"
-        "SOLL laut Wochenstruktur: 1x Schwimmen, 2x Laufen (1x Zone 2, 1x Intervall/Schwelle), "
-        "4-5x Kraft (1x Beine + 3-4x Push/Pull), Rad optional am Wochenende.\n\n"
+        f"SOLL laut Wochenstruktur: {plan.SOLL_TEXT}.\n\n"
         f"IST im Zeitraum {_fmt(s.get('period_label'))} (Vorzeitraum "
         f"{_fmt(s.get('period_prev_label'))} in Klammern) - schreibe im Report konkret 'in der "
         "Woche vom ... bis ...' mit diesen Daten, nicht 'diese Woche', damit klar ist, welcher "
@@ -514,12 +618,7 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         f"(Vorwoche {_fmt(s.get('total_min_prev'), ' min')}, "
         f"Veränderung {_fmt(s.get('volume_change_pct'), '%')})\n"
         f"{strength_block}\n"
-        "Erholung im Wochenmittel:\n"
-        f"- Ruhepuls: {_trend(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), ' bpm')}\n"
-        f"- HRV: {_trend(s.get('hrv_avg'), s.get('hrv_avg_prev'), ' ms')}\n"
-        f"- Schlaf: {_trend(s.get('sleep_hours_avg'), s.get('sleep_hours_avg_prev'), ' h')}\n"
-        f"- Training Readiness: {_trend(s.get('readiness_avg'), s.get('readiness_avg_prev'))}\n"
-        f"- Training Status (aktuell): {_fmt(metrics.get('training_status_phrase'))}\n"
+        f"{weekly_recovery}"
         f"{trend_note}\n\n"
         "Schreibe den wöchentlichen Rückblick auf Deutsch als Stichpunkte im Markdown-Format, "
         "JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN Fliesstext und KEIN einleitender "
@@ -536,27 +635,7 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         "Ersatzschreibweisen ae/oe/ue/ss."
     )
 
-    resp = _call_gemini(GEMINI_MODEL, prompt)
-    if resp.status_code == 404:
-        successor = _model_from_404(resp.text, GEMINI_MODEL)
-        if successor:
-            print(f"[weekly] Modell nicht verfügbar, wechsle auf '{successor}'")
-            resp = _call_gemini(successor, prompt)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Gemini HTTP {resp.status_code}: {resp.text[:400]}")
-
-    body = resp.json()
-    candidates = body.get("candidates") or []
-    if not candidates:
-        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
-    parts = (candidates[0].get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts).strip()
-    if not text:
-        raise RuntimeError(
-            f"Gemini hat leeren Text geliefert "
-            f"(finishReason: {candidates[0].get('finishReason')})"
-        )
+    text, model = _generate(prompt, "weekly")
     return text
 
 
@@ -603,7 +682,7 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
 
     prompt = (
         "Du bist ein Ausdauersport-Coach und persönlicher Trainingsassistent für einen "
-        f"Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am 29.08.2027. "
+        f"Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am {RACE_DATE_TEXT}. "
         f"Zielzeit: {RACE_GOAL}. Du beantwortest hier eine gezielte Frage in einem Chat - "
         "KEINE Coaching-Notiz und KEINE erzwungenen Stichpunkte, sondern eine direkte, "
         "natürliche Antwort auf genau diese Frage, so kurz wie möglich, aber vollständig.\n\n"
@@ -612,26 +691,18 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
         f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n"
         f"Für die aktuelle Phase geplant:\n{plan_detail}\n\n"
         "Aktueller Datenstand (letzter Sync):\n"
-        f"- Ruhepuls: {_fmt(metrics['resting_hr'], ' bpm')}\n"
-        f"- Training Readiness: {_fmt(metrics['training_readiness_score'], '%')} "
-        f"({_fmt(metrics['training_readiness_level'])}), 14-Tage-Schnitt: {_fmt(readiness_14d, '%')}\n"
-        f"- HRV letzte Nacht: {_fmt(metrics['hrv_avg'], ' ms')} ({_fmt(metrics['hrv_status'])})\n"
-        f"- Body Battery: {_fmt(metrics['body_battery'], '%')}\n"
-        f"- Schlaf: {_fmt(metrics['sleep_hours'], ' h')}, Score {_fmt(metrics['sleep_score'])}\n"
+        f"{vitals_block(metrics)}"
+        f"- Readiness 14-Tage-Schnitt: {_fmt(readiness_14d if AI_PRIVACY_MODE == 'voll' else None, '%')}\n"
         f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}, 7-Tage-Schnitt: {_fmt(vo2max_7d, ' ml/kg/min')}\n"
-        f"- Training Status: {_fmt(metrics['training_status_phrase'])}\n"
         f"- FTP (Rad, letzter bekannter Wert laut Garmin): {_fmt(metrics.get('ftp'), ' W')}\n"
         f"- HF-Pace-Kopplung Lauf (Ø letzte qualifizierende Einheiten): "
         f"{_fmt(metrics.get('decoupling_avg_pct'), '%')}\n"
         f"- Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), 'km')}, "
         f"Rad {_fmt(wv.get('bike_km'), 'km')}, Lauf {_fmt(wv.get('run_km'), 'km')}\n\n"
-        "WICHTIGE EINSCHRAENKUNG (damit du nichts erfindest): Dir liegen KEINE Sensordaten zu "
-        "Pace (Lauf/Schwimm) oder Körpergewicht vor (FTP siehe oben, das ist die einzige "
-        "vorliegende Watt-Größe), und du hast KEINEN Lesezugriff auf die manuell im "
-        "Dashboard gepflegten Zielzeit-Benchmark-Felder (Schwimm-Pace/Rad-Schnitt/Lauf-Pace) "
-        "- diese sind bewusst manuell, siehe Konzept-Dokument. Falls die Frage andere Werte "
-        "braucht, sag das ehrlich statt eine Zahl zu erfinden, und beziehe dich stattdessen "
-        "auf die oben genannten tatsächlich vorliegenden Daten.\n"
+        "WICHTIGE EINSCHRÄNKUNG (damit du nichts erfindest): Dir liegen keine Pace-Daten "
+        "(Lauf/Schwimmen) und kein Körpergewicht vor; einzige Watt-Größe ist die FTP oben. Die "
+        "manuell gepflegten Benchmark-Felder der Zielzeit-Schätzung kennst du nicht. Fehlen "
+        "Werte für eine Antwort, sag das ehrlich statt eine Zahl zu erfinden.\n"
         f"{context_block}\n"
         f"Neue Frage des Athleten: {question}\n\n"
         "Antworte auf Deutsch, direkt und konkret auf die Frage bezogen, nutze die obigen Daten "
@@ -643,29 +714,7 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
         "Umlauten (ä, ö, ü, ß) - niemals die Ersatzschreibweisen ae/oe/ue/ss."
     )
 
-    model = GEMINI_MODEL
-    resp = _call_gemini(model, prompt)
-    if resp.status_code == 404:
-        successor = _model_from_404(resp.text, model)
-        if successor:
-            print(f"[ai_coach] Modell '{model}' nicht verfügbar, wechsle auf '{successor}'")
-            model = successor
-            resp = _call_gemini(model, prompt)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
-    body = resp.json()
-    candidates = body.get("candidates") or []
-    if not candidates:
-        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
-    candidate = candidates[0]
-    parts = (candidate.get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts).strip()
-    if not text:
-        raise RuntimeError(
-            f"Gemini ({model}) hat leeren Text geliefert "
-            f"(finishReason: {candidate.get('finishReason')})"
-        )
+    text, model = _generate(prompt, "chat")
     return text
 
 
@@ -740,7 +789,7 @@ def generate_trainingsplan_kommentar(
 
     prompt = (
         "Du bist ein Ausdauersport-Coach für einen Age-Group-Athleten in der Vorbereitung "
-        f"auf einen Ironman 70.3 am 29.08.2027. Zielzeit: {RACE_GOAL}.\n\n"
+        f"auf einen Ironman 70.3 am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
         f"{ATHLETE_PROFILE}\n\n"
         f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}).\n\n"
         "Der Athlet hat bereits konkrete, phasenabhängige Trainingspläne für Laufen, Schwimmen "
@@ -750,8 +799,8 @@ def generate_trainingsplan_kommentar(
         f"{decided_block}\n\n"
         f"AUSLOESER für diesen Kommentar JETZT: {trigger_detail}\n\n"
         "Aktuelle Werte: "
-        f"Training Readiness {_fmt(metrics['training_readiness_score'], '%')}, "
-        f"Training Status {_fmt(metrics.get('training_status_phrase'))}, "
+        f"Training Readiness {_fmt(metrics['training_readiness_score'] if AI_PRIVACY_MODE == 'voll' else metrics.get('training_readiness_level'), '%' if AI_PRIVACY_MODE == 'voll' else '')}, "
+        f"Training Status {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}, "
         f"VO2max {_fmt(metrics['vo2max'], ' ml/kg/min')}, "
         f"FTP (Rad) {_fmt(metrics.get('ftp'), ' W')}, "
         f"HF-Pace-Kopplung Lauf (Ø letzte Einheiten) {_fmt(metrics.get('decoupling_avg_pct'), '%')}, "
@@ -790,29 +839,7 @@ def generate_trainingsplan_kommentar(
         "(ä, ö, ü, ß) - niemals die Ersatzschreibweisen ae/oe/ue/ss."
     )
 
-    model = GEMINI_MODEL
-    resp = _call_gemini(model, prompt)
-    if resp.status_code == 404:
-        successor = _model_from_404(resp.text, model)
-        if successor:
-            print(f"[ai_coach] Modell '{model}' nicht verfügbar, wechsle auf '{successor}'")
-            model = successor
-            resp = _call_gemini(model, prompt)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"Gemini HTTP {resp.status_code} (Modell {model}): {resp.text[:400]}")
-    body = resp.json()
-    candidates = body.get("candidates") or []
-    if not candidates:
-        reason = (body.get("promptFeedback") or {}).get("blockReason", "unbekannt")
-        raise RuntimeError(f"Gemini hat keinen Kandidaten geliefert (blockReason: {reason})")
-    candidate = candidates[0]
-    parts = (candidate.get("content") or {}).get("parts") or []
-    text = "".join(p.get("text", "") for p in parts).strip()
-    if not text:
-        raise RuntimeError(
-            f"Gemini ({model}) hat leeren Text geliefert "
-            f"(finishReason: {candidate.get('finishReason')})"
-        )
+    text, model = _generate(prompt, "plan", json_mode=True)
     return _parse_trainingsplan_response(text)
 
 

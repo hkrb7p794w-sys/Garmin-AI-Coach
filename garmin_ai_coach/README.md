@@ -1,7 +1,7 @@
 # Garmin AI Coach
 
 Home Assistant Add-on: synct Garmin-Trainings-/Recovery-Daten per MQTT nach Home Assistant und
-erzeugt eine KI-Coaching-Notiz (Google Gemini, kostenloses Kontingent) zur Vorbereitung auf einen
+erzeugt eine KI-Coaching-Notiz (Google Gemini) zur Vorbereitung auf einen
 Ironman 70.3.
 
 ## Coaching-Notiz einrichten (kostenlos)
@@ -15,10 +15,54 @@ Kreditkarte bietet (Stand 09/2026, siehe https://ai.google.dev/gemini-api/docs/p
    `gemini_api_key` mit diesem Key befüllen und speichern.
 4. Add-on neu starten bzw. bis zum nächsten automatischen Sync warten.
 
+**Datenschutz im kostenlosen Kontingent:** Google darf dort Eingaben und Antworten zur
+Verbesserung seiner Produkte nutzen, menschliche Prüfer dürfen sie lesen, und Google rät davon ab,
+sensible oder persönliche Daten zu senden (Gemini API Additional Terms, „Unpaid Services“). Deshalb
+steht die Option `ai_privacy_mode` standardmäßig auf `reduziert`: an Gemini gehen dann keine
+Rohwerte wie Ruhepuls, HRV in ms oder Schlafstunden, nur Einordnungen (z. B. „HRV-Status
+ausgeglichen“). Mit aktivierter Abrechnung (bezahlte Stufe) nutzt Google die Daten nicht zur
+Produktverbesserung; dann kann `voll` sinnvoll sein.
+
 Ohne gesetzten Key läuft der Sync trotzdem normal durch (alle Garmin-Sensoren werden weiterhin
 aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
+
+### 0.18.0
+Umbau nach dem Dashboard-Review vom 25.09.2026.
+
+- **KI-Ausfall behoben (Ursache: Gemini HTTP 503 „high demand“ seit Tagen):** zentraler
+  Gemini-Aufruf mit drei Versuchen (0/15/45 s Wartezeit) bei 429/5xx/Timeout, danach automatisch
+  ein anderes verfügbares Flash-Modell aus der Modellliste der API (bevorzugt „lite“); das
+  Hauptmodell wird danach 30 min übersprungen. Optional fest vorgeben per Env `GEMINI_FALLBACK_MODEL`.
+- **Regelbasierte Tagesampel** (`recommendation.py`, Sensor „Garmin Tagesempfehlung“): normal /
+  locker / Pause aus HRV-Status (7-Tage-Schnitt vs. Baseline), Readiness nur nach unten
+  (Low/Poor), Ruhepuls vs. 7-Tage-Schnitt, Schlafdauer. Gemini formuliert nur noch die Umsetzung,
+  als JSON (`responseMimeType: application/json`). Fällt Gemini aus, erscheint eine regelbasierte
+  Notiz plus die letzte erfolgreiche KI-Notiz mit Zeitstempel.
+- **Coach-Status-Sensor** („Garmin Coach Status“: ok / eingeschränkt / ausgefallen, mit letztem
+  Erfolg, Fehlerzähler, letztem Fehler, verwendetem Modell).
+- **`plan.py` als einzige Quelle** für Wochenrahmen, Soll-Werte, Phasen, Kurzpläne, Meilensteine;
+  publiziert als Sensor „Garmin Plan“. Dashboard und Prompts nutzen dieselben Daten.
+- **Taper jetzt 14 Tage** statt ganzer August (Peak bis 15 Tage vor dem Rennen).
+- **HRV-Status und 7-Tage-Schnitt** als eigene Sensoren; Trainingsstatus auf Deutsch statt
+  Garmin-Code („RECOVERY_2“ → „Erholung“).
+- **HF-Kopplung neu:** Filter über HF-Zonen (max. 10 % Zeit in Zone 4–5) statt Aktivitätsname,
+  erste 10 min abgeschnitten, Berechnung aus der Zeitreihe; zusätzlich Zwift-Fahrten mit Leistung
+  (Watt/HF). Alte Cache-Einträge werden verworfen und neu bewertet.
+- **Intensitätsverteilung:** Minuten je HF-Zonenbereich (Z1–2 / Z3 / Z4–5) pro Woche im
+  Wochenreport.
+- **Kraftwerte:** geschätztes 1RM (Epley) je Übung, aktueller Wert vs. vor 4–8 Wochen (Sensor
+  „Garmin Kraftwerte“).
+- **Datenschutz:** neue Option `ai_privacy_mode` (`reduziert` = Standard, `voll`). Im reduzierten
+  Modus gehen keine Roh-Gesundheitswerte an Gemini, nur Einordnungen.
+- **Sync-Standard** jetzt `6,20` statt `6,12,18,20`.
+- Neue Module im Dockerfile: `plan.py`, `recommendation.py`, `progress.py`.
+
+**Nach dem ersten Sync prüfen:** Attribute von `sensor.garmin_ai_coach_garmin_hf_pace_kopplung`
+(kommen Zonen- und Zeitreihenfelder an?) und `sensor.garmin_ai_coach_garmin_hrv_status`
+(`baseline` befüllt?). Die Feldnamen `hrTimeInZone_1..5`, `metricDescriptors`/`directHeartRate`
+und `hrvSummary.weeklyAvg/baseline` sind nicht durch eine echte Antwort dieses Kontos belegt.
 
 ### 0.17.1
 - **Falsche Umlaut-Schreibweise (ae/oe/ue statt ä/ö/ü) im gesamten Add-on-Quellcode korrigiert.**

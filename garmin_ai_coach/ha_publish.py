@@ -341,7 +341,72 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:chat-processing-outline",
     },
+
+    # Seit v0.18.0 (Dashboard-Review 25.09.2026)
+    "hrv_7d": {
+        "name": "Garmin HRV 7-Tage-Schnitt",
+        "unit": "ms",
+        "icon": "mdi:heart-flash",
+        "state_class": "measurement",
+    },
+    "hrv_status": {
+        "name": "Garmin HRV Status",
+        "unit": None,
+        "icon": "mdi:heart-cog",
+    },
+    "plan": {
+        "name": "Garmin Plan",
+        "unit": None,
+        "icon": "mdi:calendar-star",
+    },
+    "empfehlung": {
+        "name": "Garmin Tagesempfehlung",
+        "unit": None,
+        "icon": "mdi:traffic-light",
+    },
+    "coach_status": {
+        "name": "Garmin Coach Status",
+        "unit": None,
+        "icon": "mdi:robot-confused-outline",
+    },
+    "kraftwerte": {
+        "name": "Garmin Kraftwerte",
+        "unit": None,
+        "icon": "mdi:weight-lifter",
+    },
 }
+
+# Garmin liefert den Trainingsstatus als Code (z. B. "RECOVERY_2") - bisher
+# landete genau dieser Code im Dashboard (Review-Punkt 12).
+TRAINING_STATUS_DE = {
+    "PRODUCTIVE": "Produktiv",
+    "MAINTAINING": "Erhaltend",
+    "RECOVERY": "Erholung",
+    "UNPRODUCTIVE": "Unproduktiv",
+    "DETRAINING": "Formverlust",
+    "PEAKING": "Formhöhepunkt",
+    "OVERREACHING": "Überlastung",
+    "STRAINED": "Überbeansprucht",
+    "NO_STATUS": "Kein Status",
+    "PAUSED": "Pausiert",
+}
+HRV_STATUS_DE = {
+    "BALANCED": "Ausgeglichen",
+    "UNBALANCED": "Unausgeglichen",
+    "LOW": "Niedrig",
+    "POOR": "Schlecht",
+    "NONE": "Kein Status",
+}
+
+
+def training_status_de(phrase):
+    if not phrase:
+        return None
+    code = str(phrase).upper()
+    for prefix, text in TRAINING_STATUS_DE.items():
+        if code.startswith(prefix):
+            return text
+    return str(phrase).replace("_", " ").title()
 
 # Sensoren, die zusätzlich zum reinen state noch strukturierte Attribute
 # (json_attributes_topic) mitliefern.
@@ -349,6 +414,7 @@ ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
     "chat_verlauf", "ftp", "hf_pace_kopplung",
+    "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte",
 }
 
 
@@ -587,10 +653,14 @@ def extract_metrics(data: dict) -> dict:
     # HRV: get_hrv_data() -> {"hrvSummary": {"lastNightAvg": ..., "status": ...}}
     hrv_avg = None
     hrv_status = None
+    hrv_weekly_avg = None
+    hrv_baseline = None
     try:
         summary = (data.get("hrv") or {}).get("hrvSummary") or {}
         hrv_avg = summary.get("lastNightAvg")
         hrv_status = summary.get("status")
+        hrv_weekly_avg = summary.get("weeklyAvg")
+        hrv_baseline = summary.get("baseline") if isinstance(summary.get("baseline"), dict) else None
     except AttributeError:
         pass
 
@@ -724,6 +794,8 @@ def extract_metrics(data: dict) -> dict:
         "training_readiness_level": readiness_level,
         "hrv_avg": hrv_avg,
         "hrv_status": hrv_status,
+        "hrv_weekly_avg": hrv_weekly_avg,
+        "hrv_baseline": hrv_baseline,
         "body_battery": body_battery,
         "stress_avg": stress_avg,
         "respiration_avg": respiration_avg,
@@ -731,6 +803,7 @@ def extract_metrics(data: dict) -> dict:
         "sleep_score": sleep_score,
         "sleep_hours": sleep_hours,
         "training_status_phrase": training_status_phrase,
+        "training_status_de": training_status_de(training_status_phrase),
         "vo2max": vo2max,
         "endurance_score": endurance_score,
         "ftp": ftp,
@@ -761,6 +834,17 @@ def publish_state(data: dict, coaching_note: str = None):
 
     if metrics["hrv_avg"] is not None:
         client.publish("garmin_ai_coach/hrv/state", metrics["hrv_avg"], retain=True)
+    if metrics.get("hrv_weekly_avg") is not None:
+        client.publish("garmin_ai_coach/hrv_7d/state", metrics["hrv_weekly_avg"], retain=True)
+    if metrics.get("hrv_status"):
+        client.publish("garmin_ai_coach/hrv_status/state",
+                       HRV_STATUS_DE.get(str(metrics["hrv_status"]).upper(), metrics["hrv_status"]), retain=True)
+        client.publish("garmin_ai_coach/hrv_status/attributes", json.dumps({
+            "raw": metrics["hrv_status"],
+            "weekly_avg": metrics.get("hrv_weekly_avg"),
+            "last_night": metrics.get("hrv_avg"),
+            "baseline": metrics.get("hrv_baseline"),
+        }, ensure_ascii=False, default=str), retain=True)
 
     if metrics["body_battery"] is not None:
         client.publish("garmin_ai_coach/body_battery/state", metrics["body_battery"], retain=True)
@@ -782,7 +866,7 @@ def publish_state(data: dict, coaching_note: str = None):
 
     if metrics["training_status_phrase"] is not None:
         client.publish("garmin_ai_coach/training_status/state",
-                        metrics["training_status_phrase"], retain=True)
+                        metrics["training_status_de"] or metrics["training_status_phrase"], retain=True)
         client.publish("garmin_ai_coach/training_status/attributes",
                         json.dumps({"raw": metrics["training_status_phrase"]}), retain=True)
 
@@ -827,18 +911,48 @@ def publish_state(data: dict, coaching_note: str = None):
     )
 
 
-def publish_coaching_note(note: str):
-    """Publiziert nur die Coaching-Notiz.
-
-    Bewusst getrennt von publish_state(): die Garmin-Messwerte gehen sofort nach
-    dem Abruf raus und hängen nicht mehr an der (teils >30s dauernden oder ganz
-    fehlschlagenden) KI-Anfrage."""
+def publish_coaching_note(note: str, source: str = "ki", generated_at: str = None,
+                          last_ai_note: str = None, last_ai_at: str = None):
+    """Publiziert die Tagesnotiz. source: 'ki' oder 'regeln' (Gemini nicht
+    erreichbar, Notiz aus recommendation.fallback_note). Die letzte
+    erfolgreiche KI-Notiz bleibt als Attribut erhalten, statt dass im
+    Dashboard nur "nicht verfügbar" steht (Review-Punkte 1 und 15)."""
     if not note:
         return
     short = note[:250] + ("…" if len(note) > 250 else "")
     client.publish("garmin_ai_coach/coaching_note/state", short, retain=True)
-    client.publish("garmin_ai_coach/coaching_note/attributes",
-                   json.dumps({"full_text": note}), retain=True)
+    client.publish("garmin_ai_coach/coaching_note/attributes", json.dumps({
+        "full_text": note,
+        "source": source,
+        "generated_at": generated_at or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "last_ai_note": last_ai_note,
+        "last_ai_at": last_ai_at,
+    }, ensure_ascii=False), retain=True)
+
+
+def _publish_json_sensor(key: str, state, attributes: dict):
+    client.publish(f"garmin_ai_coach/{key}/state", str(state)[:250], retain=True)
+    client.publish(f"garmin_ai_coach/{key}/attributes",
+                   json.dumps(attributes, ensure_ascii=False, default=str), retain=True)
+
+
+def publish_plan(plan_state: dict):
+    today = ", ".join(i["text"] for i in plan_state.get("today_fixed") or []) or "kein fester Termin"
+    _publish_json_sensor("plan", f"{plan_state.get('weekday')}: {today}", plan_state)
+
+
+def publish_recommendation(rec: dict):
+    _publish_json_sensor("empfehlung", rec.get("label"), rec)
+
+
+def publish_coach_status(status: str, details: dict):
+    _publish_json_sensor("coach_status", status, details)
+
+
+def publish_kraftwerte(summary: list):
+    state = f"{len(summary)} Übungen" if summary else "noch keine Daten"
+    _publish_json_sensor("kraftwerte", state, {"exercises": summary,
+                                               "formula": "Epley: Gewicht × (1 + Wdh/30), geschätzt"})
 
 
 def publish_weekly_report(text: str, summary: dict = None):

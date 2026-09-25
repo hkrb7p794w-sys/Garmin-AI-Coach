@@ -13,6 +13,7 @@ export GARMIN_EMAIL=$(bashio::config 'garmin_email')
 export SYNC_HOURS=$(bashio::config 'sync_hours')
 export RACE_DATE=$(bashio::config 'race_date')
 export RACE_GOAL=$(bashio::config 'race_goal')
+export AI_PRIVACY_MODE=$(bashio::config 'ai_privacy_mode')
 
 # MQTT-Zugangsdaten werden NICHT automatisch als Umgebungsvariablen injiziert,
 # nur weil "services: - mqtt:want" in config.yaml steht - das deklariert nur
