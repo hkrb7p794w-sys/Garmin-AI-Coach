@@ -491,9 +491,10 @@ def _update_decoupling_cache(client, activities: list) -> list:
             base = {"date": start_dt.date().isoformat(), "activity_name": act.get("activityName"),
                     "method": decoupling.METHOD_VERSION}
             if not sport:
-                # "geprüft, nicht geeignet" merken (zu intensiv, zu kurz, keine Zonendaten)
-                cache[key] = {**base, "empty": True,
-                              "high_zone_share": decoupling.high_zone_share(act)}
+                reason = decoupling.skip_reason(act)
+                if reason is None:
+                    continue  # keine Lauf-/Radaktivität - nicht merken, nicht anzeigen
+                cache[key] = {**base, "empty": True, "reason": reason}
                 changed = True
                 continue
             result = {}
@@ -505,7 +506,8 @@ def _update_decoupling_cache(client, activities: list) -> list:
             if not result and sport == "run":
                 result = decoupling.compute_from_laps_trimmed(client.get_activity_splits(activity_id))
             if not result:
-                cache[key] = {**base, "empty": True, "sport": sport}
+                cache[key] = {**base, "empty": True, "sport": sport,
+                              "reason": "keine verwertbare Zeitreihe/Runden"}
             else:
                 cache[key] = {**base, "sport": sport, **result,
                               "high_zone_share": round(decoupling.high_zone_share(act) * 100, 1)}
@@ -518,6 +520,16 @@ def _update_decoupling_cache(client, activities: list) -> list:
 
     sessions = [v for v in cache.values() if not v.get("empty")]
     return sorted(sessions, key=lambda s: s.get("date") or "")
+
+
+def _decoupling_skipped() -> list:
+    """Geprüfte, aber nicht gewertete Einheiten mit Grund (v0.18.1) - macht im
+    Dashboard sichtbar, warum ein Lauf fehlt, und zeigt nebenbei, ob Garmin die
+    HF-Zonenfelder überhaupt liefert."""
+    cache = _load_decoupling_cache()
+    skipped = [{"date": v.get("date"), "activity_name": v.get("activity_name"), "reason": v.get("reason")}
+               for v in cache.values() if v.get("empty") and v.get("reason")]
+    return sorted(skipped, key=lambda s: s.get("date") or "")[-10:]
 
 
 def _check_endurance_before_strength_interference(activities: list, today_date: datetime.date) -> str:
@@ -927,7 +939,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_state(wellness)
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
-        publish_decoupling(wellness["decoupling_sessions"])
+        publish_decoupling(wellness["decoupling_sessions"], skipped=_decoupling_skipped())
 
         # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschläge (Dashboard-Tab
         # "Vorschläge", siehe suggestions.py) mit der aktuellen Punkteliste

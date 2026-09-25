@@ -182,7 +182,7 @@ def compute_decoupling(raw_splits) -> dict:
 # 5. Cache-Einträge der alten Methode werden verworfen und neu berechnet
 #    (Lessons Learned 6: ein Fix muss das Alte aktiv erkennen und verwerfen).
 
-METHOD_VERSION = 2
+METHOD_VERSION = 3
 WARMUP_SECONDS = 600
 MAX_HIGH_ZONE_SHARE = 0.10
 MIN_RIDE_DURATION_MIN = 45
@@ -333,3 +333,28 @@ def pace_mmss_from_minkm(minkm):
         return None
     sec = round(minkm * 60)
     return f"{sec // 60}:{sec % 60:02d}"
+
+
+def skip_reason(activity: dict):
+    """Klartext, warum classify() die Aktivität verworfen hat; None, wenn es
+    gar keine Lauf-/Radaktivität ist."""
+    type_key = ((activity.get("activityType") or {}).get("typeKey", "") or "").lower()
+    duration_min = (activity.get("duration") or 0) / 60.0
+    is_run = "run" in type_key
+    is_ride = "bik" in type_key or "cycl" in type_key or "ride" in type_key
+    if not (is_run or is_ride):
+        return None
+    if is_ride and (activity.get("distance") or 0) <= 0:
+        return None  # HF-Zweitaufzeichnung der Uhr, kein eigener Eintrag
+    if is_run and duration_min < MIN_DURATION_MIN:
+        return f"kürzer als {MIN_DURATION_MIN} min"
+    if is_ride and duration_min < MIN_RIDE_DURATION_MIN:
+        return f"kürzer als {MIN_RIDE_DURATION_MIN} min"
+    if is_ride and not isinstance(activity.get("avgPower") or activity.get("averagePower"), (int, float)):
+        return "keine Leistungsdaten"
+    share = high_zone_share(activity)
+    if share is None:
+        return "keine HF-Zonendaten von Garmin"
+    if share > MAX_HIGH_ZONE_SHARE:
+        return f"zu intensiv ({round(share * 100)} % der Zeit in Zone 4-5)"
+    return "nicht geeignet"

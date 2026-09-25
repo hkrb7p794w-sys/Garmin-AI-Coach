@@ -28,6 +28,12 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.18.1
+- HF-Kopplung: Sensor wird auf „unbekannt“ gesetzt, wenn keine Einheit gewertet wird (vorher blieb
+  der alte Wert 16,8 % stehen). Nicht gewertete Einheiten stehen mit Grund im Attribut `skipped`
+  („zu intensiv“, „keine HF-Zonendaten von Garmin“, „kürzer als 35 min“ …).
+- Alle Kopplungs-Einträge werden einmalig neu bewertet (Methode 3), damit die Gründe erscheinen.
+
 ### 0.18.0
 Umbau nach dem Dashboard-Review vom 25.09.2026.
 

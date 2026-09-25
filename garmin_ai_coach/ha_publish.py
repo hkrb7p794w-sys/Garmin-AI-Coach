@@ -995,7 +995,7 @@ def publish_strength_exercises(sessions: list):
     )
 
 
-def publish_decoupling(sessions: list):
+def publish_decoupling(sessions: list, skipped: list = None):
     """Publiziert die HF-Pace-Kopplung (aerobe Entkopplung, siehe decoupling.py)
     qualifizierender Lauf-Einheiten als Sensor-Attribute (strukturierte Liste,
     analog zu publish_strength_exercises). State ist der jüngste Einzelwert
@@ -1011,13 +1011,16 @@ def publish_decoupling(sessions: list):
         s.get("decoupling_pct") for s in sessions
         if isinstance(s.get("decoupling_pct"), (int, float))
     ]
-    if values:
-        client.publish("garmin_ai_coach/hf_pace_kopplung/state", values[-1], retain=True)
+    # Ohne gewertete Einheit "None" senden: HA setzt den Sensor dann auf
+    # "unbekannt", statt einen alten, nicht mehr gültigen Wert stehen zu lassen
+    # (live gesehen nach v0.18.0: 16,8 % blieb retained stehen).
+    client.publish("garmin_ai_coach/hf_pace_kopplung/state",
+                   values[-1] if values else "None", retain=True)
     avg_recent = round(sum(values[-5:]) / len(values[-5:]), 1) if values else None
     client.publish(
         "garmin_ai_coach/hf_pace_kopplung/attributes",
         json.dumps(
-            {"sessions": sessions, "avg_recent_pct": avg_recent},
+            {"sessions": sessions, "avg_recent_pct": avg_recent, "skipped": skipped or []},
             ensure_ascii=False, default=str,
         ),
         retain=True,
