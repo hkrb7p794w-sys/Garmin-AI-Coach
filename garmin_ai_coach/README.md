@@ -28,6 +28,16 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.19.0
+
+Saisonplan 2026/27 mit Marathon (02.05.2027) als Zwischenziel vor dem Ironman 70.3 (29.08.2027):
+
+- **Neue Phasen** in `plan.py`: Grundlage → Marathon-Aufbau → Marathon-Taper → Regeneration → 70.3-Aufbau → 70.3-Peak → 70.3-Taper. Dieselben Grenzen wie im Dashboard-Plan (`custom_templates/coach_plan.jinja`).
+- **Testwerte als Konstanten** (`FTP_ZWIFT_W`, `CSS_S_PER_100M`, `LT_PACE_S_PER_KM`, `MARATHON_PACE_S_PER_KM`): Phasenpläne und KI-Prompts rechnen Watt und Pace daraus. Die Zwift-FTP (178 W) ersetzt in den Prompts die abweichende Garmin-Schätzung.
+- **Wochensoll, Musterwoche und Soll-Text je Phase** (`WEEKLY_TARGETS_BY_PHASE`, `WEEK_TEMPLATE_BY_PHASE`, `soll_text()`): Home-Gym 3x (Push, Pull, Push+Pull) + Beine 1x, im Marathonblock 3 Läufe, im 70.3-Block 2x Rad.
+- **Meilensteine** um Marathon-Meilensteine ergänzt (Helper existieren bereits in Home Assistant).
+- Hinweis: Beim ersten Sync meldet der Plan-Kommentar einmalig einen „Phasenwechsel“, weil die Phase jetzt „Grundlage“ statt „Grundlagenausdauer“ heißt.
+
 ### 0.18.1
 - HF-Kopplung: Sensor wird auf „unbekannt“ gesetzt, wenn keine Einheit gewertet wird (vorher blieb
   der alte Wert 16,8 % stehen). Nicht gewertete Einheiten stehen mit Grund im Attribut `skipped`
