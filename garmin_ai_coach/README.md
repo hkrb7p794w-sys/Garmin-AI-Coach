@@ -28,6 +28,10 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.19.1
+
+- Wochenrahmen präzisiert (Alex, 14.10.2026): Mo Push · Di/Do Schwimmen und Beine in flexibler Reihenfolge · Mi Pull · Fr Push+Pull · Wochenende Zwift · Z2- und Qualitätslauf ohne festen Tag unter der Woche. `WEEK_TEMPLATE_BY_PHASE` und `ATHLETE_PROFILE` entsprechend angepasst; der Qualitätslauf hängt nicht mehr fest am Mittwoch.
+
 ### 0.19.0
 
 Saisonplan 2026/27 mit Marathon (02.05.2027) als Zwischenziel vor dem Ironman 70.3 (29.08.2027):

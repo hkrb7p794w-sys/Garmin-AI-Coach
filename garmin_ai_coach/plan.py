@@ -104,26 +104,27 @@ WEEKLY_TARGETS_BY_PHASE = {
 }
 WEEKLY_TARGETS = WEEKLY_TARGETS_BY_PHASE["Grundlage"]
 
-# Feste Tagesbelegung je Phase (Musterwoche).
+# Feste Tagesbelegung je Phase (Musterwoche, von Alex am 14.10.2026 präzisiert):
+# Mo Push · Di/Do Schwimmen und Beine (Reihenfolge flexibel) · Mi Pull · Fr Push+Pull ·
+# Wochenende Zwift · Z2-Lauf und Qualitätslauf frei unter der Woche (ohne festen Tag,
+# erscheinen deshalb über week_open statt hier).
 _GYM = {
     0: [{"type": "strength", "text": "Push (Home-Gym)"}],
-    2: [{"type": "strength", "text": "Pull (Home-Gym)"}, {"type": "run", "text": "Qualitätslauf"}],
-    3: [{"type": "strength", "text": "Beine vor der Arbeit"}],
+    1: [{"type": "swim_or_legs", "text": "Schwimmen oder Beine vor der Arbeit (das andere am Donnerstag)"}],
+    2: [{"type": "strength", "text": "Pull (Home-Gym)"}],
+    3: [{"type": "swim_or_legs", "text": "Schwimmen oder Beine vor der Arbeit (was am Dienstag nicht dran war)"}],
     4: [{"type": "strength", "text": "Push + Pull kombiniert (Home-Gym)"}],
 }
 WEEK_TEMPLATE_BY_PHASE = {
     "Grundlage": {**_GYM,
-        1: [{"type": "swim", "text": "Schwimmen vor der Arbeit"}, {"type": "optional", "text": "abends optional Zwift locker"}],
-        5: [{"type": "bike", "text": "Zwift-Intervall"}],
-        6: [{"type": "run", "text": "Zone-2-Lauf (mit Partnerin)"}]},
+        5: [{"type": "bike", "text": "Zwift-Einheit (Sa oder So)"}],
+        6: [{"type": "bike", "text": "Zwift-Einheit, falls Samstag nicht geklappt hat"}]},
     "Marathon-Aufbau": {**_GYM,
-        1: [{"type": "swim", "text": "Schwimmen vor der Arbeit"}, {"type": "bike", "text": "Zwift am Abend"}],
-        5: [{"type": "run", "text": "Lockerer Lauf (mit Partnerin)"}],
-        6: [{"type": "run", "text": "Longrun"}]},
+        5: [{"type": "bike", "text": "Zwift oder Longrun (auf Sa/So verteilen)"}],
+        6: [{"type": "run", "text": "Longrun oder Zwift (was Samstag nicht dran war)"}]},
     "70.3-Aufbau": {**_GYM,
-        1: [{"type": "swim", "text": "Schwimmen vor der Arbeit"}, {"type": "bike", "text": "Zwift-Intervall am Abend"}],
-        5: [{"type": "bike", "text": "Lange Radeinheit + Koppellauf"}],
-        6: [{"type": "run", "text": "Zone-2-Lauf (mit Partnerin)"}]},
+        5: [{"type": "bike", "text": "Lange Radeinheit + Koppellauf (Sa oder So)"}],
+        6: [{"type": "bike", "text": "Lange Radeinheit, falls Samstag nicht geklappt hat"}]},
 }
 WEEK_TEMPLATE_BY_PHASE["Marathon-Taper"] = WEEK_TEMPLATE_BY_PHASE["Marathon-Aufbau"]
 WEEK_TEMPLATE_BY_PHASE["70.3-Peak"] = WEEK_TEMPLATE_BY_PHASE["70.3-Aufbau"]
@@ -134,15 +135,17 @@ WEEKDAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Sam
 
 ATHLETE_PROFILE = f"""Ziele: erster Marathon am 02.05.2027 (Zwischenziel), Hauptziel Ironman 70.3 am 29.08.2027.
 
-Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar):
-- Dienstag + Donnerstag sind Bürotage: dort passen 1x Schwimmen (Di) und 1x Beintraining (Do),
-  jeweils vor der Arbeit.
-- Home-Gym genau 3x pro Woche an Homeoffice-Tagen: Mo Push, Mi Pull, Fr Push und Pull kombiniert.
-- Laufen: 1x lockerer Zone-2-Lauf (gemeinsam mit der Partnerin) und 1x Qualitätslauf
-  (Schwelle oder Intervall, wöchentlich im Wechsel). Im Marathonblock (04.01.-11.04.2027)
-  kommt sonntags ein Longrun dazu (bis 32 km); dafür entfällt der optionale 2. Zwift.
-- Rad: 1x pro Woche Zwift-Intervall (Sweet Spot/Schwelle), optional 1x locker. Ab dem
-  70.3-Block (ab 17.05.2027) 2x: Zwift-Intervall + lange Ausfahrt mit Koppellauf.
+Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026):
+- Montag Push, Mittwoch Pull, Freitag Push und Pull kombiniert (Home-Gym, Homeoffice-Tage).
+- Dienstag und Donnerstag (Bürotage, jeweils vor der Arbeit): 1x Schwimmen und 1x Beine,
+  welche Einheit an welchem der beiden Tage liegt, wechselt von Woche zu Woche.
+- Wochenende: Zwift-Einheit (Sa oder So).
+- Unter der Woche zusätzlich ohne festen Tag: 1x lockerer Zone-2-Lauf (gemeinsam mit der
+  Partnerin) und 1x Qualitätslauf (Schwelle oder Intervall, wöchentlich im Wechsel).
+- Marathonblock (04.01.-11.04.2027): am Wochenende zusätzlich ein Longrun (bis 32 km),
+  Zwift und Longrun auf Sa/So verteilt.
+- 70.3-Block (ab 17.05.2027): am Wochenende lange Radeinheit mit Koppellauf, Zwift-Intervall
+  zusätzlich unter der Woche.
 - Der Athlet will bewusst nicht mehr Zeit investieren. Diese Struktur ist der Idealfall
   und lässt sich in der Realität oft nicht vollständig umsetzen - fehlende Einheiten
   sind normal und kein Anlass für Vorwürfe.
@@ -153,8 +156,9 @@ Coaching-Regeln daraus:
   was innerhalb des bestehenden Rahmens umgeschichtet werden sollte (Prioritäten setzen):
   im Marathonblock Longrun vor Qualitätslauf vor Zwift, im 70.3-Block lange Radeinheit vor
   Zwift-Intervall vor Qualitätslauf; Home-Gym hat in beiden Blöcken die niedrigste Priorität.
-- Berücksichtige den Wochentag: Schwimmen und Beine sind an Bürotagen (Di/Do) machbar,
-  Push/Pull an Homeoffice-Tagen, längere Rad-/Laufeinheiten am Wochenende.
+- Berücksichtige den Wochentag: Schwimmen und Beine an den Bürotagen (Di/Do, Reihenfolge
+  flexibel), Push/Pull an Homeoffice-Tagen, Zwift und lange Einheiten am Wochenende.
+- Qualitätslauf möglichst nicht am Tag nach dem Beintraining legen.
 - Beine im Marathonblock schwer und kurz, mindestens 48 h Abstand zu Longrun und Qualitätslauf."""
 
 SOLL_TEXT_BY_PHASE = {
@@ -207,12 +211,12 @@ PHASE_PLAN = {
         "lauf": f"Z2-Lauf mit Partnerin 50 → 90 min (HF Zone 2) · Qualitätslauf im Wechsel: Schwelle (z. B. 3×2 km @ {_run()} /km) und Intervall (z. B. 5×1000 m @ {_run(-23)}–{_run(-18)} /km) · 30-min-Lauftest diese Woche (KW 42) und Mitte Dezember",
         "schwimmen": f"CSS-Serien im 4-Wochen-Wechsel: 100er @ {_swim()}, 200er–400er @ {_swim(1)}–{_swim(4)}, Technik + Ausdauer, Tempo-50er @ {_swim(-4)}–{_swim(-2)} /100 m · CSS-Test 30.11.",
         "rad": f"1x Zwift: Sweet Spot 3×10 → 2×20 min @ {_w(88)}–{_w(94)} W, dann Schwelle {_w(98)} W und Over-Under · FTP-Test 07.12. · optional 1x Z2 {_w(65)}–{_w(70)} W",
-        "kraft": "Mo Push · Mi Pull · Fr Push+Pull · Do Beine",
+        "kraft": "Mo Push · Mi Pull · Fr Push+Pull · Beine Di oder Do",
     },
     "Marathon-Aufbau": {
-        "lauf": f"So Longrun 16 → 32 km ({_run(65)}–{_run(100)} /km, Spitze 11.04.) · Mi Schwelle @ {_run()} oder Marathontempo @ {_mmss(MARATHON_PACE_S_PER_KM)} /km im Wechsel · Sa locker mit Partnerin · Halbmarathon-Test 14.03.",
+        "lauf": f"So Longrun 16 → 32 km ({_run(65)}–{_run(100)} /km, Spitze 11.04.) · unter der Woche Schwelle @ {_run()} oder Marathontempo @ {_mmss(MARATHON_PACE_S_PER_KM)} /km im Wechsel + locker mit Partnerin · Halbmarathon-Test 14.03.",
         "schwimmen": f"1x CSS-Serie wie bisher (@ {_swim()} /100 m), Wiederholungen steigern, Pausen kürzen",
-        "rad": f"1x Zwift (Di) zum Erhalt: Sweet Spot @ {_w(90)}–{_w(94)} W, in Entlastungswochen Z2 · FTP-Tests 01.02. und 29.03.",
+        "rad": f"1x Zwift am Wochenende zum Erhalt: Sweet Spot @ {_w(90)}–{_w(94)} W, in Entlastungswochen Z2 · FTP-Tests 01.02. und 29.03.",
         "kraft": "Home-Gym wie gewohnt · Beine schwer und kurz (2-3 Sätze à 4-6 Wdh.), 48 h Abstand zu Longrun/Qualität",
     },
     "Marathon-Taper": {
@@ -230,7 +234,7 @@ PHASE_PLAN = {
     "70.3-Aufbau": {
         "lauf": f"Qualitätslauf im Wechsel Schwelle @ {_run()} /km und 70.3-Laufpace · So Z2 mit Partnerin · Koppellauf nach jeder langen Radeinheit",
         "schwimmen": f"CSS-Serien und Renn-Simulation 1200 → 1900 m @ {_swim(1)}–{_swim(3)} /100 m (1,9 km ≈ CSS bis +3 s), Sighting, ab Juni Freiwasser mit Neo",
-        "rad": f"Di Zwift-Intervall (Sweet Spot, 70.3-Renntempo 2×30 / 3×20 min @ {_w(77)}–{_w(78)} W) · Sa lange Ausfahrt 2:00 → 3:00 h mit Renntempo-Blöcken + Koppellauf",
+        "rad": f"Zwift-Intervall unter der Woche (Sweet Spot, 70.3-Renntempo 2×30 / 3×20 min @ {_w(77)}–{_w(78)} W) · Wochenende lange Ausfahrt 2:00 → 3:00 h mit Renntempo-Blöcken + Koppellauf",
         "kraft": "Home-Gym wie gewohnt, Beine 1x",
     },
     "70.3-Peak": {
