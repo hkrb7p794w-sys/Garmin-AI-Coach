@@ -28,6 +28,12 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.21.1
+
+- **Weniger Fehlalarme bei „prüfen“:** Die Warnung „unter der Untergrenze“ kommt erst, wenn der schwächste Satz in zwei Einheiten in Folge mindestens 2 Wiederholungen unter der Untergrenze lag. Die Wiederholungsbereiche sind Planungswerte; eigene Bereiche je Übung stehen in `/share/garmin_ai_coach/exercise_aliases.json` unter `"rep_ranges"`, z. B. `{"rep_ranges": {"bizeps_curl": [6, 10]}}`.
+- **Herzfrequenz-Verteilung realistischer:** Zusätzlich zur Zeit in den Uhr-Zonen (% HFmax) werden Läufe und Radeinheiten ab 15 Minuten nach ihrer Durchschnitts-HF den schwellenbasierten Coach-Zonen zugeordnet (locker/mittel/hart). Der Hinweis zum Locker-Anteil nutzt diese Näherung.
+- **HFmax-Hinweis:** Wurde die in der Uhr eingestellte HFmax nie erreicht, steht das samt bestätigtem Höchstwert in den Hinweisen.
+
 ### 0.21.0
 
 - **Herzfrequenzzonen** (`hr_zones.py`, neuer Sensor „Garmin Herzfrequenzzonen“): Zeigt die Zonen der Uhr (aus Garmin Connect gelesen, nichts wird verändert) und daneben schwellenbasierte Coach-Zonen für Laufen und Rad. Anker ist die Laktatschwellen-HF (LTHR) statt der HFmax, Zonenbreiten nach Friel in % der LTHR. LTHR-Quelle: eigener Wert (HA-Helfer `input_number.coach_lthr_lauf` / `coach_lthr_rad`) vor Garmin-Laktatschwelle vor einer Schätzung (90 % der HFmax, deutlich als Schätzung gekennzeichnet). HFmax: eigener Wert (`input_number.coach_hfmax`) vor bestätigtem Höchstwert der letzten 12 Monate vor Uhr-Einstellung; „bestätigt“ heißt, eine zweite Einheit liegt höchstens 3 Schläge darunter (filtert Sensor-Ausreißer). Die Zonen werden bei jedem Sync neu berechnet, Änderungen stehen im Verlauf. Dazu die Verteilung der Zeit in den Zonen der letzten 4 Wochen (locker/mittel/hart, Richtwert ~80 % locker).

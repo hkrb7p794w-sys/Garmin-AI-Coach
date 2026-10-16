@@ -27,7 +27,8 @@ Grundsätze:
 - Eigene Korrekturen ohne Add-on-Update: Datei
   /share/garmin_ai_coach/exercise_aliases.json, z. B.
   {"aliases": {"CABLE_HAMMER_CURL": "hammer_curl", "FLYE": "reverse_fly"},
-   "ignore": ["PLANK"]}
+   "ignore": ["PLANK"],
+   "rep_ranges": {"bizeps_curl": [6, 10]}}
   Schlüssel = Textteil des Garmin-Namens (Groß-/Kleinschreibung egal),
   Wert = id aus RULES oder ein freier Anzeigename.
 """
@@ -151,14 +152,14 @@ def _slug(text) -> str:
     return s or "uebung"
 
 
-_user_cache = {"mtime": None, "data": {"aliases": {}, "ignore": []}}
+_user_cache = {"mtime": None, "data": {"aliases": {}, "ignore": [], "rep_ranges": {}}}
 
 
 def _user_aliases() -> dict:
     try:
         mtime = os.path.getmtime(USER_ALIAS_FILE)
     except OSError:
-        return {"aliases": {}, "ignore": []}
+        return {"aliases": {}, "ignore": [], "rep_ranges": {}}
     if _user_cache["mtime"] == mtime:
         return _user_cache["data"]
     try:
@@ -167,13 +168,21 @@ def _user_aliases() -> dict:
         data = {
             "aliases": {key_of(k): v for k, v in (raw.get("aliases") or {}).items() if v},
             "ignore": [key_of(k) for k in (raw.get("ignore") or [])],
+            "rep_ranges": {str(k): (int(v[0]), int(v[1])) for k, v in (raw.get("rep_ranges") or {}).items()
+                           if isinstance(v, (list, tuple)) and len(v) == 2},
         }
     except Exception as e:
         print(f"[exercise_names] {USER_ALIAS_FILE} nicht lesbar ({e}) - ignoriere Eigenkorrekturen")
-        data = {"aliases": {}, "ignore": []}
+        data = {"aliases": {}, "ignore": [], "rep_ranges": {}}
     _user_cache["mtime"] = mtime
     _user_cache["data"] = data
     return data
+
+
+def user_rep_range(ex_id):
+    """Eigener Wiederholungsbereich aus der Alias-Datei, z. B.
+    {"rep_ranges": {"bizeps_curl": [6, 10]}} - sonst None."""
+    return _user_aliases().get("rep_ranges", {}).get(str(ex_id))
 
 
 def _has_weight(sets) -> bool:

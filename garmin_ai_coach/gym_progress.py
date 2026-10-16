@@ -186,7 +186,9 @@ def evaluate_exercise(rule_info, entries, today=None, recovered=None):
     # Regel B (2-für-2): letzte Serie in zwei Einheiten in Folge >= Ziel + 1
     rule_b = (same_weight_prev and last["last_reps"] >= hi + 1 and prev["last_reps"] >= hi + 1)
     # Warnsignal: Gewicht gleich/höher, Wiederholungen zweimal unter der Untergrenze
-    drop = (prev is not None and last["min_reps"] < lo and prev["min_reps"] < lo
+    # Mindestens 2 Wdh. unter der Untergrenze: die Bereiche sind Planungswerte,
+    # eine Wiederholung Abstand soll noch keinen Alarm auslösen.
+    drop = (prev is not None and last["min_reps"] <= lo - 2 and prev["min_reps"] <= lo - 2
             and last["weight"] >= prev["weight"] - WEIGHT_TOLERANCE)
 
     if rule_a or rule_b:
@@ -206,8 +208,9 @@ def evaluate_exercise(rule_info, entries, today=None, recovered=None):
 
     if drop:
         res.update(status="prüfen", headline="Gewicht halten oder senken",
-                   detail=f"Zwei Einheiten in Folge unter {lo} Wdh. ({_fmt_reps(prev['reps'])} → {_fmt_reps(last['reps'])}) "
-                          f"bei {_fmt_w(weight)} kg. Erholung, Schlaf, Reihenfolge im Training prüfen - Gewicht nicht erhöhen.")
+                   detail=f"Zwei Einheiten in Folge mindestens 2 Wdh. unter dem Ziel {lo}-{hi} ({_fmt_reps(prev['reps'])} → {_fmt_reps(last['reps'])}) "
+                          f"bei {_fmt_w(weight)} kg. Gewicht nicht erhöhen; bei weiterer Stagnation 5-10 % reduzieren. "
+                          f"Erholung und Reihenfolge im Training mitprüfen. Passt der Zielbereich nicht zu deinem Plan, kann er in der Alias-Datei überschrieben werden.")
         return res
 
     if len(entries) == 1:
@@ -242,6 +245,10 @@ def build_progression(sessions, today=None, recovered=None):
         info = exercise_names.RULES_BY_ID.get(ex_id)
         if info is None:
             info = exercise_names.classify(h["name"])
+        info = dict(info)
+        custom = exercise_names.user_rep_range(ex_id)
+        if custom:
+            info["reps"] = custom
         ev = evaluate_exercise(info, entries, today=today, recovered=recovered)
         ev.update({"id": ex_id, "name": h["name"], "group": h["group"],
                    "garmin_names": h["garmin_names"], "assumed": h["assumed"]})

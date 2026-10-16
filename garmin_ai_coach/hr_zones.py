@@ -379,6 +379,43 @@ def distribution(activities, today, weeks=4):
     return out
 
 
+def avg_hr_distribution(activities, today, coach, weeks=4, min_minutes=15):
+    """Näherung: jede Einheit nach ihrer DURCHSCHNITTS-HF einer Coach-Zone
+    zuordnen und nach Dauer gewichten. Grob (Intervalle verschwinden im
+    Schnitt), aber die Zonen sind schwellenbasiert - anders als die
+    %-HFmax-Zonen der Uhr, bei denen lockere Läufe schnell in Z3 landen."""
+    start = today - datetime.timedelta(days=weeks * 7)
+    out = {}
+    for sport in ("run", "bike"):
+        zones = (coach.get(sport) or {}).get("zones") or []
+        if len(zones) < 3 or zones[1].get("high") is None or zones[2].get("high") is None:
+            continue
+        z2_hi, z3_hi = zones[1]["high"], zones[2]["high"]
+        acc = {"easy": 0.0, "mid": 0.0, "hard": 0.0}
+        n = 0
+        for a in activities or []:
+            if _sport_group(a) != sport:
+                continue
+            try:
+                day = datetime.date.fromisoformat((a.get("startTimeLocal") or "")[:10])
+            except ValueError:
+                continue
+            avg = _num(a.get("averageHR"))
+            dur = _num(a.get("duration"))
+            if day < start or avg is None or dur is None or dur < min_minutes * 60:
+                continue
+            key = "easy" if avg <= z2_hi else ("mid" if avg <= z3_hi else "hard")
+            acc[key] += dur
+            n += 1
+        tot = sum(acc.values())
+        if tot > 0:
+            out[sport] = {"minutes": round(tot / 60), "n": n,
+                          "easy_pct": round(acc["easy"] / tot * 100),
+                          "mid_pct": round(acc["mid"] / tot * 100),
+                          "hard_pct": round(acc["hard"] / tot * 100)}
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Hauptfunktion
 # ---------------------------------------------------------------------------
@@ -431,6 +468,12 @@ def build(client, activities, today=None):
     if observed.get("confirmed") and garmin_max and observed["confirmed"] - garmin_max > 3:
         hints.append(f"Bestätigter Höchstpuls {observed['confirmed']} liegt über der Uhr-Einstellung {garmin_max}. "
                      f"Die Zonen der Uhr sind dadurch zu tief angesetzt.")
+    if (observed.get("confirmed") and garmin_max and garmin_max - observed["confirmed"] > 5
+            and observed.get("n", 0) >= 5 and not overrides.get("hrmax")):
+        hints.append(f"Die HFmax der Uhr ({garmin_max}) wurde bisher in keiner aufgezeichneten Einheit erreicht "
+                     f"(höchster bestätigter Wert {observed['confirmed']}, {observed['n']} Einheiten seit Beginn der Aufzeichnung). "
+                     f"Das kann stimmen (Maximum zeigt sich nur bei Maximaltests) oder die Einstellung ist zu hoch. "
+                     f"Die Coach-Zonen hängen an der Schwelle und sind davon kaum betroffen; die Uhr-Zonen schon.")
     if observed.get("peak") and (observed.get("confirmed") is None or observed["peak"] - observed["confirmed"] > CONFIRM_TOLERANCE):
         hints.append(f"Höchstwert {observed['peak']} ({observed.get('peak_date')}) wurde in keiner zweiten Einheit annähernd erreicht "
                      f"und gilt als möglicher Sensor-Ausreißer - er fließt nicht in die Zonen ein.")
@@ -443,11 +486,17 @@ def build(client, activities, today=None):
         hints.append("Garmin hat (noch) keine Laktatschwelle ermittelt - sie braucht in der Regel einen kompatiblen Brustgurt.")
 
     dist = distribution(activities, today)
+    dist_avg = avg_hr_distribution(activities, today, coach)
     for g, label in (("run", "Laufen"), ("bike", "Rad")):
         d = dist.get(g)
-        if d and d["minutes"] >= 120 and d["easy_pct"] < 70:
-            hints.append(f"{label}: nur {d['easy_pct']} % der Zeit in Z1-2 (Zeit in den Zonen der Uhr, letzte 4 Wochen); Richtwert ~80 %. "
-                         f"Zu viel Mittelbereich (Z3: {d['mid_pct']} %) ist ein typischer Grund, warum lockere Einheiten nicht mehr erholsam sind.")
+        a = dist_avg.get(g)
+        if a and a["minutes"] >= 120 and a["easy_pct"] < 70:
+            extra = (f" Nach den Zonen der Uhr sind es {d['easy_pct']} % in Z1-2." if d else "")
+            hints.append(f"{label}: {a['easy_pct']} % der Zeit liegen bei einer Durchschnitts-HF in Coach-Z1-2 "
+                         f"(Mittelbereich Z3: {a['mid_pct']} %, Z4+: {a['hard_pct']} %; letzte 4 Wochen, Näherung über die Durchschnitts-HF je Einheit).{extra} "
+                         f"Richtwert ~80 % locker. Zu viel Mittelbereich macht lockere Einheiten weniger erholsam.")
+        elif d and d["minutes"] >= 120 and d["easy_pct"] < 70 and not a:
+            hints.append(f"{label}: nur {d['easy_pct']} % der Zeit in Z1-2 der Uhr (letzte 4 Wochen); Richtwert ~80 %.")
     hints.append("Optisches Handgelenk-Messen unterschätzt bei intensiven Intervallen die Zeit in hohen Zonen (Neudorfer 2024). Der Hart-Anteil ist deshalb eher eine Untergrenze.")
 
     # Verlauf für "stetig anpassen": nur bei Änderung oder einmal pro Woche
@@ -472,6 +521,7 @@ def build(client, activities, today=None):
         "garmin_lthr": garmin_lt,
         "coach": coach,
         "distribution": dist,
+        "distribution_avg": dist_avg,
         "hints": hints,
         "history": state["history"][-12:],
         "garmin_raw": raw_txt[:1800],
