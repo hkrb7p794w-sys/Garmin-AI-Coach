@@ -6,6 +6,7 @@ import requests
 import time
 from ha_publish import extract_metrics
 import plan
+import ha_settings
 
 # Google Gemini API - kostenloses Kontingent (Stand 09/2026: keine Kreditkarte nötig,
 # siehe https://ai.google.dev/gemini-api/docs/pricing). Key kommt aus den Add-on-Optionen.
@@ -43,6 +44,12 @@ RACE_DATE_TEXT = plan.parse_race_date(os.environ.get("RACE_DATE", "")).strftime(
 # Einordnungen. "voll" = bisheriges Verhalten, sinnvoll z. B. mit aktivierter
 # Abrechnung (bezahlte Stufe: keine Nutzung zur Produktverbesserung).
 AI_PRIVACY_MODE = (os.environ.get("AI_PRIVACY_MODE") or "reduziert").strip().lower()
+
+
+def _privacy() -> str:
+    """Wirksamer Modus: seit v0.22.0 im Dashboard umschaltbar (input_select.coach_ki_datenschutz),
+    Rückfall ist die Add-on-Option. Siehe ha_settings.py."""
+    return ha_settings.privacy_mode(AI_PRIVACY_MODE)
 
 # Bereits im Dashboard dokumentierte, gezielte Gym-Anpassungsvorschläge (siehe
 # claude/status-und-plan.md) - Umsetzung liegt bei Alex, nicht automatisch
@@ -317,7 +324,7 @@ def _band(value, bands):
 
 def vitals_block(metrics: dict, rec: dict = None) -> str:
     """Erholungsblock für Prompts. Im Modus 'reduziert' ohne Rohwerte."""
-    if AI_PRIVACY_MODE == "voll":
+    if _privacy() == "voll":
         return (
             f"- Ruhepuls: {_fmt(metrics.get('resting_hr'), ' bpm')}\n"
             f"- Training Readiness: {_fmt(metrics.get('training_readiness_score'), '%')} "
@@ -574,7 +581,7 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         if strength_detail else ""
     )
 
-    if AI_PRIVACY_MODE == "voll":
+    if _privacy() == "voll":
         weekly_recovery = (
             "Erholung im Wochenmittel:\n"
             f"- Ruhepuls: {_trend(s.get('resting_hr_avg'), s.get('resting_hr_avg_prev'), ' bpm')}\n"
@@ -704,7 +711,7 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
         f"Für die aktuelle Phase geplant:\n{plan_detail}\n\n"
         "Aktueller Datenstand (letzter Sync):\n"
         f"{vitals_block(metrics)}"
-        f"- Readiness 14-Tage-Schnitt: {_fmt(readiness_14d if AI_PRIVACY_MODE == 'voll' else None, '%')}\n"
+        f"- Readiness 14-Tage-Schnitt: {_fmt(readiness_14d if _privacy() == 'voll' else None, '%')}\n"
         f"- VO2max: {_fmt(metrics['vo2max'], ' ml/kg/min')}, 7-Tage-Schnitt: {_fmt(vo2max_7d, ' ml/kg/min')}\n"
         f"- FTP (Rad, Zwift-Test, maßgeblich): {plan.FTP_ZWIFT_W} W (Garmin-Schätzung {_fmt(metrics.get('ftp'), ' W')} gilt nicht)\n"
         f"- {plan.TEST_VALUES_TEXT}\n"
@@ -812,7 +819,7 @@ def generate_trainingsplan_kommentar(
         f"{decided_block}\n\n"
         f"AUSLOESER für diesen Kommentar JETZT: {trigger_detail}\n\n"
         "Aktuelle Werte: "
-        f"Training Readiness {_fmt(metrics['training_readiness_score'] if AI_PRIVACY_MODE == 'voll' else metrics.get('training_readiness_level'), '%' if AI_PRIVACY_MODE == 'voll' else '')}, "
+        f"Training Readiness {_fmt(metrics['training_readiness_score'] if _privacy() == 'voll' else metrics.get('training_readiness_level'), '%' if _privacy() == 'voll' else '')}, "
         f"Training Status {_fmt(metrics.get('training_status_de') or metrics.get('training_status_phrase'))}, "
         f"VO2max {_fmt(metrics['vo2max'], ' ml/kg/min')}, "
         f"FTP (Rad, Zwift-Test) {plan.FTP_ZWIFT_W} W, "

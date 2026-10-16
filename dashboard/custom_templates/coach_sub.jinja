@@ -1,0 +1,31 @@
+{#- Garmin AI Coach – Kurzzeilen unter den Kennzahl-Karten der Sport-Reiter (coach-trend: subtitle_template).
+    Eine Zeile, nur das, was zur Entscheidung gebraucht wird. -#}
+{%- from 'coach_plan.jinja' import coach_plan -%}
+{%- macro _sec(t) -%}{%- set p = (t or '').split(':') -%}{{ ((p[0] | int(0)) * 60 + (p[1] | int(0))) if p | count == 2 else 0 }}{%- endmacro -%}
+{%- macro _mmss(s) -%}{{ '%d:%02d' | format((s // 60) | int, (s % 60) | int) }}{%- endmacro -%}
+{%- macro _mon() -%}{{ (now().date() - timedelta(days=now().weekday())).isoformat() }}{%- endmacro -%}
+{%- macro _age(ent) -%}{%- set d = states(ent) -%}{{ ((now().date() - strptime(d, '%Y-%m-%d').date()).days) if d >= '2000' else -1 }}{%- endmacro -%}
+
+{%- macro swim_sub() -%}
+{%- set plan = coach_plan() | from_json -%}{%- set mon = _mon() -%}
+{%- set css = _sec(states('input_text.zielzeit_schwimm_pace_100m')) | int -%}
+{%- set age = _age('input_datetime.benchmark_datum_schwimmen') | int -%}
+{%- set nt = plan.weeks | selectattr('w', 'ge', mon) | selectattr('sc', 'eq', 'CSS-Test') | list -%}
+{{- '1,9 km im 70.3: ' ~ _mmss(css * 19) ~ '–' ~ _mmss((css + 3) * 19) ~ ' · getestet ' ~ (('vor ' ~ age ~ ' T') if age >= 0 else 'noch nie') ~ (' · nächster Test ' ~ (strptime(nt[0].w, '%Y-%m-%d') + timedelta(days=1)).strftime('%d.%m.') if nt else '') -}}
+{%- endmacro -%}
+
+{%- macro bike_sub() -%}
+{%- set plan = coach_plan() | from_json -%}{%- set mon = _mon() -%}
+{%- set ftp = states('input_number.ftp_zwift_w') | float(0) -%}
+{%- set nt = plan.weeks | selectattr('w', 'ge', mon) | selectattr('zc', 'eq', 'RAMP') | list -%}
+{{- '70.3-Renntempo ' ~ (ftp * 0.75) | round(0) | int ~ '–' ~ (ftp * 0.78) | round(0) | int ~ ' W · Sweet Spot ' ~ (ftp * 0.88) | round(0) | int ~ '–' ~ (ftp * 0.94) | round(0) | int ~ ' W' ~ (' · FTP-Test Woche ab ' ~ strptime(nt[0].w, '%Y-%m-%d').strftime('%d.%m.') if nt else '') -}}
+{%- endmacro -%}
+
+{%- macro run_sub() -%}
+{%- set plan = coach_plan() | from_json -%}{%- set mon = _mon() -%}
+{%- set mp = _sec(states('input_text.marathon_zielpace')) | int -%}
+{%- set t = mp * 42.195 -%}
+{%- set nt = plan.weeks | selectattr('w', 'ge', mon) | selectattr('qc', 'search', 'Lauftest') | list -%}
+{%- set dc = states('sensor.garmin_ai_coach_garmin_hf_pace_kopplung') -%}
+{{- 'Marathon-Ziel ' ~ _mmss(mp) ~ ' /km ≈ ' ~ '%d:%02d' | format((t // 3600) | int, ((t % 3600) // 60) | int) ~ ' h' ~ ((' · HF-Kopplung ' ~ (dc | replace('.', ',')) ~ ' %') if dc not in ['unknown', 'unavailable'] else '') ~ ((' · Lauftest ' ~ ('diese Woche' if nt[0].w == mon else 'ab ' ~ strptime(nt[0].w, '%Y-%m-%d').strftime('%d.%m.'))) if nt else '') -}}
+{%- endmacro -%}

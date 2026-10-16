@@ -28,6 +28,13 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.22.0
+
+- **Einstellungen im Dashboard:** Sync-Zeiten, KI-Datenschutz und der Garmin-Export der Schwimmeinheiten stehen jetzt auf der Dashboard-Seite „Einstellungen“ (Helfer `input_text.coach_sync_zeiten`, `input_select.coach_ki_datenschutz`, `input_boolean.coach_garmin_schwimmexport`). Das Add-on liest sie über die Home-Assistant-API (`ha_settings.py`); fehlt ein Helfer oder ist der Wert ungültig, gilt die Add-on-Option wie bisher.
+- **Scheduler übernimmt Änderungen ohne Neustart:** Er wacht spätestens alle 5 Minuten auf, liest die Sync-Zeiten neu und veröffentlicht die wirksamen Einstellungen im Coach-Status (`settings`), damit das Dashboard anzeigt, was gilt.
+- **Standard-Sync 6, 12 und 20 Uhr:** 12 Uhr holt Einheiten vom Vormittag rechtzeitig ins Dashboard (Wochenstand, Punkte, offene Einheiten).
+- **Ruhepuls mit Langzeitstatistik:** `state_class: measurement` für den Ruhepuls-Sensor, damit die Kurve im Dashboard über die ~10 Tage Recorder-Verlauf hinaus reicht.
+
 ### 0.21.2
 
 - Einheiten ohne erfasste Übungen (Garmin liefert keine Sätze) werden als „leer“ markiert und nicht mehr bei jedem Sync erneut abgerufen. Vorher verbrauchten diese Einheiten bei jedem Sync einen Teil des Limits von 10 Abrufen.

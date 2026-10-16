@@ -1,0 +1,30 @@
+{#- Garmin AI Coach – handytaugliche Listen statt breiter Tabellen (Dashboard v1.1, 16.10.2026).
+    zwift_list()        -> alle Zwift-Workouts als Liste (Reiter Rad)
+    gym_mapping_list()  -> zusammengeführte Garmin-Übungsnamen als Liste (Reiter Gym)
+    Ersetzt im Dashboard zwift_library() aus coach_ui.jinja und gym_mapping() aus coach_gym_hf.jinja,
+    deren Tabellen auf dem Handy seitlich überliefen. -#}
+{%- from 'coach_plan.jinja' import coach_plan -%}
+
+{%- macro zwift_list() -%}
+{%- set p = coach_plan() | from_json -%}
+<details><summary>Alle {{ p.zw | count }} Workouts</summary>
+
+{% for z in p.zw %}- **{{ z.c }} · {{ z.n }}**
+  {{ z.t }}
+{% endfor %}
+**Import:** .zwo-Dateien in den Zwift-Ordner › Workouts › Ordner mit deiner Zwift-ID kopieren (PC: Rechtsklick auf das Zwift-Symbol in der Taskleiste › *Open Logs Folder*), Zwift neu starten.
+</details>
+{%- endmacro -%}
+
+{%- macro gym_mapping_list() -%}
+{%- set m = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'mapping') or [] -%}
+{%- if m -%}
+<details><summary>Übungsnamen zusammengeführt ({{ m | count }})</summary>
+
+{% for x in m %}- **{{ x.name }}**{{ ' · angenommen' if x.assumed else '' }}{{ ' · nicht im Regelwerk' if x.fallback else '' }}
+  <small>{{ x.garmin_names | join(' · ') }}</small>
+{% endfor %}
+<small>Garmin benennt dieselbe Übung je nach Katalogeintrag unterschiedlich; diese Namen zählen als eine Übung. Korrekturen in `/share/garmin_ai_coach/exercise_aliases.json`.</small>
+</details>
+{%- else -%}<small>Alle Übungsnamen sind eindeutig.</small>{%- endif -%}
+{%- endmacro -%}

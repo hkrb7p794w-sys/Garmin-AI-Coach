@@ -1,0 +1,31 @@
+{#- Garmin AI Coach – alle kommenden Einheiten einer Sportart (aufklappbar).
+    Nutzung: {% from 'coach_list.jinja' import plan_list %}{{ plan_list('swim') }}  ('swim' | 'run' | 'bike') -#}
+{%- from 'coach_plan.jinja' import coach_plan -%}
+{%- macro plan_list(kind) -%}
+{%- set plan = coach_plan() | from_json -%}
+{%- set mon = (now().date() - timedelta(days=now().weekday())).isoformat() -%}
+{%- set ws = plan.weeks | selectattr('w', 'ge', mon) | list -%}
+{%- set label = {'swim': 'Schwimmeinheiten', 'run': 'Laufwochen', 'bike': 'Radeinheiten'}[kind] -%}
+<details><summary>📋 Alle {{ ws | count }} kommenden {{ label }} bis August 2027</summary>
+
+{% for x in ws -%}
+{%- set d = strptime(x.w, '%Y-%m-%d') -%}
+{%- set head = '**' ~ d.strftime('%d.%m.') ~ '–' ~ (d + timedelta(days=6)).strftime('%d.%m.') ~ '**' ~ (' · ' ~ x.f if x.f else '') -%}
+{%- if kind == 'swim' %}
+{{ head }}
+- 🏊 {{ x.s }}
+{% elif kind == 'run' %}
+{{ head }}
+{% if x.q != '–' %}- ⚡ {{ x.q }}
+{% endif %}- 🌿 {{ x.e }}
+{% if x.l %}- 🛣️ {{ x.l }}
+{% endif %}{% else %}
+{{ head }}
+- 🚴 {{ x.z }}
+{% if x.z2 and not x.z2.startswith('optional') %}- ➕ {{ x.z2 }}
+{% endif %}{% endif %}
+{%- endfor %}
+
+<small>Watt und Paces rechnen sich immer aus deinen aktuellen Testwerten – nach einem neuen Test ändern sich die Zahlen hier automatisch.</small>
+</details>
+{%- endmacro -%}

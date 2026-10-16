@@ -1,0 +1,1295 @@
+{
+  "title": "Garmin Coach",
+  "views": [
+    {
+      "title": "Heute",
+      "path": "start",
+      "icon": "mdi:home-variant",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-hero"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-week",
+              "mode": "compact"
+            },
+            {
+              "type": "custom:coach-level"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-nav",
+              "items": [
+                {
+                  "icon": "heartPulse",
+                  "label": "Erholung",
+                  "path": "/garmin-coach/home"
+                },
+                {
+                  "icon": "trophyOutline",
+                  "label": "Erfolge",
+                  "path": "/garmin-coach/erfolge"
+                },
+                {
+                  "icon": "calendarStar",
+                  "label": "Saison",
+                  "path": "/garmin-coach/saison"
+                },
+                {
+                  "icon": "cog",
+                  "label": "Einstellungen",
+                  "path": "/garmin-coach/einstellungen"
+                },
+                {
+                  "action": "sync",
+                  "label": "Sync"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Woche",
+      "path": "woche",
+      "icon": "mdi:calendar-check",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-week",
+              "mode": "full"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-zones"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% macro n(x) %}{{ x | string | replace('.', ',') }}{% endmacro %}{% set r = states.sensor.garmin_ai_coach_garmin_wochenreport %}{% if r is none or r.state in ['unknown','unavailable'] %}Noch kein Wochenreport – er entsteht montags beim ersten Sync.{% else %}{% set a = r.attributes %}{% set mon = (now().date() - timedelta(days=now().weekday())).strftime('%d.%m.') %}{% set live = (a.period_label or '').startswith(mon) %}<details><summary><b>🤖 KI-Wochenreport {{ a.period_label }}</b>{{ ' · Zwischenstand' if live else '' }}</summary>\n\n{% if live %}<small>Die Woche läuft noch – „weniger als Vorwoche“ heißt hier nur: noch nicht nachgeholt.</small>\n\n{% endif %}{{ a.full_text or r.state }}\n</details>\n\n**Umfang {{ a.period_label }}** <small>(Vorwoche)</small>\n- 🏊 {{ a.swim_sessions }}× · {{ n(a.swim_km) }} km <small>({{ a.swim_sessions_prev }}× · {{ n(a.swim_km_prev) }} km)</small>\n- 🚴 {{ a.bike_sessions }}× · {{ n(a.bike_km) }} km <small>({{ a.bike_sessions_prev }}× · {{ n(a.bike_km_prev) }} km)</small>\n- 🏃 {{ a.run_sessions }}× · {{ n(a.run_km) }} km <small>({{ a.run_sessions_prev }}× · {{ n(a.run_km_prev) }} km)</small>\n- 🏋️ {{ a.strength_sessions }}× <small>({{ a.strength_sessions_prev }}×)</small>\n- ⏱️ **{{ a.total_min }} min** <small>({{ a.total_min_prev }} min)</small>\n\n{% if a.history_days is not none and a.history_days >= 10 %}<small>Erholung im Wochenmittel: Ruhepuls {{ n(a.resting_hr_avg) }} bpm ({{ n(a.resting_hr_avg_prev) }}) · HRV {{ n(a.hrv_avg) }} ms ({{ n(a.hrv_avg_prev) }}) · Schlaf {{ n(a.sleep_hours_avg) }} h ({{ n(a.sleep_hours_avg_prev) }})</small>{% endif %}{% endif %}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Schwimmen",
+      "path": "schwimmen",
+      "icon": "mdi:swim",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.coach_css_sekunden",
+              "title": "CSS · Schwellentempo",
+              "stat": "min",
+              "days": 365,
+              "format": "mmss",
+              "unit": "/100 m",
+              "invert": true,
+              "color": "swim",
+              "subtitle_template": "{% from 'coach_sub.jinja' import swim_sub %}{{ swim_sub() }}",
+              "flat_hint": "der nächste CSS-Test zeigt den Fortschritt"
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_wochenvolumen_schwimmen",
+              "title": "Kilometer pro Woche",
+              "aggregate": "week",
+              "chart": "bar",
+              "days": 84,
+              "decimals": 1,
+              "unit": "km",
+              "color": "swim",
+              "compare": false
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Diese Woche",
+              "icon": "mdi:calendar-today",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import swim_week %}{{ swim_week() }}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set x = states.sensor.garmin_ai_coach_garmin_export_schwimmen %}{% if x is none %}⌚ <small>Ab Add-on 0.20.0 landen die nächsten Schwimmeinheiten automatisch im Garmin-Kalender und auf der Uhr.</small>{% elif x.attributes.error is defined %}⚠️ **Garmin-Export fehlgeschlagen:** <small>{{ x.attributes.error }}</small>{% else %}⌚ **Auf deiner Uhr** <small>(CSS {{ x.attributes.css }}, {{ x.attributes.pool_m }}-m-Becken)</small>{% for w in x.attributes.workouts or [] %}\n- {{ ['Mo','Di','Mi','Do','Fr','Sa','So'][strptime(w.date, '%Y-%m-%d').weekday()] }} {{ strptime(w.date, '%Y-%m-%d').strftime('%d.%m.') }} · {{ w.name }} · {{ w.distance_m }} m{% endfor %}\n\n<small>In der Garmin-App unter Training › Workouts bzw. im Kalender – per Drag & Drop auf einen anderen Tag verschiebbar.</small>{% endif %}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('swim') }}"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Paces & Technik",
+              "icon": "mdi:speedometer",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import swim_paces %}{{ swim_paces() }}"
+            },
+            {
+              "type": "heading",
+              "heading": "CSS-Test eintragen",
+              "icon": "mdi:pencil-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/einstellungen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Rad",
+      "path": "rad",
+      "icon": "mdi:bike",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.coach_ftp_zwift",
+              "title": "FTP · Zwift-Test",
+              "stat": "max",
+              "days": 365,
+              "unit": "W",
+              "color": "bike",
+              "subtitle_template": "{% from 'coach_sub.jinja' import bike_sub %}{{ bike_sub() }}",
+              "flat_hint": "der nächste FTP-Test zeigt den Fortschritt"
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_wochenvolumen_rad",
+              "title": "Kilometer pro Woche",
+              "aggregate": "week",
+              "chart": "bar",
+              "days": 84,
+              "decimals": 0,
+              "unit": "km",
+              "color": "bike",
+              "compare": false
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Diese Woche",
+              "icon": "mdi:calendar-today",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import bike_week %}{{ bike_week() }}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('bike') }}"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Zonen",
+              "icon": "mdi:gauge",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import bike_zones %}{{ bike_zones() }}"
+            },
+            {
+              "type": "heading",
+              "heading": "Zwift-Workouts",
+              "icon": "mdi:bike-fast",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_views.jinja' import zwift_list %}{{ zwift_list() }}"
+            },
+            {
+              "type": "heading",
+              "heading": "FTP eintragen",
+              "icon": "mdi:pencil-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/einstellungen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Laufen",
+      "path": "laufen",
+      "icon": "mdi:run",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.coach_lauf_schwelle_sekunden",
+              "title": "Schwellenpace",
+              "stat": "min",
+              "days": 365,
+              "format": "mmss",
+              "unit": "/km",
+              "invert": true,
+              "color": "run",
+              "subtitle_template": "{% from 'coach_sub.jinja' import run_sub %}{{ run_sub() }}",
+              "flat_hint": "der nächste Lauftest zeigt den Fortschritt"
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_vo2max",
+              "title": "VO2max (Garmin)",
+              "stat": "max",
+              "days": 180,
+              "decimals": 1,
+              "unit": "ml/kg/min",
+              "color": "run",
+              "compact": true
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_wochenvolumen_lauf",
+              "title": "Kilometer pro Woche",
+              "aggregate": "week",
+              "chart": "bar",
+              "days": 84,
+              "decimals": 1,
+              "unit": "km",
+              "color": "run",
+              "compare": false
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Diese Woche",
+              "icon": "mdi:calendar-today",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import run_week %}{{ run_week() }}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('run') }}"
+            },
+            {
+              "type": "custom:coach-nav",
+              "items": [
+                {
+                  "icon": "flagCheckered",
+                  "label": "Marathon",
+                  "path": "/garmin-coach/marathon"
+                },
+                {
+                  "icon": "heartPulse",
+                  "label": "Herzfrequenz",
+                  "path": "/garmin-coach/herzfrequenz"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Paces",
+              "icon": "mdi:speedometer",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import run_paces %}{{ run_paces() }}"
+            },
+            {
+              "type": "heading",
+              "heading": "Aerobe Kopplung",
+              "icon": "mdi:heart-cog-outline",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set s = (state_attr('sensor.garmin_ai_coach_garmin_hf_pace_kopplung', 'sessions') or []) | reverse | list %}{% if s %}{% for x in s[:5] %}{% set d = x.decoupling_pct | float(0) %}- {{ '🟢' if d < 5 else ('🟡' if d <= 10 else '🟠') }} **{{ x.decoupling_pct | string | replace('-', '−') | replace('.', ',') }} %** · {{ '🚴' if x.sport == 'ride' else '🏃' }} {{ x.activity_name }} · {{ as_timestamp(x.date) | timestamp_custom('%d.%m.') }}  \n  <small>HF {{ x.avg_hr_first_half | round(0) | int }} → {{ x.avg_hr_second_half | round(0) | int }} · {% if x.sport == 'ride' %}{{ x.avg_power_first_half_w }} → {{ x.avg_power_second_half_w }} W{% else %}{{ x.avg_pace_first_half }} → {{ x.avg_pace_second_half }} /km{% endif %}</small>\n{% endfor %}\n<small>🟢 unter 5 % = solide aerobe Basis für diese Dauer · 🟡 5–10 % · 🟠 über 10 % = meist zu intensiv. Nur lockere, gleichmäßige Einheiten (ab 35 min Lauf / 45 min Rad, erste 10 min ignoriert).</small>{% else %}Noch keine passende lockere Einheit erfasst.{% endif %}"
+            },
+            {
+              "type": "heading",
+              "heading": "Testwerte eintragen",
+              "icon": "mdi:pencil-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/einstellungen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Gym",
+      "path": "gym",
+      "icon": "mdi:weight-lifter",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-gym",
+              "mode": "progression"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-gym",
+              "mode": "volume"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-lifts",
+              "days": 180,
+              "items": [
+                {
+                  "entity": "sensor.coach_e1rm_bankdrucken",
+                  "name": "Bankdrücken"
+                },
+                {
+                  "entity": "sensor.coach_e1rm_latziehen",
+                  "name": "Latziehen"
+                },
+                {
+                  "entity": "sensor.coach_e1rm_rudern",
+                  "name": "Rudern"
+                },
+                {
+                  "entity": "sensor.coach_e1rm_beinpresse",
+                  "name": "Beinpresse"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Coach",
+              "icon": "mdi:robot-outline",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set t = state_attr('sensor.garmin_ai_coach_garmin_gym_coaching_tipp', 'full_text') %}{% if t %}<details><summary><b>🤖 KI-Gym-Tipp</b></summary>\n\n{{ t }}\n</details>{% else %}<small>Noch kein Gym-Tipp.</small>{% endif %}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set v = states.sensor.garmin_ai_coach_garmin_vorschlaege %}{% if v is none %}{% set v = states.sensor.garmin_ai_coach_garmin_vorschlage %}{% endif %}{% set pend = (v.attributes.pending if v is not none else []) or [] %}{% set acc = (v.attributes.accepted if v is not none else []) or [] %}{% if pend %}<details><summary><b>💡 {{ pend | count }} offene Vorschläge</b> · annehmen oder ablehnen</summary>\n\n{% for i in pend %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n</details>{% else %}<small>Keine offenen Vorschläge.</small>{% endif %}{% if acc %}\n\n<small>✅ Umgesetzt: {{ acc | map(attribute='title') | join(' · ') }}</small>{% endif %}"
+            },
+            {
+              "entities": [
+                {
+                  "entity": "select.garmin_ai_coach_garmin_vorschlag_auswahl",
+                  "name": "Vorschlag"
+                },
+                {
+                  "entity": "button.garmin_ai_coach_garmin_vorschlag_annehmen",
+                  "name": "Annehmen"
+                },
+                {
+                  "entity": "button.garmin_ai_coach_garmin_vorschlag_ablehnen",
+                  "name": "Ablehnen"
+                }
+              ],
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "entities",
+              "visibility": [
+                {
+                  "condition": "state",
+                  "entity": "sensor.garmin_ai_coach_garmin_vorschlaege",
+                  "state_not": [
+                    "0 offen",
+                    "unknown",
+                    "unavailable"
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_views.jinja' import gym_mapping_list %}{{ gym_mapping_list() }}"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}<details><summary><b>Einheiten der letzten 7 Tage</b> ({{ sessions | count }})</summary>\n\n{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}{% if not sessions %}Keine Kraft-Einheiten in den letzten 7 Tagen.{% else %}{% for s in sessions | sort(attribute='date', reverse=true) %}**{{ as_timestamp(s.date) | timestamp_custom('%d.%m.') }}**\n{% for ex in (s.exercises or []) %}- *{{ ex.exercise }}*: {% for st in (ex.sets or []) %}{{ st.reps if st.reps is not none else '?' }}×{{ (st.weight_kg ~ ' kg') if st.weight_kg is not none else 'ohne Gewicht' }}{{ ', ' if not loop.last else '' }}{% endfor %}\n{% endfor %}\n{% endfor %}{% endif %}\n</details>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "icon": "mdi:chat-processing-outline",
+      "max_columns": 3,
+      "path": "chat",
+      "sections": [
+        {
+          "cards": [
+            {
+              "heading": "Chat mit dem KI-Coach",
+              "heading_style": "title",
+              "icon": "mdi:chat-processing-outline",
+              "type": "heading"
+            },
+            {
+              "content": "Frage eintippen und mit Enter abschicken; die Antwort erscheint nach einigen Sekunden unten. Der Coach kennt Phase, Plan, Wochenvolumen, FTP und die Erholungseinordnung – keine Pace-Daten und nicht deine Benchmark-Felder.{% if state_attr('sensor.garmin_ai_coach_garmin_coach_status','privacy_mode') == 'reduziert' %} <small>Datenschutzmodus: Gesundheitswerte gehen nur eingeordnet an Gemini, nicht als Rohwerte.</small>{% endif %}",
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "markdown"
+            },
+            {
+              "entities": [
+                {
+                  "entity": "text.garmin_ai_coach_garmin_chat_frage",
+                  "name": "Frage"
+                }
+              ],
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "entities"
+            }
+          ],
+          "type": "grid"
+        },
+        {
+          "cards": [
+            {
+              "heading": "Verlauf",
+              "heading_style": "subtitle",
+              "icon": "mdi:history",
+              "type": "heading"
+            },
+            {
+              "content": "{% set msgs = state_attr('sensor.garmin_ai_coach_garmin_chat_verlauf', 'messages') or [] %}{% if msgs %}{% for m in msgs | reverse %}**🧑 {{ m.question }}**\n\n{{ m.answer }}\n\n---\n\n{% endfor %}{% else %}Noch keine Frage gestellt.{% endif %}",
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "markdown"
+            }
+          ],
+          "type": "grid"
+        }
+      ],
+      "title": "Chat",
+      "type": "sections"
+    },
+    {
+      "title": "Erholung",
+      "path": "home",
+      "icon": "mdi:watch-variant",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_hrv_7_tage_schnitt",
+              "title": "HRV · 7-Tage-Schnitt",
+              "stat": "mean",
+              "days": 28,
+              "unit": "ms",
+              "color": "swim",
+              "neutral_delta": true,
+              "band": {
+                "entity": "sensor.garmin_ai_coach_garmin_hrv_status",
+                "path": [
+                  "baseline"
+                ],
+                "low": "balancedLow",
+                "high": "balancedUpper"
+              }
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_training_readiness",
+              "title": "Training Readiness",
+              "stat": "max",
+              "days": 28,
+              "unit": "",
+              "color": "swim",
+              "compact": true,
+              "compare": "avg"
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_resting_hr",
+              "title": "Ruhepuls",
+              "days": 28,
+              "unit": "bpm",
+              "color": "swim",
+              "invert": true,
+              "compact": true,
+              "compare": "avg",
+              "stat": "mean"
+            },
+            {
+              "type": "custom:coach-trend",
+              "entity": "sensor.garmin_ai_coach_garmin_schlafdauer",
+              "title": "Schlaf",
+              "stat": "max",
+              "days": 28,
+              "decimals": 1,
+              "unit": "h",
+              "color": "swim",
+              "neutral_delta": true,
+              "compact": true,
+              "compare": "avg"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-metrics",
+              "title": "Weitere Werte von heute",
+              "items": [
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_body_battery",
+                  "name": "Body Battery"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_sleep_score",
+                  "name": "Sleep Score"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_hrv_letzte_nacht",
+                  "name": "HRV letzte Nacht"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_stress_level",
+                  "name": "Stress"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_atemfrequenz",
+                  "name": "Atemfrequenz",
+                  "unit": "/min"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_spo2",
+                  "name": "SpO2"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_vo2max",
+                  "name": "VO2max",
+                  "decimals": 1,
+                  "unit": ""
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_training_status",
+                  "name": "Trainingsstatus"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_endurance_score",
+                  "name": "Endurance Score"
+                }
+              ],
+              "note": "Antippen zeigt den Verlauf. Die Tagesampel auf „Heute“ fasst HRV, Readiness, Schlaf und Ruhepuls zusammen."
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/start"
+    },
+    {
+      "title": "Saison",
+      "path": "saison",
+      "icon": "mdi:trophy-outline",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-phases"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "70.3-Zielzeit",
+              "icon": "mdi:flag-checkered",
+              "heading_style": "title"
+            },
+            {
+              "content": "{% macro sec2(t) %}{% set p = (t or '').split(':') %}{% if p | count == 2 %}{{ (p[0] | int(0)) * 60 + (p[1] | int(0)) }}{% else %}0{% endif %}{% endmacro %}{% macro mmss(s) %}{{ (s // 60) | int }}:{{ '%02d' % ((s % 60) | round(0) | int) }}{% endmacro %}{% macro hm(m) %}{{ (m // 60) | int }}:{{ '%02d' % ((m % 60) | round(0) | int) }}{% endmacro %}{% set swim = sec2(states('input_text.zielzeit_schwimm_pace_100m')) | int %}{% set bike = states('input_number.zielzeit_rad_schnitt_km_h') | float(0) %}{% set run = sec2(states('input_text.zielzeit_lauf_pace_mmss')) | int %}{% if swim == 0 or bike == 0 or run == 0 %}Bitte alle drei Benchmark-Werte eintragen (Pace als M:SS).{% else %}{% set t1 = 3 %}{% set t2 = 2 %}{% set sm = swim * 19 / 60 %}{% set bm = 90 / bike * 60 %}{% set rm = run * 21.1 / 60 %}{% set tot = sm + t1 + bm + t2 + rm %}{% set maxage = 56 %}{% set ns = namespace(ok=true, lines=[]) %}{% for ent, lab in [('input_datetime.benchmark_datum_schwimmen','Schwimmen'),('input_datetime.benchmark_datum_rad','Rad'),('input_datetime.benchmark_datum_lauf','Lauf')] %}{% set d = states(ent) %}{% if d in ['unknown','unavailable',''] or d < '2000' %}{% set ns.ok = false %}{% set ns.lines = ns.lines + [lab ~ ': kein Testdatum'] %}{% else %}{% set age = ((as_timestamp(now()) - as_timestamp(d)) / 86400) | int %}{% if age > maxage %}{% set ns.ok = false %}{% set ns.lines = ns.lines + [lab ~ ': Test ' ~ age ~ ' Tage alt – fällig'] %}{% else %}{% set ns.lines = ns.lines + [lab ~ ': getestet vor ' ~ age ~ ' Tagen ✅'] %}{% endif %}{% endif %}{% endfor %}### Geschätzte Gesamtzeit: {{ hm(tot) }} h\n\n| Abschnitt | Annahme | Zeit |\n|---|---|---|\n| Schwimmen 1,9 km | {{ mmss(swim) }} /100 m | {{ hm(sm) }} |\n| Wechsel 1 | – | {{ t1 }} min |\n| Rad 90 km | {{ bike }} km/h | {{ hm(bm) }} |\n| Wechsel 2 | – | {{ t2 }} min |\n| Lauf 21,1 km | {{ mmss(run) }} /km | {{ hm(rm) }} |\n\n{% if ns.ok %}{% if tot < 330 %}Unter dem Zielkorridor 5:30–6:00.{% elif tot <= 360 %}Im Zielkorridor 5:30–6:00.{% else %}{{ (tot - 360) | round(0) | int }} min über dem Zielkorridor.{% endif %}{% else %}⚠️ **Keine Aussage zum Zielkorridor** – mindestens ein Wert ist ungetestet oder älter als 8 Wochen.{% endif %}\n\n<small>{{ ns.lines | join(' · ') }}</small>\n\n**Was bringt eine konkrete Verbesserung?**\n\n| Verbesserung | Ersparnis |\n|---|---|\n| Schwimmen 5 s/100 m schneller | {{ (19 * 5 / 60) | round(1) }} min |\n| Rad 1 km/h schneller | {{ (bm - 90 / (bike + 1) * 60) | round(1) }} min |\n| Lauf 10 s/km schneller | {{ (21.1 * 10 / 60) | round(1) }} min |\n\n<small>Wechselzeiten sind Annahmen. Welcher Schritt realistisch ist, hängt vom Trainingsstand ab – die Tabelle zeigt nur die Wirkung, nicht den Aufwand.</small>{% endif %}",
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "markdown"
+            },
+            {
+              "type": "heading",
+              "heading": "Benchmark-Werte ändern",
+              "icon": "mdi:pencil-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/einstellungen"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "<details><summary><b>🤖 KI-Kommentar zum Plan</b></summary>\n\n{% if state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') %}{{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') }}\n\n<small>Auslöser: {{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'trigger_detail') }}</small>{% else %}Noch kein Kommentar – Gemini kommentiert nur bei Phasenwechsel, länger niedriger Readiness, stagnierender VO2max oder FTP-Sprung.{% endif %}\n</details>"
+            },
+            {
+              "content": "<small>Ersetzt keine sportmedizinische Untersuchung – vor deutlich mehr Umfang empfiehlt sich ein Check.</small>",
+              "grid_options": {
+                "columns": "full"
+              },
+              "type": "markdown"
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/start"
+    },
+    {
+      "title": "Marathon",
+      "path": "marathon",
+      "icon": "mdi:run-fast",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Marathon 02.05.2027",
+              "heading_style": "title",
+              "icon": "mdi:run-fast"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set days = (strptime(plan.marathon, '%Y-%m-%d').date() - now().date()).days %}{% set p = states('input_text.marathon_zielpace').split(':') %}{% set mp = ((p[0] | int(0)) * 60 + (p[1] | int(0))) if p | count == 2 else 0 %}{% set h = states('input_text.halbmarathon_testzeit').split(':') %}{% set hm = ((h[0] | int(0)) * 3600 + (h[1] | int(0)) * 60 + (h[2] | int(0))) if h | count == 3 else 0 %}{% macro hms(s) %}{{ '%d:%02d' | format((s // 3600) | int, ((s % 3600) // 60) | int) }}{% endmacro %}{% macro pace(s) %}{{ '%d:%02d' | format((s // 60) | int, (s % 60) | int) }}{% endmacro %}{% if days >= 0 %}### 🏃 Noch **{{ days }} Tage** · Sonntag 02.05.2027{% else %}### 🏅 Marathon geschafft (02.05.2027){% endif %}\n\n{% if mp > 0 %}**Zielpace {{ pace(mp) }} /km → Zielzeit ca. {{ hms(mp * 42.195) }} h**{% endif %}\n\n{% if hm > 0 %}{% set lo = hm * 2.15 %}{% set hi = hm * 2.2 %}Halbmarathon-Test **{{ states('input_text.halbmarathon_testzeit') }}** → realistisch **{{ hms(lo) }}–{{ hms(hi) }} h** (Pace {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} /km).{% if mp > 0 and mp < (lo / 42.195) | int %} ⚠️ Deine Zielpace ist schneller als der Test hergibt – trag {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} ein.{% endif %}{% else %}<small>Die Zielpace ist vorläufig: abgeleitet aus deiner Schwellenpace mit einem bewusst vorsichtigen Debüt-Aufschlag. Der Halbmarathon-Test am 14.03. bestätigt oder korrigiert sie (Marathonzeit ≈ HM-Zeit × 2,15–2,2; die übliche Riegel-Formel mit ×2,09 ist für Debütanten meist zu optimistisch).</small>{% endif %}\n\n| Tempo | Pace /km | Wofür |\n|---|---|---|\n| Locker | {{ plan.paces.E }} | Z2-Läufe, Longruns – im Zweifel nach Herzfrequenz |\n| Marathon | {{ plan.paces.MP }} | Marathontempo-Läufe, Rennen |\n| Schwelle | {{ plan.paces.T }} | Schwellenläufe |\n| Intervall | {{ plan.paces.I }} | 1000er, 4-min-Intervalle |"
+            },
+            {
+              "type": "heading",
+              "heading": "Testwerte eintragen",
+              "icon": "mdi:pencil-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/einstellungen"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Longrun-Leiter",
+              "heading_style": "title",
+              "icon": "mdi:road-variant"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set mon = (now().date() - timedelta(days=now().weekday())).isoformat() %}{% set mw = plan.weeks | selectattr('ph', 'in', ['Marathon-Aufbau', 'Marathon-Taper']) | list %}{% if mon < mw[0].w %}{% set cur = plan.weeks | selectattr('w', 'eq', mon) | list %}*Der Longrun-Aufbau startet am 04.01.2027. Bis dahin wächst dein Z2-Lauf Woche für Woche bis auf 90 min – das ist die Brücke zu den ersten 16 km.*{% if cur %} Diese Woche: {{ cur[0].e.split(' (')[0] }}.{% endif %}\n\n{% endif %}| Wochenende bis | Longrun (Sa/So) | Qualitätslauf (unter der Woche) |\n|---|---|---|\n{% for x in mw %}{% set sun = strptime(x.w, '%Y-%m-%d') + timedelta(days=6) %}{% set km = '🏁 **Marathon**' if x.key == 'marathon' else ('**HM-Test**' if x.lr == 21.1 else ((('**' ~ x.lr ~ ' km**') if x.lr >= 25 else (x.lr ~ ' km')))) %}| {{ '▶ ' if x.w == mon else ('✓ ' if sun.date() < now().date() else '') }}{{ sun.strftime('%d.%m.') }} | {{ km }} | {{ x.qc }} |\n{% endfor %}\n<small>Longrun höchstens 2–3 km pro Woche steigern, jede 4. Woche Entlastung. Spitze 32 km drei Wochen vor dem Rennen, dann 3 Wochen Taper mit weniger Umfang bei gleichem Tempo.</small>"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Rennen & Verpflegung",
+              "heading_style": "title",
+              "icon": "mdi:food-apple"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der 70.3-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen."
+            },
+            {
+              "type": "heading",
+              "heading": "Meilensteine & Abzeichen",
+              "icon": "mdi:trophy-outline",
+              "heading_style": "subtitle",
+              "tap_action": {
+                "action": "navigate",
+                "navigation_path": "/garmin-coach/erfolge"
+              }
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/laufen"
+    },
+    {
+      "title": "Herzfrequenz",
+      "path": "herzfrequenz",
+      "icon": "mdi:heart-pulse",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-hr"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-zones",
+              "weeks": true
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/laufen"
+    },
+    {
+      "title": "Erfolge",
+      "path": "erfolge",
+      "icon": "mdi:trophy-outline",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-achievements"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Meilensteine abhaken",
+              "icon": "mdi:flag-checkered",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_boolean.meilenstein_longrun_25_km",
+                  "name": "Longrun 25 km"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_longrun_30_km",
+                  "name": "Longrun 30 km"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_marathon_verpflegung_getestet",
+                  "name": "Marathon-Verpflegung im Longrun getestet"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_marathon_finish",
+                  "name": "Marathon gefinisht"
+                }
+              ],
+              "title": "Marathon"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_boolean.meilenstein_erster_koppellauf",
+                  "name": "Erster Koppellauf"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_rad_90km",
+                  "name": "90 km am Stück"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_freiwasser_neo",
+                  "name": "Freiwasser mit Neopren"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_verpflegung_renntempo",
+                  "name": "Verpflegung im Renntempo"
+                },
+                {
+                  "entity": "input_boolean.meilenstein_formtest",
+                  "name": "Formtest"
+                }
+              ],
+              "title": "Ironman 70.3"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "<small>Tests (CSS, FTP, Lauftest, Halbmarathon) haken sich selbst ab, sobald du den Wert in den Einstellungen einträgst. Jeder Meilenstein bringt 100 XP.</small>"
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/start"
+    },
+    {
+      "title": "Einstellungen",
+      "path": "einstellungen",
+      "icon": "mdi:cog-outline",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set z = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} %}{% set zu = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated') %}{% set g = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] %}{% set up = g | selectattr('status', 'eq', 'erhöhen') | list | count %}{% set chk = g | selectattr('status', 'eq', 'prüfen') | list | count %}**Läuft automatisch – hier musst du nichts tun**\n- ❤️ HF-Zonen: Schwelle Laufen {{ z.run.lthr if z.run else '–' }} bpm, zuletzt berechnet {{ strptime(zu, '%Y-%m-%d').strftime('%d.%m.') if zu else '–' }}\n- 🏋️ Gewichte: {{ up }} {{ 'Steigerung' if up == 1 else 'Steigerungen' }} empfohlen{{ (', ' ~ chk ~ ' zu prüfen') if chk else '' }}\n- 🎯 Wochenziel {{ states('input_number.coach_wochenziel') | int }} %{{ ' – passt sich montags an deinen Schnitt an' if is_state('input_boolean.coach_ziel_automatisch', 'on') else ' (fest eingestellt)' }}\n- 📐 Paces, Watt und Schwimmzeiten rechnen sich aus deinen Testwerten unten\n\n<small>Du stellst nur ein, was sich nicht messen lässt: Testergebnisse, Ziele und wie der Coach dich erreichen soll.</small>"
+            },
+            {
+              "type": "heading",
+              "heading": "Testwerte",
+              "icon": "mdi:clipboard-check-outline",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_text.css_test_400_m",
+                  "name": "400 m (M:SS)"
+                },
+                {
+                  "entity": "input_text.css_test_200_m",
+                  "name": "200 m (M:SS)"
+                },
+                {
+                  "entity": "script.coach_css_uebernehmen",
+                  "name": "CSS berechnen und übernehmen"
+                }
+              ],
+              "title": "Schwimmen · CSS-Test"
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% from 'coach_ui.jinja' import css_calc %}{{ css_calc() }}"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_number.ftp_zwift_w",
+                  "name": "FTP aus Zwift-Test (W)"
+                },
+                {
+                  "entity": "input_text.lauf_schwellenpace",
+                  "name": "Lauf-Schwellenpace /km (30-min-Test)"
+                },
+                {
+                  "entity": "input_text.halbmarathon_testzeit",
+                  "name": "Halbmarathon-Testzeit (H:MM:SS)"
+                },
+                {
+                  "entity": "input_text.marathon_zielpace",
+                  "name": "Marathon-Zielpace /km"
+                }
+              ],
+              "title": "Rad & Laufen"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "70.3-Zielzeit",
+              "icon": "mdi:flag-checkered",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_text.zielzeit_schwimm_pace_100m",
+                  "name": "Schwimm-Pace /100 m (kommt aus CSS)"
+                },
+                {
+                  "entity": "input_number.zielzeit_rad_schnitt_km_h",
+                  "name": "Rad-Schnitt 90 km (km/h)"
+                },
+                {
+                  "entity": "input_datetime.benchmark_datum_rad",
+                  "name": "… getestet am"
+                },
+                {
+                  "entity": "input_text.zielzeit_lauf_pace_mmss",
+                  "name": "Lauf-Pace nach dem Rad /km"
+                },
+                {
+                  "entity": "input_datetime.benchmark_datum_lauf",
+                  "name": "… getestet am"
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "heading": "Herzfrequenz (0 = automatisch)",
+              "icon": "mdi:heart-pulse",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_number.coach_hfmax",
+                  "name": "HFmax"
+                },
+                {
+                  "entity": "input_number.coach_lthr_lauf",
+                  "name": "Schwelle Laufen"
+                },
+                {
+                  "entity": "input_number.coach_lthr_rad",
+                  "name": "Schwelle Rad"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Automatik",
+              "icon": "mdi:robot-outline",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_text.coach_sync_zeiten",
+                  "name": "Sync-Zeiten (Uhr, z. B. 6,12,20)"
+                },
+                {
+                  "entity": "input_select.coach_ki_datenschutz",
+                  "name": "KI-Datenschutz"
+                },
+                {
+                  "entity": "input_boolean.coach_garmin_schwimmexport",
+                  "name": "Schwimmeinheiten auf die Uhr"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set s = state_attr('sensor.garmin_ai_coach_garmin_coach_status', 'settings') %}{% if s %}<small>Aktiv laut Add-on: Sync {{ s.sync_hours | join(', ') }} Uhr{{ ' (Eingabe oben ungültig, es gilt die Add-on-Option)' if s.sync_source == 'option' else '' }} · KI-Daten {{ s.privacy_mode }} · Schwimmeinheiten auf die Uhr {{ 'an' if s.swim_export else 'aus' }}. Änderungen greifen innerhalb von 5 Minuten.</small>{% else %}<small>Sync-Zeiten, KI-Datenschutz und Uhr-Export wirken ab Add-on 0.22. Bis zum Update gelten die Add-on-Optionen (Sync 6, 12 und 20 Uhr).</small>{% endif %}\n\n<small>„Reduziert“ schickt Gemini nur Einordnungen (z. B. „Erholung eingeschränkt“) statt Rohwerten wie HRV oder Ruhepuls – Google darf Anfragen im kostenlosen Kontingent zur Produktverbesserung nutzen.</small>"
+            },
+            {
+              "type": "heading",
+              "heading": "Motivation",
+              "icon": "mdi:fire",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_number.coach_wochenziel",
+                  "name": "Wochenziel für die Serie"
+                },
+                {
+                  "entity": "input_boolean.coach_ziel_automatisch",
+                  "name": "Ziel wächst automatisch mit"
+                },
+                {
+                  "entity": "input_boolean.coach_pausenwoche",
+                  "name": "Pausenwoche (Urlaub/Krankheit)"
+                },
+                {
+                  "entity": "input_boolean.coach_push_morgens",
+                  "name": "Morgen-Push mit Tagesplan"
+                },
+                {
+                  "entity": "input_boolean.coach_push_erfolge",
+                  "name": "Push bei Erfolgen"
+                }
+              ]
+            },
+            {
+              "type": "heading",
+              "heading": "System",
+              "icon": "mdi:sync",
+              "heading_style": "subtitle"
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_last_sync",
+                  "name": "Letzter Sync"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_sync_status",
+                  "name": "Garmin-Sync"
+                },
+                {
+                  "entity": "sensor.garmin_ai_coach_garmin_coach_status",
+                  "name": "KI-Coach"
+                },
+                {
+                  "entity": "button.garmin_ai_coach_garmin_jetzt_synchronisieren",
+                  "name": "Jetzt synchronisieren"
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "grid_options": {
+                "columns": "full"
+              },
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "counter.coach_xp",
+                  "name": "XP"
+                },
+                {
+                  "entity": "counter.coach_serie",
+                  "name": "Wochen-Serie"
+                },
+                {
+                  "entity": "counter.coach_beste_serie",
+                  "name": "Beste Serie"
+                },
+                {
+                  "entity": "counter.coach_joker",
+                  "name": "Joker"
+                }
+              ],
+              "title": "Korrektur (nur bei Fehlern)"
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/garmin-coach/start"
+    }
+  ]
+}

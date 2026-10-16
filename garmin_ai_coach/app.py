@@ -43,6 +43,7 @@ import suggestions
 import chat
 import decoupling
 import garmin_swim
+import ha_settings
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -116,7 +117,20 @@ def _parse_sync_hours(raw: str) -> list:
 # Seit v0.18.0 Default "6,20" (Review-Punkt 27): Erholungswerte stehen morgens
 # fest, neue Aktivitäten kommen abends dazu; weitere Syncs bringen kaum Neues,
 # kosten aber Aufrufe an Garmins inoffiziellen Login und Gemini-Kontingent.
-SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,20"))
+# Seit v0.22.0 nur noch Rückfall: gilt, solange im Dashboard (input_text.coach_sync_zeiten)
+# nichts Gültiges steht - siehe ha_settings.py. Default 6/12/20 Uhr (12 Uhr für Morgeneinheiten).
+SYNC_HOURS = _parse_sync_hours(os.environ.get("SYNC_HOURS", "6,12,20"))
+AI_PRIVACY_DEFAULT = (os.environ.get("AI_PRIVACY_MODE") or "reduziert").strip().lower()
+SWIM_EXPORT_DEFAULT = os.environ.get("GARMIN_SWIM_EXPORT", "true").lower() != "false"
+# Wie oft der Scheduler aufwacht, um geänderte Sync-Zeiten aus dem Dashboard zu übernehmen.
+SCHEDULER_POLL_SECONDS = 300
+
+
+def current_settings() -> dict:
+    """Wirksame Einstellungen (Dashboard vor Add-on-Option), siehe ha_settings.py."""
+    return ha_settings.effective(SYNC_HOURS, AI_PRIVACY_DEFAULT, SWIM_EXPORT_DEFAULT)
+
+
 RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
 RACE_DATE_OBJ = plan.parse_race_date(RACE_DATE)
 
@@ -321,7 +335,8 @@ def _publish_coach_status():
             "consecutive_failures": c.get("consecutive_failures") or 0,
             "last_error": c.get("last_error"),
             "last_model": c.get("last_model"),
-            "privacy_mode": os.environ.get("AI_PRIVACY_MODE") or "reduziert",
+            "privacy_mode": ha_settings.privacy_mode(AI_PRIVACY_DEFAULT),
+            "settings": current_settings(),
             "details": {k: {kk: vv for kk, vv in v.items() if kk != "last_text"}
                         for k, v in state.items() if isinstance(v, dict)},
         })
@@ -1080,7 +1095,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         # Schwimmeinheiten der laufenden + nächsten Woche als strukturierte
         # Workouts in den Garmin-Kalender (v0.20.0, siehe garmin_swim.py).
         # Eigener try-Block: ein Garmin-Fehler hier darf den Sync nie abbrechen.
-        if os.environ.get("GARMIN_SWIM_EXPORT", "true").lower() != "false":
+        if ha_settings.swim_export(SWIM_EXPORT_DEFAULT):
             try:
                 swim_done = any(t.get("key") == "swim" and (t.get("done") or 0) >= 1
                                 for t in plan_state.get("targets") or [])
@@ -1363,29 +1378,58 @@ def weekly():
     return redirect(".")
 
 
-def _seconds_until_next_run(hours: list) -> float:
-    """Sekunden bis zum nächsten Termin unter mehreren täglichen Stunden - also bis zur
-    zeitlich nächstgelegenen noch ausstehenden Stunde aus `hours` (heute, sonst morgen)."""
-    now = datetime.datetime.now()
+def _next_run_at(hours: list, now: datetime.datetime) -> datetime.datetime:
+    """Nächster Termin unter mehreren täglichen Stunden (heute, sonst morgen). Eine
+    exakt erreichte volle Stunde zählt als vorbei - kein doppelter Sync zur selben Minute."""
     targets = []
     for hour in hours:
         target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
         if target <= now:
             target += datetime.timedelta(days=1)
         targets.append(target)
-    return (min(targets) - now).total_seconds()
+    return min(targets)
+
+
+def _seconds_until_next_run(hours: list) -> float:
+    """Sekunden bis zum nächsten Termin (für Log und Tests)."""
+    now = datetime.datetime.now()
+    return (_next_run_at(hours, now) - now).total_seconds()
 
 
 def _scheduler_loop():
-    """Läuft im Hintergrund und ruft do_sync() zu jeder in SYNC_HOURS konfigurierten Stunde
-    auf (Default 6/12/18/20 Uhr), damit "automatischer Sync" auch wirklich mehrfach täglich
-    automatisch passiert, nicht nur einmal."""
+    """Ruft do_sync() zu jeder Sync-Stunde auf. Seit v0.22.0 kommen die Stunden aus dem
+    Dashboard (ha_settings), Rückfall ist die Add-on-Option. Der Loop wacht spätestens alle
+    SCHEDULER_POLL_SECONDS auf: so greift eine im Dashboard geänderte Uhrzeit ohne Neustart,
+    und der Coach-Status zeigt sofort, was gilt."""
+    settings = current_settings()
+    hours = settings["sync_hours"]
+    next_run = _next_run_at(hours, datetime.datetime.now())
+    print(f"[scheduler] Sync-Zeiten {hours} ({settings['sync_source']}), nächster Sync {next_run:%d.%m. %H:%M}")
     while True:
-        time.sleep(_seconds_until_next_run(SYNC_HOURS))
+        wait = (next_run - datetime.datetime.now()).total_seconds()
+        time.sleep(max(1.0, min(SCHEDULER_POLL_SECONDS, wait)))
+        now = datetime.datetime.now()
+        if now >= next_run:
+            try:
+                do_sync()
+            except Exception as e:
+                print(f"[scheduler] Automatischer Sync fehlgeschlagen: {e}")
+            settings = current_settings()
+            hours = settings["sync_hours"]
+            next_run = _next_run_at(hours, datetime.datetime.now())
+            continue
         try:
-            do_sync()
+            fresh = current_settings()
         except Exception as e:
-            print(f"[scheduler] Automatischer Sync fehlgeschlagen: {e}")
+            print(f"[scheduler] Einstellungen nicht lesbar: {e}")
+            continue
+        if fresh != settings:
+            if fresh["sync_hours"] != hours:
+                hours = fresh["sync_hours"]
+                next_run = _next_run_at(hours, now)
+                print(f"[scheduler] Neue Sync-Zeiten {hours} ({fresh['sync_source']}), nächster Sync {next_run:%d.%m. %H:%M}")
+            settings = fresh
+            _publish_coach_status()
 
 
 if __name__ == "__main__":

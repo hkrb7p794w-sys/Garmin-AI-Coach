@@ -1,0 +1,178 @@
+{#- Garmin AI Coach – Gym-Progression und Herzfrequenzzonen (seit Add-on 0.21.0).
+    Ergänzt coach_ui.jinja. Daten kommen aus den Sensoren
+    sensor.garmin_ai_coach_garmin_gym_progression, ..._herzfrequenzzonen, ..._krafttraining_uebungen.
+    Importnamen mit führendem Unterstrich sind in Jinja nicht importierbar, deshalb stehen _bar/_done hier noch einmal. -#}
+{%- macro _bar(v, n, width=10) -%}{%- set f = ((v / n * width) | round(0) | int) if n else 0 -%}{%- set f = [[f, width] | min, 0] | max -%}{{ '▰' * f }}{{ '▱' * (width - f) }}{%- endmacro -%}
+{%- macro _done(key) -%}{%- set tg = state_attr('sensor.garmin_ai_coach_garmin_plan', 'targets') or [] -%}{{ (tg | selectattr('key', 'eq', key) | map(attribute='done') | list + [0])[0] }}{%- endmacro -%}
+{%- macro _kg(x) -%}{{ ('%g' | format(x | float(0))) | replace('.', ',') }}{%- endmacro -%}
+{%- macro _dm(d) -%}{{ strptime(d, '%Y-%m-%d').strftime('%d.%m.') }}{%- endmacro -%}
+
+{#- ============================ GYM: WOCHE ============================ -#}
+{%- macro gym_status() -%}
+{%- set since = (now().date() - timedelta(days=6)).isoformat() -%}
+{%- set sessions = (state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or []) | selectattr('date', 'ge', since) | list -%}
+{%- set ns = namespace(c={'Brust': 0, 'Rücken': 0, 'Schultern': 0, 'Bizeps': 0, 'Trizeps': 0, 'Beine': 0, 'Rumpf': 0}, unk=0, total=0) -%}
+{%- for s in sessions -%}{%- for ex in (s.exercises or []) -%}
+{%- set n = ((ex.sets or []) | count) if ex.id == 'plank' else ((ex.sets or []) | selectattr('reps') | list | count) -%}
+{%- if ex.id == 'unbekannt' or ex.exercise == 'Unknown' or n == 0 -%}{%- set ns.unk = ns.unk + (ex.sets or []) | count -%}
+{%- else -%}{%- set g = ex.group -%}{%- if g in ns.c -%}{%- set ns.c = dict(ns.c, **{g: ns.c[g] + n}) -%}{%- endif -%}{%- set ns.total = ns.total + n -%}{%- endif -%}
+{%- endfor -%}{%- endfor -%}
+{%- set prog = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] -%}
+{%- set legs = prog | selectattr('group', 'eq', 'Beine') | map(attribute='last_date') | select | list | sort -%}
+{%- set legs_last = legs[-1] if legs else none -%}
+{%- set legs_age = (now().date() - strptime(legs_last, '%Y-%m-%d').date()).days if legs_last else none -%}
+### 🏋️ {{ _done('strength') }}/4 Einheiten diese Woche · {{ ns.total }} Sätze in 7 Tagen
+{% if legs_age is none or legs_age > 10 %}
+<ha-alert alert-type="warning">**Beine: {{ ('zuletzt vor ' ~ legs_age ~ ' Tagen (' ~ _dm(legs_last) ~ ')') if legs_age is not none else 'in den letzten 8 Wochen nicht erfasst' }}.** Für Lauf- und Radökonomie zählt das Beintraining am meisten – Di/Do einplanen.{{ (' Hinweis: ' ~ ns.unk ~ ' Sätze hat Garmin keiner Übung zugeordnet – falls das Beine waren, in der Garmin-App die Übung benennen.') if ns.unk else '' }}</ha-alert>
+{% endif %}
+| Muskelgruppe | Sätze (7 Tage) | |
+|---|:-:|---|
+{% for g, n in ns.c.items() %}| {{ g }} | **{{ n }}** | {{ _bar(n, 10) }} {{ '⚠️' if n == 0 else ('💪' if n >= 10 else ('✅' if n >= 5 else '')) }} |
+{% endfor %}
+<small>Richtwert: 5–9 Sätze pro Muskel und Woche bringen rund 80 % des möglichen Zuwachses, ab 10 Sätzen das Maximum (Schoenfeld 2017). Für dich als Triathlet reichen 5–9 – Hauptsache, die Beine sind dabei.{{ (' ' ~ ns.unk ~ ' Sätze hat Garmin keiner Übung zugeordnet.') if ns.unk else '' }}</small>
+{%- endmacro -%}
+
+{#- ============================ GYM: PROGRESSION ============================ -#}
+{%- macro gym_progression() -%}
+{%- set ex = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] -%}
+{%- if not ex -%}Noch keine Einheiten mit Gewicht im Verlauf – nach den nächsten Einheiten erscheinen hier die Empfehlungen.
+{%- else -%}
+{%- set up = ex | selectattr('status', 'eq', 'erhöhen') | list -%}
+{%- set icons = {'erhöhen': '🟢', 'aufbauen': '🔵', 'prüfen': '🟠', 'wiedereinstieg': '🟡', 'basis': '⚪', 'ohne_gewicht': '⚪'} -%}
+{% if up %}
+<ha-alert alert-type="success">**Nächstes Mal erhöhen:** {% for e in up %}{{ e.name }} → **{{ _kg(e.next_weight) }} kg**{{ ' · ' if not loop.last }}{% endfor %}</ha-alert>
+{% else %}
+<ha-alert alert-type="info">Aktuell keine Übung an der Obergrenze – Gewichte halten, Wiederholungen steigern.</ha-alert>
+{% endif %}
+| Übung | Zuletzt | Ziel | Empfehlung |
+|---|---|:-:|---|
+{% for e in ex %}| {{ e.name }}{{ ' ¹' if e.assumed else '' }} | {{ (_kg(e.weight) ~ ' kg') if e.weight else 'Körpergew.' }} × {{ e.reps | join('/') }} <small>{{ _dm(e.last_date) }}</small> | {{ e.target }} | {{ icons.get(e.status, '⚪') }} {{ e.headline }} |
+{% endfor %}
+{% set chk = ex | selectattr('status', 'in', ['prüfen', 'wiedereinstieg']) | list %}
+{% if chk %}
+**Hinweise**
+{% for e in chk %}
+- **{{ e.name }}:** {{ e.detail }}
+{% endfor %}
+{% endif %}
+<small>🟢 erhöhen · 🔵 Wiederholungen steigern · 🟠 prüfen · 🟡 Wiedereinstieg · ⚪ zu wenig Daten. Regel: Doppelprogression – erst alle Sätze auf die Obergrenze des Wiederholungsbereichs, dann +2,5 bis 5 % (höchstens 10 %) und wieder bei der Untergrenze beginnen; zusätzlich 2-für-2 (ACSM 2009). Die Wiederholungsbereiche sind Planungswerte, keine Messung. Garmin liefert keine Anstrengung (RPE): Wer die Obergrenze schafft, hat Reserve. Bei eingeschränkter Erholung gilt die Steigerung erst bei guter Tagesform. ¹ Zuordnung angenommen.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro gym_mapping() -%}
+{%- set m = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'mapping') or [] -%}
+{%- if m -%}
+<details><summary>Zusammengeführte Übungsnamen ({{ m | count }})</summary>
+
+Garmin benennt dieselbe Übung je nach gewähltem Katalogeintrag unterschiedlich. Diese Namen werden für Fortschritt und Gewichtshinweise als **eine** Übung gezählt. Falsch zugeordnet? Mir Bescheid geben oder `/share/garmin_ai_coach/exercise_aliases.json` anpassen.
+
+| Übung | Garmin-Namen | Hinweis |
+|---|---|---|
+{% for x in m %}| {{ x.name }} | {% for n in x.garmin_names %}`{{ n }}`{{ '<br>' if not loop.last }}{% endfor %} | {{ '⚠️ angenommen' if x.assumed else '' }}{{ '❓ nicht im Regelwerk' if x.fallback else '' }} |
+{% endfor %}
+</details>
+{%- else -%}
+<small>Alle Übungsnamen sind eindeutig – nichts zusammenzuführen.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{#- ============================ HERZFREQUENZ ============================ -#}
+{%- macro hf_status() -%}
+{%- set h = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'hrmax') -%}
+{%- set coach = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') -%}
+{%- if not coach -%}Noch keine Zonen berechnet – erscheint nach dem nächsten Sync.
+{%- else -%}
+{%- set run = coach.get('run') or {} -%}
+{%- set bike = coach.get('bike') or {} -%}
+### ❤️ Schwelle Laufen **{{ run.lthr }}** · HFmax **{{ h.used }}**
+| LTHR Laufen | LTHR Rad | HFmax | Aktualisiert |
+|:-:|:-:|:-:|:-:|
+| **{{ run.lthr }}** <small>{{ run.source }}</small> | **{{ bike.lthr }}** <small>{{ bike.source }}</small> | **{{ h.used }}** <small>{{ h.source }}</small> | {{ _dm(state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated')) }} |
+
+<small>LTHR = Herzfrequenz an der Laktatschwelle. Die Zonen werden bei jedem Sync neu berechnet. Eigene Werte (z. B. aus einem 30-Minuten-Test) trägst du unten ein und sie haben Vorrang.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_zones(sport) -%}
+{%- set coach = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} -%}
+{%- set c = coach.get(sport) -%}
+{%- if not c or not c.zones -%}Keine Zonen verfügbar.
+{%- else -%}
+| Zone | Verwendung | % LTHR | Herzfrequenz |
+|---|---|---|---|
+{% for z in c.zones %}| **{{ z.zone }}** | {{ z.use }} | {{ z.pct }} | {{ ('bis ' ~ z.high) if z.low is none else (z.low ~ '–' ~ z.high) }} bpm |
+{% endfor %}
+<small>Schwelle {{ c.lthr }} bpm · Quelle: {{ c.source }}{{ ' – Näherung' if c.approx and ('Näherung' not in c.source and 'Schätzung' not in c.source) else '' }}. Zonenbreiten nach Friel (Triathlete's Training Bible) in % der Schwellen-HF. Locker = Z1–Z2.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_garmin() -%}
+{%- set g = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'garmin') or [] -%}
+{%- set meth = {'HR_MAX': '% HFmax', 'HR_RESERVE': 'HF-Reserve', 'LACTATE_THRESHOLD': '% LTHR'} -%}
+{%- if not g -%}Garmin hat keine Zonen geliefert.
+{%- else -%}
+| Zone | {% for e in g[:3] %}{{ 'Standard' if e.sport == 'DEFAULT' else (e.sport | lower | capitalize) }} <small>({{ meth.get(e.method, e.method) }})</small> | {% endfor %}
+|---|{% for e in g[:3] %}:-:|{% endfor %}
+{% for n in range(5) %}| **Z{{ n + 1 }}** | {% for e in g[:3] %}{{ e.zones[n].low }}–{{ e.zones[n].high }} | {% endfor %}
+{% endfor %}
+<small>Das sind die Zonen, die auf deiner Forerunner eingestellt sind (nur gelesen, nichts verändert). Garmin Connect: Einstellungen → Benutzereinstellungen → Herzfrequenzzonen.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_distribution() -%}
+{%- set d = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'distribution') or {} -%}
+{%- set a = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'distribution_avg') or {} -%}
+{%- if not d -%}Noch keine Daten.
+{%- else -%}
+**Nach den Zonen der Uhr** (Zeit in Zone, letzte 4 Wochen)
+
+| | Min | Z1 | Z2 | Z3 | Z4 | Z5 | locker / mittel / hart |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+{% for key, label in [('run', 'Laufen'), ('bike', 'Rad')] %}{% set r = d.get(key) %}{% if r %}| {{ label }} | {{ r.minutes }} | {{ r.zones_pct[0] }} % | {{ r.zones_pct[1] }} % | {{ r.zones_pct[2] }} % | {{ r.zones_pct[3] }} % | {{ r.zones_pct[4] }} % | **{{ r.easy_pct }}** / {{ r.mid_pct }} / {{ r.hard_pct }} % |
+{% endif %}{% endfor %}
+{% if a %}
+**Nach Coach-Zonen** (Näherung: jede Einheit nach ihrer Durchschnitts-HF)
+
+| | Min | locker (Z1–2) | mittel (Z3) | hart (Z4+) |
+|---|:-:|:-:|:-:|:-:|
+{% for key, label in [('run', 'Laufen'), ('bike', 'Rad')] %}{% set r = a.get(key) %}{% if r %}| {{ label }} | {{ r.minutes }} | **{{ r.easy_pct }} %** {{ '✅' if r.easy_pct >= 70 else '⚠️' }} | {{ r.mid_pct }} % | {{ r.hard_pct }} % |
+{% endif %}{% endfor %}
+{% endif %}
+<small>Richtwert aus der Trainingsforschung: rund 80 % locker (Seiler; Muñoz 2014). Die Uhr-Zonen sind in % der HFmax gerechnet und deutlich tiefer als schwellenbasierte Zonen – lockere Läufe landen dort schnell in Z3. Die Coach-Näherung zeigt die Verteilung näher an der Physiologie, verdeckt aber Intervalle im Durchschnitt. Das optische Handgelenk-Messen unterschätzt außerdem die Zeit in hohen Zonen (Neudorfer 2024).</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_weeks() -%}
+{%- set d = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'distribution') or {} -%}
+{%- set w = d.get('per_week') or [] -%}
+{%- if not w -%}Noch keine Daten.
+{%- else -%}
+| Woche ab | Laufen: Min · locker/mittel/hart | Rad: Min · locker/mittel/hart |
+|---|---|---|
+{% for x in w %}| {{ _dm(x.week_start) }} | {% if x.run %}{{ x.run.minutes }} · {{ x.run.easy_pct }}/{{ x.run.mid_pct }}/{{ x.run.hard_pct }} %{% else %}–{% endif %} | {% if x.bike %}{{ x.bike.minutes }} · {{ x.bike.easy_pct }}/{{ x.bike.mid_pct }}/{{ x.bike.hard_pct }} %{% else %}–{% endif %} |
+{% endfor %}
+<small>Zeit in den Zonen der Uhr.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_hints() -%}
+{%- set hints = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'hints') or [] -%}
+{%- if not hints -%}Keine Auffälligkeiten.
+{%- else -%}
+{% for h in hints %}
+- {{ h }}
+{% endfor %}
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro hf_history() -%}
+{%- set h = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'history') or [] -%}
+{%- if not h -%}Noch kein Verlauf.
+{%- else -%}
+| Datum | HFmax | LTHR Laufen | LTHR Rad |
+|---|:-:|:-:|:-:|
+{% for x in (h | reverse | list)[:8] %}| {{ _dm(x.date) }} | {{ x.hrmax }} | {{ x.lthr_run }} | {{ x.lthr_bike }} |
+{% endfor %}
+<small>Neuer Eintrag, sobald sich ein Wert ändert, sonst einmal pro Woche.</small>
+{%- endif -%}
+{%- endmacro -%}

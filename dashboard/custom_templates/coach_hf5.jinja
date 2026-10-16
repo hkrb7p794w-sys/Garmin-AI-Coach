@@ -1,0 +1,18 @@
+{#- Garmin AI Coach – Herzfrequenzzonen als 5er-Übersicht (wie auf der Uhr). Z5a–Z5c nach Friel werden zu Z5 zusammengefasst. -#}
+{%- macro hf_zones5(sport) -%}
+{%- set coach = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} -%}
+{%- set c = coach.get(sport) -%}
+{%- if not c or not c.zones -%}Keine Zonen verfügbar.
+{%- else -%}
+{%- set z = c.zones -%}
+| Zone | Verwendung | Herzfrequenz |
+|---|---|---|
+| **Z1** | Erholung | bis {{ z[0].high }} bpm |
+| **Z2** | Grundlagenausdauer (locker) | {{ z[1].low }}–{{ z[1].high }} bpm |
+| **Z3** | Tempo | {{ z[2].low }}–{{ z[2].high }} bpm |
+| **Z4** | Unterschwelle | {{ z[3].low }}–{{ z[3].high }} bpm |
+| **Z5** | Schwelle bis Maximum | {{ z[4].low }}–{{ z[-1].high }} bpm |
+
+<small>Schwelle (LTHR) {{ c.lthr }} bpm · Quelle: {{ c.source }}. Locker = Z1–Z2. Z5 fasst Schwelle ({{ z[4].low }}–{{ z[4].high }}), VO₂max ({{ z[5].low }}–{{ z[5].high }}) und anaerob ({{ z[6].low }}–{{ z[6].high }}) zusammen; Zonenbreiten nach Friel in % der Schwellen-HF (Z1 &lt;85 %, Z2 85–89 %, Z3 90–94 %, Z4 95–99 %, Z5 ab 100 %).</small>
+{%- endif -%}
+{%- endmacro -%}

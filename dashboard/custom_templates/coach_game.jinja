@@ -1,0 +1,16 @@
+{#- Garmin AI Coach – Spielregeln (Gamification), eine Quelle für Template-Sensor, Automationen und Karten.
+    quote(targets)  -> Wochenquote in % (je Sportart höchstens bis zum Soll gezählt, Mehrarbeit gleicht nichts aus)
+    level(xp)       -> Level aus Gesamt-XP; Schwelle für Level L = 25 · L · (L − 1) XP
+    level_xp(l)     -> XP-Schwelle, ab der Level l erreicht ist
+    tier(l)         -> Stufe (Bronze/Silber/Gold/Platin) -#}
+{%- macro quote(targets) -%}
+{%- set ns = namespace(d=0, n=0) -%}
+{%- for t in (targets or []) -%}
+{%- set mn = t.min | int(0) -%}
+{%- if mn > 0 -%}{%- set ns.d = ns.d + ([t.done | int(0), mn] | min) -%}{%- set ns.n = ns.n + mn -%}{%- endif -%}
+{%- endfor -%}
+{{- ((ns.d / ns.n * 100) | round(0) | int) if ns.n else 100 -}}
+{%- endmacro -%}
+{%- macro level(xp) -%}{{- ((1 + (1 + 4 * ([xp | int(0), 0] | max) / 25) ** 0.5) / 2) | int -}}{%- endmacro -%}
+{%- macro level_xp(l) -%}{{- 25 * (l | int(1)) * ((l | int(1)) - 1) -}}{%- endmacro -%}
+{%- macro tier(l) -%}{%- set l = l | int(1) -%}{{- 'Platin' if l >= 15 else ('Gold' if l >= 10 else ('Silber' if l >= 5 else 'Bronze')) -}}{%- endmacro -%}

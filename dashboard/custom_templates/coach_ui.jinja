@@ -1,0 +1,239 @@
+{#- Garmin AI Coach – Bausteine für die Sport-Reiter (Schwimmen, Rad, Laufen, Gym).
+    Jede Karte ruft genau ein Makro auf, z. B. {% from 'coach_ui.jinja' import swim_status %}{{ swim_status() }}.
+    Planinhalte kommen aus coach_plan.jinja, Testwerte aus den Dashboard-Feldern. -#}
+{%- from 'coach_plan.jinja' import coach_plan -%}
+{%- macro _mmss(s) -%}{{ '%d:%02d' | format((s // 60) | int, (s % 60) | int) }}{%- endmacro -%}
+{%- macro _hms(s) -%}{{ '%d:%02d:%02d' | format((s // 3600) | int, ((s % 3600) // 60) | int, (s % 60) | int) }}{%- endmacro -%}
+{%- macro _sec(t) -%}{%- set p = (t or '').split(':') -%}{{ ((p[0] | int(0)) * 60 + (p[1] | int(0))) if p | count == 2 else 0 }}{%- endmacro -%}
+{%- macro _bar(v, n, width=10) -%}{%- set f = ((v / n * width) | round(0) | int) if n else 0 -%}{%- set f = [[f, width] | min, 0] | max -%}{{ '▰' * f }}{{ '▱' * (width - f) }}{%- endmacro -%}
+{%- macro _done(key) -%}{%- set tg = state_attr('sensor.garmin_ai_coach_garmin_plan', 'targets') or [] -%}{{ (tg | selectattr('key', 'eq', key) | map(attribute='done') | list + [0])[0] }}{%- endmacro -%}
+{%- macro _weeks() -%}{%- set plan = coach_plan() | from_json -%}{%- set mon = (now().date() - timedelta(days=now().weekday())).isoformat() -%}{{ {'mon': mon, 'weeks': plan.weeks, 'zw': plan.zw, 'paces': plan.paces} | to_json }}{%- endmacro -%}
+{%- macro _date(w, plus=0) -%}{{ (strptime(w, '%Y-%m-%d') + timedelta(days=plus)).strftime('%d.%m.') }}{%- endmacro -%}
+
+{#- ============================ SCHWIMMEN ============================ -#}
+{%- macro swim_status() -%}
+{%- set d = _weeks() | from_json -%}
+{%- set css = _sec(states('input_text.zielzeit_schwimm_pace_100m')) | int -%}
+{%- set td = states('input_datetime.benchmark_datum_schwimmen') -%}
+{%- set age = (now().date() - strptime(td, '%Y-%m-%d').date()).days if td >= '2000' else none -%}
+{%- set tests = d.weeks | selectattr('w', 'ge', d.mon) | selectattr('sc', 'eq', 'CSS-Test') | list -%}
+### 🏊 CSS **{{ _mmss(css) }}** /100 m
+| 1,9 km im 70.3 | Diese Woche | Letzter Test | Nächster Test |
+|:-:|:-:|:-:|:-:|
+| **{{ _mmss(css * 19) }}–{{ _mmss((css + 3) * 19) }}** | {{ states('sensor.garmin_ai_coach_garmin_wochenvolumen_schwimmen') }} km · {{ _done('swim') }}/1 | {{ ('vor ' ~ age ~ ' Tagen') if age is not none else '–' }} | {{ ('Di ' ~ _date(tests[0].w, 1)) if tests else '–' }} |
+
+<small>CSS = Tempo, das du über ~1500 m halten kannst. Ziel: alle 8 Wochen ein paar Sekunden schneller.</small>
+{%- endmacro -%}
+
+{%- macro swim_week() -%}
+{%- set d = _weeks() | from_json -%}
+{%- set cur = d.weeks | selectattr('w', 'eq', d.mon) | list -%}
+{%- if cur -%}
+{%- set s = cur[0].s -%}{%- set parts = s.split(': ', 1) -%}
+### {{ parts[0] }}
+{% for step in parts[1].split(' · ') %}
+{{ loop.index }}. {{ step }}{% endfor %}
+{%- set m = s | regex_findall('Haupt (\\d+)×(\\d+) m @ (\\d+):(\\d+)(?:–(\\d+):(\\d+))? /100 m, (\\d+) s') -%}
+{%- if m %}{%- set g = m[0] %}{%- set dist = g[1] | int -%}{%- set pace = ((g[4] | int) * 60 + (g[5] | int)) if g[4] else ((g[2] | int) * 60 + (g[3] | int)) %}{%- set t = pace * dist / 100 %}
+
+⏱️ **Abgang alle {{ _mmss(t + g[6] | int) }}** – {{ dist }} m in {{ _mmss(t) }} + {{ g[6] }} s Pause · Hauptsatz {{ (g[0] | int) * dist }} m
+{%- endif -%}
+{%- set r = s | regex_findall('(\\d+) m am Stück @ (\\d+):(\\d+)–(\\d+):(\\d+)') -%}
+{%- if r %}{%- set g = r[0] %}{%- set dist = g[0] | int %}
+
+⏱️ **Zielzeit {{ dist }} m: {{ _mmss(((g[1] | int) * 60 + (g[2] | int)) * dist / 100) }}–{{ _mmss(((g[3] | int) * 60 + (g[4] | int)) * dist / 100) }}**
+{%- endif %}
+
+<small>Gleichmäßig schwimmen: die erste Wiederholung bewusst nicht schneller als die letzte. Klappt das Tempo ab etwa der Hälfte nicht mehr, Pause um 10 s verlängern.</small>
+{%- set nx = d.weeks | selectattr('w', 'gt', d.mon) | list -%}
+{%- if nx %}
+
+**Als Nächstes:** {% for x in nx[:3] %}{{ _date(x.w, 1) }} {{ x.sc }}{{ ' · ' if not loop.last }}{% endfor %}
+{%- endif -%}
+{%- else -%}Kein Planeintrag für diese Woche.{%- endif -%}
+{%- endmacro -%}
+
+{%- macro css_calc() -%}
+{%- set css = _sec(states('input_text.zielzeit_schwimm_pace_100m')) | int -%}
+{%- set a = _sec(states('input_text.css_test_400_m')) | int -%}
+{%- set b = _sec(states('input_text.css_test_200_m')) | int -%}
+**Ablauf:** 10–15 min einschwimmen mit Technik · 2–4×100 m im geplanten 400er-Tempo (20 s Pause) · **400 m voll, gleichmäßig** · 5–8 min locker · **200 m voll** · ausschwimmen.
+
+{% if a > 0 and b > 0 and a > b -%}{%- set c = ((a - b) / 2) | round(0) | int -%}
+➡️ **Neue CSS: {{ _mmss(c) }} /100 m** ({{ '%+d' | format(c - css) }} s gegenüber jetzt) – mit „CSS übernehmen“ speichern.
+{%- elif a > 0 or b > 0 -%}
+⚠️ Beide Zeiten als M:SS eintragen – die 200 m müssen schneller sein als die 400 m.
+{%- else -%}
+Nach dem Test beide Zeiten eintragen, die CSS rechnet sich automatisch: (400er − 200er) ÷ 2.
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro swim_paces() -%}
+{%- set css = _sec(states('input_text.zielzeit_schwimm_pace_100m')) | int -%}
+| Einsatz | Pace /100 m |
+|---|---|
+| Tempo (50er) | {{ _mmss(css - 4) }}–{{ _mmss(css - 2) }} |
+| Schwelle (100er) | **{{ _mmss(css) }}** |
+| 200er | {{ _mmss(css + 1) }}–{{ _mmss(css + 2) }} |
+| 400er | {{ _mmss(css + 3) }}–{{ _mmss(css + 4) }} |
+| Ausdauer / Technik | {{ _mmss(css + 4) }}–{{ _mmss(css + 6) }} |
+| Rennen 1,9 km | {{ _mmss(css) }}–{{ _mmss(css + 3) }} |
+
+**Technik-Fokus, der bei 2–2:15 /100 m am meisten bringt:**
+- **Ausatmen unter Wasser** – ruhig und kontinuierlich, dann reicht das kurze Einatmen.
+- **Hoher Ellbogen beim Fassen** – Unterarm früh senkrecht stellen, nicht mit gestrecktem Arm drücken.
+- **Ruhiger Kopf, Blick nach unten** – hebt die Beine, spart Kraft. Ab Frühjahr: Sighting alle 6–8 Züge.
+{%- endmacro -%}
+
+{#- ============================ RAD ============================ -#}
+{%- macro bike_status() -%}
+{%- set d = _weeks() | from_json -%}
+{%- set ftp = states('input_number.ftp_zwift_w') | float(0) -%}
+{%- set tests = d.weeks | selectattr('w', 'ge', d.mon) | selectattr('zc', 'eq', 'RAMP') | list -%}
+### 🚴 FTP **{{ ftp | int }} W**
+| 70.3-Renntempo | Sweet Spot | Diese Woche | Nächster FTP-Test |
+|:-:|:-:|:-:|:-:|
+| **{{ (ftp * 0.75) | round(0) | int }}–{{ (ftp * 0.78) | round(0) | int }} W** | {{ (ftp * 0.88) | round(0) | int }}–{{ (ftp * 0.94) | round(0) | int }} W | {{ states('sensor.garmin_ai_coach_garmin_wochenvolumen_rad') }} km · {{ _done('bike') }} Einheit(en) | {{ ('Woche ab ' ~ _date(tests[0].w)) if tests else '–' }} |
+
+<small>Maßgeblich ist dein Zwift-Test. Garmin schätzt {{ states('sensor.garmin_ai_coach_garmin_ftp') }} W aus der VO2max – das ist keine Messung.</small>
+{%- endmacro -%}
+
+{%- macro bike_week() -%}
+{%- set d = _weeks() | from_json -%}
+{%- set cur = d.weeks | selectattr('w', 'eq', d.mon) | list -%}
+{%- if cur -%}{%- set w = cur[0] -%}{%- set z = w.z.split(': ', 1) -%}
+### {{ z[0] }}
+{{ z[1] if z | count > 1 else '' }}
+{% if w.z2 %}
+**Zusätzlich:** {{ w.z2 }}
+{% endif %}
+<small>In Zwift unter *Custom Workouts* („GAC …“). Kadenz 85–95, Sweet Spot fühlt sich „angenehm anstrengend“ an – kurze Sätze sprechen geht noch.</small>
+{%- set nx = d.weeks | selectattr('w', 'gt', d.mon) | list -%}
+{%- if nx %}
+
+**Als Nächstes:** {% for x in nx[:3] %}{{ _date(x.w) }} {{ x.z.split(':')[0] }}{{ ' · ' if not loop.last }}{% endfor %}
+{%- endif -%}
+{%- else -%}Kein Planeintrag für diese Woche.{%- endif -%}
+{%- endmacro -%}
+
+{%- macro bike_zones() -%}
+{%- set ftp = states('input_number.ftp_zwift_w') | float(0) -%}
+{%- set rows = [('Z1 Erholung', 0, 55), ('Z2 Grundlage', 56, 75), ('Z3 Tempo', 76, 87), ('Sweet Spot', 88, 94), ('Z4 Schwelle', 95, 105), ('Z5 VO2max', 106, 120)] -%}
+| Zone | % FTP | Watt |
+|---|---|---|
+{% for r in rows %}| {{ r[0] }} | {{ r[1] }}–{{ r[2] }} | {{ (ftp * r[1] / 100) | round(0) | int }}–{{ (ftp * r[2] / 100) | round(0) | int }} |
+{% endfor %}| **70.3-Renntempo** | 75–78 | **{{ (ftp * 0.75) | round(0) | int }}–{{ (ftp * 0.78) | round(0) | int }}** |
+{%- endmacro -%}
+
+{%- macro zwift_library() -%}
+{%- set d = _weeks() | from_json -%}
+<details><summary>Alle {{ d.zw | count }} Workouts anzeigen</summary>
+
+| Code | Workout | Inhalt |
+|---|---|---|
+{% for z in d.zw %}| {{ z.c }} | {{ z.n }} | {{ z.t }} |
+{% endfor %}
+**Import:** .zwo-Dateien in den Zwift-Ordner › Workouts › Ordner mit deiner Zwift-ID kopieren (PC: Rechtsklick auf das Zwift-Symbol in der Taskleiste › *Open Logs Folder*), Zwift neu starten.
+</details>
+{%- endmacro -%}
+
+{#- ============================ LAUFEN ============================ -#}
+{%- macro run_status() -%}
+{%- set t = _sec(states('input_text.lauf_schwellenpace')) | int -%}
+{%- set mp = _sec(states('input_text.marathon_zielpace')) | int -%}
+{%- set dc = states('sensor.garmin_ai_coach_garmin_hf_pace_kopplung') -%}
+{%- set d1 = (3600 / t) if t > 0 else 1 -%}
+### 🏃 Schwelle **{{ _mmss(t) }}** /km
+| Marathon-Ziel | VO2max (Garmin) | HF-Pace-Kopplung | Diese Woche |
+|:-:|:-:|:-:|:-:|
+| **{{ _mmss(mp) }} /km** · {{ _hms(mp * 42.195)[:-3] }} h | {{ states('sensor.garmin_ai_coach_garmin_vo2max') }} | {{ (dc ~ ' %') if dc not in ['unknown', 'unavailable'] else '–' }} | {{ states('sensor.garmin_ai_coach_garmin_wochenvolumen_lauf') }} km · {{ _done('run') }} Läufe |
+{% if t > 0 %}
+
+**Was deine Schwelle heute hergibt** <small>(Riegel-Formel aus deinem 1-h-Tempo)</small>
+
+| 10 km | Halbmarathon | Marathon |
+|:-:|:-:|:-:|
+| {{ _hms(3600 * (10 / d1) ** 1.06) }} | {{ _hms(3600 * (21.0975 / d1) ** 1.06) }} | {{ _hms(3600 * (42.195 / d1) ** 1.06) }}* |
+
+<small>* Für einen ersten Marathon meist 5–10 % langsamer – deshalb die vorsichtige Zielpace. Kopplung unter 5 % = solide aerobe Basis.</small>
+{%- endif -%}
+{%- endmacro -%}
+
+{%- macro run_week() -%}
+{%- set d = _weeks() | from_json -%}
+{%- set cur = d.weeks | selectattr('w', 'eq', d.mon) | list -%}
+{%- if cur -%}{%- set w = cur[0] -%}
+{% if w.q != '–' %}**⚡ Qualität:** {{ w.q }}
+
+{% endif %}**🌿 Locker (Z2):** {{ w.e }}{% if w.l %}
+
+**🛣️ Longrun:** {{ w.l }}{% endif %}
+
+<small>Qualitätslauf nicht am Tag nach Beine. Z2 nach Herzfrequenz, nicht nach Pace.</small>
+{%- set nx = d.weeks | selectattr('w', 'gt', d.mon) | list -%}
+{%- if nx %}
+
+**Als Nächstes:** {% for x in nx[:3] %}{{ _date(x.w) }} {{ x.qc }}{{ (' + ' ~ (x.lr | string).replace('.', ',') ~ ' km lang') if x.lr else '' }}{{ ' · ' if not loop.last }}{% endfor %}
+{%- endif -%}
+{%- else -%}Kein Planeintrag für diese Woche.{%- endif -%}
+{%- endmacro -%}
+
+{%- macro run_paces() -%}
+{%- set d = _weeks() | from_json -%}
+| Tempo | Pace /km | Wofür |
+|---|---|---|
+| Locker (Z2) | {{ d.paces.E }} | Z2-Läufe, Longruns – HF hat Vorrang |
+| Marathon | {{ d.paces.MP }} | Marathontempo-Abschnitte |
+| 70.3-Lauf | {{ d.paces.R }} | Lauf nach dem Rad |
+| Schwelle | **{{ d.paces.T }}** | 2–4 km-Intervalle, Tempodauerlauf |
+| Intervall | {{ d.paces.I }} | 1000er, 4-min-Intervalle |
+
+**30-min-Test:** 15 min einlaufen · 30 min so schnell wie gleichmäßig möglich · die Ø-Pace der **letzten 20 min** ist deine neue Schwelle → unten eintragen.
+{%- endmacro -%}
+
+{#- ============================ GYM ============================ -#}
+{%- macro _group(ex) -%}
+{%- set e = ex | upper | replace(' ', '_') -%}
+{%- if e is search('LEG|SQUAT|LUNGE|CALF|DEADLIFT|HIP_THRUST|STEP_UP|GLUTE') -%}Beine
+{%- elif e is search('CRUNCH|PLANK|SIT_UP|CORE|PALLOF|AB_') -%}Rumpf
+{%- elif e is search('TRICEPS|DIP') -%}Trizeps
+{%- elif e is search('CURL') -%}Bizeps
+{%- elif e is search('LATERAL_RAISE|SHOULDER|FRONT_RAISE|FACE_PULL|REVERSE_FLY|OVERHEAD_PRESS') -%}Schultern
+{%- elif e is search('ROW|PULL_UP|PULLDOWN|PULLOVER|LAT_|CHIN') -%}Rücken
+{%- elif e is search('BENCH|FLYE|FLY|PUSH_UP|CHEST') -%}Brust
+{%- else -%}Sonstige{%- endif -%}
+{%- endmacro -%}
+
+{%- macro gym_status() -%}
+{%- set since = (now().date() - timedelta(days=6)).isoformat() -%}
+{%- set sessions = (state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or []) | selectattr('date', 'ge', since) | list -%}
+{%- set ns = namespace(c={'Brust': 0, 'Rücken': 0, 'Schultern': 0, 'Bizeps': 0, 'Trizeps': 0, 'Beine': 0, 'Rumpf': 0}, unk=0, total=0) -%}
+{%- for s in sessions -%}{%- for ex in (s.exercises or []) -%}{%- set n = (ex.sets or []) | count -%}
+{%- if ex.exercise == 'Unknown' or n == 0 -%}{%- set ns.unk = ns.unk + n -%}
+{%- else -%}{%- set g = _group(ex.exercise) -%}{%- if g in ns.c -%}{%- set ns.c = dict(ns.c, **{g: ns.c[g] + n}) -%}{%- endif -%}{%- set ns.total = ns.total + n -%}{%- endif -%}
+{%- endfor -%}{%- endfor -%}
+{%- set ex = state_attr('sensor.garmin_ai_coach_garmin_kraftwerte', 'exercises') or [] -%}
+{%- set legs = ex | selectattr('exercise', 'search', 'LEG|SQUAT|CALF|LUNGE|DEADLIFT') | map(attribute='last_date') | select | list | sort -%}
+{%- set legs_last = legs[-1] if legs else none -%}
+{%- set legs_age = (now().date() - strptime(legs_last, '%Y-%m-%d').date()).days if legs_last else none -%}
+### 🏋️ {{ _done('strength') }}/4 Einheiten diese Woche · {{ ns.total }} Sätze in 7 Tagen
+{% if legs_age is none or legs_age > 10 %}
+<ha-alert alert-type="warning">**Beine zuletzt {{ ('vor ' ~ legs_age ~ ' Tagen (' ~ strptime(legs_last, '%Y-%m-%d').strftime('%d.%m.') ~ ')') if legs_age is not none else 'nie erfasst' }}.** Für Lauf- und Radökonomie zählt das Beintraining am meisten – Di/Do einplanen.</ha-alert>
+{% endif %}
+| Muskelgruppe | Sätze (7 Tage) | |
+|---|:-:|---|
+{% for g, n in ns.c.items() %}| {{ g }} | **{{ n }}** | {{ _bar(n, 10) }} {{ '⚠️' if n == 0 else ('💪' if n >= 10 else ('✅' if n >= 5 else '')) }} |
+{% endfor %}
+<small>Richtwert: 5–9 Sätze pro Muskel und Woche bringen rund 80 % des möglichen Zuwachses, ab 10 Sätzen das Maximum (Schoenfeld 2017). Für dich als Triathlet reichen 5–9 – Hauptsache, die Beine sind dabei.{{ (' ' ~ ns.unk ~ ' Sätze hat Garmin keiner Übung zugeordnet.') if ns.unk else '' }}</small>
+{%- endmacro -%}
+
+{%- macro gym_lifts() -%}
+{%- set ex = (state_attr('sensor.garmin_ai_coach_garmin_kraftwerte', 'exercises') or []) | selectattr('current') | list -%}
+{%- if not ex -%}In den letzten 14 Tagen keine Sätze mit Gewicht erfasst.{%- else -%}
+| Übung | e1RM | Trend (4–8 Wo.) |
+|---|:-:|---|
+{% for e in ex[:12] %}{%- set name = e.exercise.split(' (')[0] -%}{%- set sub = (e.exercise.split('(')[1] | replace(')', '') | replace('_', ' ') | lower) if '(' in e.exercise else '' -%}| {{ name }}{{ (' <small>' ~ sub ~ '</small>') if sub else '' }} | **{{ e.current }} kg** | {% if e.change_pct is not none %}{{ '🟢 +' if e.change_pct > 0 else ('🔴 ' if e.change_pct < 0 else '⚪ ') }}{{ e.change_pct }} %{% else %}neu{% endif %} |
+{% endfor %}
+<small>e1RM = geschätztes Maximalgewicht aus deinen Sätzen (Epley). Fortschritt heißt: gleiche Wiederholungen mit mehr Gewicht oder mehr Wiederholungen mit gleichem Gewicht.</small>
+{%- endif -%}
+{%- endmacro -%}

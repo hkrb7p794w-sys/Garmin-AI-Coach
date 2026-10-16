@@ -184,7 +184,9 @@ client.loop_start()
 
 SENSORS = {
     # bereits vorhanden (v0.3.0)
-    "resting_hr": {"name": "Garmin Resting HR", "unit": "bpm", "icon": "mdi:heart-pulse"},
+    "resting_hr": {"name": "Garmin Resting HR", "unit": "bpm", "icon": "mdi:heart-pulse",
+                   # seit v0.22.0: Langzeitstatistik für die Ruhepuls-Kurve im Dashboard
+                   "state_class": "measurement"},
     "steps_today": {"name": "Garmin Steps Today", "unit": "steps", "icon": "mdi:walk"},
     "coaching_note": {"name": "Garmin AI Coaching Note", "unit": None, "icon": "mdi:robot"},
     "training_readiness": {

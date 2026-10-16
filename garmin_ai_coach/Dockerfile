@@ -16,6 +16,7 @@ COPY exercise_names.py /exercise_names.py
 COPY gym_progress.py /gym_progress.py
 COPY hr_zones.py /hr_zones.py
 COPY garmin_swim.py /garmin_swim.py
+COPY ha_settings.py /ha_settings.py
 COPY swim_plan.json /swim_plan.json
 COPY run.sh /
 RUN chmod a+x /run.sh
