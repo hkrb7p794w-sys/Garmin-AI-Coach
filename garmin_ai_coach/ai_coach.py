@@ -475,7 +475,7 @@ def _format_strength_sessions_detailed(sessions: list) -> str:
     return "\n".join(lines)
 
 
-def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> str:
+def generate_gym_coaching_note(sessions: list, interference_note: str = "", progression_text: str = "") -> str:
     """Eigener, auf Krafttraining fokussierter KI-Tipp - getrennt vom
     allgemeinen Tages-Coaching-Tipp (generate_coaching_note), weil der sich
     auf Erholung/Tagesplanung über alle Disziplinen bezieht, während dieser
@@ -487,7 +487,12 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> s
     interference_note (optional): Kontext-Satz aus app.py,
     _check_endurance_before_strength_interference() - siehe dort und
     claude/konzept-erweiterung-metriken-v0.16-plus.md, Abschnitt 1.5. Leerer
-    String, wenn kein Interferenz-Fall vorliegt (Normalfall)."""
+    String, wenn kein Interferenz-Fall vorliegt (Normalfall).
+
+    progression_text (optional, seit v0.21.0): Ergebnis der regelbasierten
+    Gewichts-Progression (gym_progress.prompt_block). Die Regeln haben das
+    Zielgewicht bereits entschieden - die KI darf es nur einordnen, nicht
+    ändern."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
@@ -496,6 +501,12 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> s
         raise RuntimeError("keine verwertbaren Kraft-Übungsdaten der letzten 7 Tage")
 
     interference_block = f"\n\n{interference_note}" if interference_note else ""
+    if progression_text:
+        interference_block += (
+            "\n\nErgebnis der regelbasierten Gewichts-Progression (Doppelprogression, "
+            "ACSM 2009; die Zielgewichte sind bereits berechnet und dürfen von dir nicht "
+            "verändert oder neu erfunden werden):\n" + progression_text
+        )
 
     prompt = (
         "Du bist ein Kraft-/Fitnesscoach für einen Age-Group-Athleten in der "
@@ -515,7 +526,8 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "") -> s
         "Beine/Rumpf) - fehlt etwas Wichtiges fürs Ausdauertraining (v.a. Beine/Rumpf)?\n"
         "- Ein Punkt: eine konkrete, umsetzbare Empfehlung für die nächste Kraft-Einheit "
         "(z.B. eine Übung ergänzen, Gewicht/Wiederholungen einer auffälligen Übung "
-        "anpassen).\n"
+        "anpassen). Falls die Progression oben Übungen mit 'Erhöhen' nennt: nenne die "
+        "wichtigsten 1-2 davon mit dem berechneten Zielgewicht.\n"
         "- NUR falls Kraftvolumen/-intensität auffällig hoch wirkt und die Erholung "
         "fürs Ausdauertraining gefährden könnte: ein dritter Punkt dazu (sonst "
         "weglassen).\n"

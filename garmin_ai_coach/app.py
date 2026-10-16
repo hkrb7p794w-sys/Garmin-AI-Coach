@@ -17,6 +17,8 @@ from ha_publish import (
     publish_coach_status,
     publish_kraftwerte,
     publish_swim_export,
+    publish_gym_progression,
+    publish_hr_zones,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -31,6 +33,9 @@ from ai_coach import (
     TRAININGSPLAN_GYM_KRITIK,
 )
 import fit_exercises
+import exercise_names
+import gym_progress
+import hr_zones
 import plan
 import recommendation
 import progress
@@ -49,7 +54,12 @@ HISTORY_DAYS = 60
 # fit_exercises.py) - dauerhaft, damit nicht bei jedem Sync erneut die
 # Original-Datei jeder Kraft-Aktivität von Garmin geladen wird.
 STRENGTH_FILE = os.path.join(DATA_DIR, "strength_exercises.json")
-STRENGTH_CACHE_DAYS = 21
+STRENGTH_CACHE_DAYS = 90      # Verlauf für die Gewichts-Progression (v0.21.0; vorher 21)
+STRENGTH_FETCH_DAYS = 42      # so weit zurück werden noch nicht gecachte Einheiten geladen
+STRENGTH_REFRESH_DAYS = 3     # jüngere Einheiten werden bei jedem Sync neu geladen: nachträgliche
+                              # Änderungen in der Garmin-App (Übung umbenannt/getauscht) kommen so an
+STRENGTH_REFRESH_UNKNOWN_DAYS = 14
+STRENGTH_MAX_FETCH = 10       # Obergrenze Garmin-Abrufe je Sync (Schutz vor Rate-Limit)
 # Cache der HF-Pace-Kopplung (aerobe Entkopplung) je qualifizierender
 # Lauf-Aktivität - siehe decoupling.py und claude/konzept-erweiterung-
 # metriken-v0.16-plus.md, Abschnitt 1.3. Gleiches Muster wie STRENGTH_FILE.
@@ -388,23 +398,45 @@ def _is_broken_strength_entry(entry: dict) -> bool:
     )
 
 
+def _has_unknown_exercise(entry: dict) -> bool:
+    """Eine Einheit mit noch unbenannter Übung - Alex bearbeitet sie nach dem
+    Training in der Garmin-App, deshalb später erneut abrufen."""
+    for ex in entry.get("exercises") or []:
+        label = str((ex or {}).get("exercise", ""))
+        if label.lower().startswith(("unknown", "unbekannte")):
+            return True
+    return False
+
+
 def _update_strength_exercises(client, activities: list) -> list:
-    """Lädt für Kraft-Aktivitäten der laufenden Woche, die noch nicht im
-    Cache stehen (oder deren Cache-Eintrag als fehlgeschlagen erkannt wurde,
-    siehe _is_broken_strength_entry), die Übungsdaten über Garmins
-    exerciseSets-API (siehe fit_exercises.py) - die normale Aktivitätenliste
-    liefert dafür nur Aggregatwerte (total_sets/total_reps/total_volume),
-    keine Aufschlüsselung je Übung. Gibt die Sessions der laufenden Woche
-    zurück (für Wochenreport/Dashboard), ältere bleiben nur im Cache."""
+    """Lädt Kraft-Aktivitäten (Übungsdaten über Garmins exerciseSets-API, siehe
+    fit_exercises.py - die normale Aktivitätenliste liefert nur Aggregatwerte).
+
+    Seit v0.21.0:
+    - Noch nicht gecachte Einheiten der letzten STRENGTH_FETCH_DAYS Tage werden
+      geladen (vorher nur 7 Tage), damit die Gewichts-Progression Verlauf hat.
+    - Einheiten der letzten STRENGTH_REFRESH_DAYS Tage (und solche mit noch
+      unbenannter Übung bis STRENGTH_REFRESH_UNKNOWN_DAYS) werden bei jedem Sync
+      NEU geladen. Grund: Wer Übungen nachträglich in der Garmin-App ändert, hat
+      sonst dauerhaft den Stand direkt nach dem Training im Cache. Liefert der
+      erneute Abruf nichts (Fehler), bleibt der alte Stand erhalten.
+    - Höchstens STRENGTH_MAX_FETCH Abrufe je Sync, neueste zuerst.
+
+    Gibt die Sessions der letzten 7 Tage zurück - mit vereinheitlichten
+    Übungsnamen (exercise_names.canonical_sessions); ältere bleiben im Cache
+    (dort mit Garmin-Rohnamen, damit Regeländerungen rückwirkend gelten)."""
     cache = _load_strength_cache()
     broken_keys = [k for k, v in cache.items() if _is_broken_strength_entry(v)]
     for k in broken_keys:
         del cache[k]
     if broken_keys:
-        print(f"[strength] {len(broken_keys)} kaputte Cache-Einträge (v0.10.0) verworfen, werden neu abgerufen: {broken_keys}")
+        print(f"[strength] {len(broken_keys)} kaputte Cache-Einträge verworfen, werden neu abgerufen: {broken_keys}")
     now = datetime.datetime.now()
+    today = now.date()
     window_start = now - datetime.timedelta(days=7)
+    fetch_start = now - datetime.timedelta(days=STRENGTH_FETCH_DAYS)
     changed = bool(broken_keys)
+    budget = STRENGTH_MAX_FETCH
 
     for act in activities or []:
         try:
@@ -415,15 +447,30 @@ def _update_strength_exercises(client, activities: list) -> list:
             if not start_str:
                 continue
             start_dt = datetime.datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-            if start_dt < window_start:
+            if start_dt < fetch_start:
                 continue
             activity_id = act.get("activityId")
             if activity_id is None:
                 continue
             key = str(activity_id)
-            if key in cache:
+            cached = cache.get(key)
+            age_days = (today - start_dt.date()).days
+            refresh = cached is not None and (
+                age_days <= STRENGTH_REFRESH_DAYS
+                or (age_days <= STRENGTH_REFRESH_UNKNOWN_DAYS and _has_unknown_exercise(cached))
+            )
+            if cached is not None and not refresh:
                 continue
+            if budget <= 0:
+                continue
+            budget -= 1
             exercises = fit_exercises.get_strength_exercises(client, activity_id)
+            if refresh:
+                if not exercises:
+                    continue  # Abruf fehlgeschlagen oder leer: alten Stand behalten
+                if exercises == cached.get("exercises"):
+                    continue
+                print(f"[strength] Einheit {key} ({start_dt.date()}) wurde in Garmin geändert - Cache aktualisiert")
             cache[key] = {
                 "date": start_dt.date().isoformat(),
                 "activity_name": act.get("activityName"),
@@ -438,7 +485,14 @@ def _update_strength_exercises(client, activities: list) -> list:
 
     window_date = window_start.date().isoformat()
     sessions = [v for v in cache.values() if (v.get("date") or "") >= window_date]
-    return sorted(sessions, key=lambda s: s.get("date") or "")
+    sessions = sorted(sessions, key=lambda s: s.get("date") or "")
+    return exercise_names.canonical_sessions(sessions)
+
+
+def _strength_history() -> tuple:
+    """(roh, vereinheitlicht) - alle gecachten Kraft-Einheiten, alt -> neu."""
+    raw = sorted(_load_strength_cache().values(), key=lambda s: s.get("date") or "")
+    return raw, exercise_names.canonical_sessions(raw)
 
 
 def _load_decoupling_cache() -> dict:
@@ -943,6 +997,28 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_strength_exercises(wellness["strength_exercises"])
         publish_decoupling(wellness["decoupling_sessions"], skipped=_decoupling_skipped())
 
+        # Herzfrequenzzonen (v0.21.0, siehe hr_zones.py): Zonen der Uhr aus Garmin,
+        # schwellenbasierte Coach-Zonen, Zeit-in-Zone-Verteilung. Eigener try-Block:
+        # ein unerwartetes Garmin-Format darf den Sync nie abbrechen.
+        try:
+            hz = hr_zones.build(client, recent_activities, today_date)
+            publish_hr_zones(hz, hr_zones.state_text(hz))
+        except Exception as e:
+            print(f"[hr_zones] fehlgeschlagen: {e}")
+
+        # Gewichts-Progression (v0.21.0): Verlauf aus dem Cache, Übungsnamen
+        # vereinheitlicht. Ohne Erholungs-Schranke für den KI-Tipp hier, mit
+        # Schranke für den Sensor weiter unten (nach der Tagesampel).
+        strength_raw, strength_canon = [], []
+        progression_text = ""
+        try:
+            strength_raw, strength_canon = _strength_history()
+            early = gym_progress.build_progression(strength_canon, today_date)
+            progression_text = gym_progress.prompt_block(
+                [e for e in early if e["status"] in ("erhöhen", "prüfen", "wiedereinstieg")])
+        except Exception as e:
+            print(f"[gym_progress] fehlgeschlagen: {e}")
+
         # Annehmen/Ablehnen-Zustand der Gym-Kritik-Vorschläge (Dashboard-Tab
         # "Vorschläge", siehe suggestions.py) mit der aktuellen Punkteliste
         # abgleichen - VOR dem Trainingsplan-Kommentar-Block unten, damit
@@ -963,7 +1039,8 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 gym_note = "Noch keine verwertbaren Kraft-Übungsdaten der letzten 7 Tage für einen Gym-Tipp."
             else:
                 gym_note = generate_gym_coaching_note(
-                    wellness["strength_exercises"], interference_note=interference_note
+                    wellness["strength_exercises"], interference_note=interference_note,
+                    progression_text=progression_text,
                 )
                 progress.record_ai_result("gym", True)
         except Exception as e:
@@ -985,9 +1062,16 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         )
         publish_recommendation(rec)
         try:
-            publish_kraftwerte(progress.e1rm_summary(progress.update_e1rm(list(_load_strength_cache().values()))))
+            publish_kraftwerte(progress.e1rm_summary(progress.update_e1rm(strength_canon)))
         except Exception as e:
             print(f"[kraftwerte] fehlgeschlagen: {e}")
+        try:
+            recovered = (rec.get("level") == "normal")
+            progression = gym_progress.build_progression(strength_canon, today_date, recovered=recovered)
+            publish_gym_progression(progression, exercise_names.mapping_overview(strength_raw),
+                                    gym_progress.summary_state(progression))
+        except Exception as e:
+            print(f"[gym_progress] Veröffentlichung fehlgeschlagen: {e}")
 
         # Schwimmeinheiten der laufenden + nächsten Woche als strukturierte
         # Workouts in den Garmin-Kalender (v0.20.0, siehe garmin_swim.py).

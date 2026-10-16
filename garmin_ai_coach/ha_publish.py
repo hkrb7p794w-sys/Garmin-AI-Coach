@@ -373,10 +373,22 @@ SENSORS = {
         "name": "Garmin Kraftwerte",
         "unit": None,
         "icon": "mdi:weight-lifter",
-    },    "export_schwimmen": {
+    },
+    "export_schwimmen": {
         "name": "Garmin Export Schwimmen",
         "unit": None,
         "icon": "mdi:swim",
+    },
+    # v0.21.0
+    "gym_progression": {
+        "name": "Garmin Gym Progression",
+        "unit": None,
+        "icon": "mdi:arrow-up-bold-box-outline",
+    },
+    "herzfrequenzzonen": {
+        "name": "Garmin Herzfrequenzzonen",
+        "unit": None,
+        "icon": "mdi:heart-pulse",
     },
 }
 
@@ -419,6 +431,7 @@ ATTRIBUTE_SENSORS = {
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
     "chat_verlauf", "ftp", "hf_pace_kopplung",
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
+    "gym_progression", "herzfrequenzzonen",
 }
 
 
@@ -957,6 +970,20 @@ def publish_kraftwerte(summary: list):
     state = f"{len(summary)} Übungen" if summary else "noch keine Daten"
     _publish_json_sensor("kraftwerte", state, {"exercises": summary,
                                                "formula": "Epley: Gewicht × (1 + Wdh/30), geschätzt"})
+
+
+def publish_gym_progression(progression: list, mapping: list, state_text: str):
+    """Gewichts-Progression je Übung (gym_progress.py) plus die Übersicht, welche
+    Garmin-Rohnamen zu einer Übung zusammengefasst wurden (exercise_names.py)."""
+    _publish_json_sensor("gym_progression", state_text, {
+        "exercises": progression,
+        "mapping": mapping,
+        "rule": "Doppelprogression + 2-für-2 (ACSM 2009)",
+    })
+
+
+def publish_hr_zones(result: dict, state_text: str):
+    _publish_json_sensor("herzfrequenzzonen", state_text, result)
 
 
 def publish_swim_export(result: dict):

@@ -17,6 +17,8 @@ import os
 import json
 import datetime
 
+import exercise_names
+
 DATA_DIR = "/data"
 COACH_STATUS_FILE = os.path.join(DATA_DIR, "coach_status.json")
 E1RM_FILE = os.path.join(DATA_DIR, "e1rm_history.json")
@@ -100,10 +102,34 @@ def epley(weight_kg, reps):
     return round(weight_kg * (1 + reps / 30.0), 1)
 
 
+def _load_e1rm() -> dict:
+    """Lädt die e1RM-Historie. Dateien vor v0.21.0 sind nach ROHEN Garmin-Namen
+    geschlüsselt („Row (SEATED_CABLE_ROW)“ und „Row“ getrennt) und werden
+    einmalig auf vereinheitlichte Namen umgeschlüsselt (Maximum je Tag)."""
+    raw = _load(E1RM_FILE, {})
+    if raw.get("_schema") == 2:
+        return raw.get("data") or {}
+    out = {}
+    for name, days in raw.items():
+        if not isinstance(days, dict):
+            continue
+        c = exercise_names.classify(name)
+        if c["id"] in exercise_names.IGNORED_IDS:
+            continue
+        per = out.setdefault(c["name"], {})
+        for d, v in days.items():
+            if isinstance(v, (int, float)) and v > per.get(d, 0):
+                per[d] = v
+    return out
+
+
 def update_e1rm(strength_sessions: list) -> dict:
     """Übernimmt je Übung und Tag den besten e1RM-Wert in die Historie.
-    Format: {exercise: {date: e1rm}}."""
-    hist = _load(E1RM_FILE, {})
+    Format: {exercise: {date: e1rm}}. Erwartet Sessions mit bereits
+    vereinheitlichten Namen (exercise_names.canonical_sessions); Rohnamen
+    würden dieselbe Übung wieder aufspalten."""
+    hist = _load_e1rm()
+    fresh = {}
     for s in strength_sessions or []:
         day = s.get("date")
         if not day:
@@ -119,13 +145,22 @@ def update_e1rm(strength_sessions: list) -> dict:
                     best = v
             if best is None:
                 continue
-            per_ex = hist.setdefault(name, {})
+            per_ex = fresh.setdefault(name, {})
             if best > (per_ex.get(day) or 0):
                 per_ex[day] = best
+    # Der Übungs-Cache wird bei nachträglichen Änderungen in Garmin neu geladen.
+    # Alles ab dem ältesten Tag der aktuellen Sessions deshalb ERSETZEN statt nur
+    # erhöhen - sonst bliebe ein alter (falsch benannter) Wert dauerhaft stehen.
+    dates = [s.get("date") for s in strength_sessions or [] if s.get("date")]
+    if dates:
+        first = min(dates)
+        hist = {k: {d: v for d, v in days.items() if d < first} for k, days in hist.items()}
+    for name, days in fresh.items():
+        hist.setdefault(name, {}).update(days)
     cutoff = (datetime.date.today() - datetime.timedelta(days=E1RM_KEEP_DAYS)).isoformat()
     hist = {k: {d: v for d, v in days.items() if d >= cutoff} for k, days in hist.items()}
     hist = {k: v for k, v in hist.items() if v}
-    _save(E1RM_FILE, hist)
+    _save(E1RM_FILE, {"_schema": 2, "data": hist})
     return hist
 
 
