@@ -28,6 +28,10 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.21.2
+
+- Einheiten ohne erfasste Übungen (Garmin liefert keine Sätze) werden als „leer“ markiert und nicht mehr bei jedem Sync erneut abgerufen. Vorher verbrauchten diese Einheiten bei jedem Sync einen Teil des Limits von 10 Abrufen.
+
 ### 0.21.1
 
 - **Weniger Fehlalarme bei „prüfen“:** Die Warnung „unter der Untergrenze“ kommt erst, wenn der schwächste Satz in zwei Einheiten in Folge mindestens 2 Wiederholungen unter der Untergrenze lag. Die Wiederholungsbereiche sind Planungswerte; eigene Bereiche je Übung stehen in `/share/garmin_ai_coach/exercise_aliases.json` unter `"rep_ranges"`, z. B. `{"rep_ranges": {"bizeps_curl": [6, 10]}}`.

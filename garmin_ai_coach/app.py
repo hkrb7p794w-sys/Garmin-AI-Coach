@@ -391,7 +391,9 @@ def _is_broken_strength_entry(entry: dict) -> bool:
     echten Syncs blieben unter v0.10.0 leer bzw. nur mit Codename-Platzhalter)."""
     exercises = entry.get("exercises") or []
     if not exercises:
-        return True
+        # Seit v0.21.2: ein Abruf, der wirklich leer war, ist als "empty" markiert
+        # und wird nicht bei jedem Sync erneut geladen.
+        return not entry.get("empty")
     return any(
         str((ex or {}).get("exercise", "")).startswith("Übung (Code")
         for ex in exercises
@@ -476,6 +478,8 @@ def _update_strength_exercises(client, activities: list) -> list:
                 "activity_name": act.get("activityName"),
                 "exercises": exercises,
             }
+            if not exercises:
+                cache[key]["empty"] = True
             changed = True
         except Exception as e:
             print(f"[strength] Aktivität konnte nicht verarbeitet werden: {e}")
