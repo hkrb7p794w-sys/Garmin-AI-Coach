@@ -1,0 +1,2397 @@
+[
+ {
+  "w": "2026-10-12",
+  "name": "CSS 100er",
+  "f": "Neustart + Lauftest: alle Lauf-Paces hängen daran",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 10×100 m @ §S0§ /100 m, 20 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 10,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1800
+ },
+ {
+  "w": "2026-10-19",
+  "name": "CSS 200er",
+  "f": "",
+  "text": "CSS 200er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 6×200 m @ §S+1§–§S+2§ /100 m, 20 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 6,
+    "steps": [
+     {
+      "t": "int",
+      "m": 200,
+      "lo": 1,
+      "hi": 2,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2000
+ },
+ {
+  "w": "2026-10-26",
+  "name": "Technik + Ausdauer",
+  "f": "",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2026-11-02",
+  "name": "Tempo",
+  "f": "Entlastungswoche",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2026-11-09",
+  "name": "CSS 100er",
+  "f": "",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 12×100 m @ §S0§ /100 m, 20 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 12,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2000
+ },
+ {
+  "w": "2026-11-16",
+  "name": "CSS 300er",
+  "f": "",
+  "text": "CSS 300er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 5×300 m @ §S+2§–§S+3§ /100 m, 25 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 5,
+    "steps": [
+     {
+      "t": "int",
+      "m": 300,
+      "lo": 2,
+      "hi": 3,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 25
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2300
+ },
+ {
+  "w": "2026-11-23",
+  "name": "Technik + Ausdauer",
+  "f": "",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2026-11-30",
+  "name": "CSS-Test",
+  "f": "Entlastung + CSS-Test",
+  "text": "CSS-Test: Ein 400 m inkl. 4×50 m steigernd · 400 m maximal · 5–10 min locker · 200 m maximal · Aus 200 m · CSS = (Zeit 400 − Zeit 200) ÷ 2 → im Dashboard eintragen",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×50 m steigernd"
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "note": "TEST 400 m maximal, gleichmäßig – Zeit merken"
+   },
+   {
+    "t": "rec",
+    "note": "5–10 min locker schwimmen, dann Runden-Taste"
+   },
+   {
+    "t": "int",
+    "m": 200,
+    "note": "TEST 200 m maximal – Zeit merken"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2026-12-07",
+  "name": "CSS 100er",
+  "f": "FTP-Test",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 12×100 m @ §S0§ /100 m, 15 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 12,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2000
+ },
+ {
+  "w": "2026-12-14",
+  "name": "CSS 400er",
+  "f": "Lauftest (Schwelle neu bestimmen)",
+  "text": "CSS 400er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 4×400 m @ §S+3§–§S+4§ /100 m, 30 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 400,
+      "lo": 3,
+      "hi": 4,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2026-12-21",
+  "name": "Tempo",
+  "f": "Feiertage: Zeit für längere Einheiten",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2026-12-28",
+  "name": "Technik + Ausdauer",
+  "f": "Letzte Grundlagenwoche",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-01-04",
+  "name": "CSS 100er",
+  "f": "Start Marathonblock: 3. Lauf kommt dazu (ersetzt 2. Zwift)",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 14×100 m @ §S0§ /100 m, 15 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 14,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2200
+ },
+ {
+  "w": "2027-01-11",
+  "name": "CSS 200er",
+  "f": "",
+  "text": "CSS 200er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 8×200 m @ §S+1§–§S+2§ /100 m, 20 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 200,
+      "lo": 1,
+      "hi": 2,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-01-18",
+  "name": "Technik + Ausdauer",
+  "f": "",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-01-25",
+  "name": "CSS-Test",
+  "f": "Entlastung + CSS-Test",
+  "text": "CSS-Test: Ein 400 m inkl. 4×50 m steigernd · 400 m maximal · 5–10 min locker · 200 m maximal · Aus 200 m · CSS = (Zeit 400 − Zeit 200) ÷ 2 → im Dashboard eintragen",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×50 m steigernd"
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "note": "TEST 400 m maximal, gleichmäßig – Zeit merken"
+   },
+   {
+    "t": "rec",
+    "note": "5–10 min locker schwimmen, dann Runden-Taste"
+   },
+   {
+    "t": "int",
+    "m": 200,
+    "note": "TEST 200 m maximal – Zeit merken"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-02-01",
+  "name": "CSS 100er",
+  "f": "FTP-Test",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 14×100 m @ §S0§ /100 m, 15 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 14,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2200
+ },
+ {
+  "w": "2027-02-08",
+  "name": "CSS 300er",
+  "f": "",
+  "text": "CSS 300er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 5×300 m @ §S+2§–§S+3§ /100 m, 25 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 5,
+    "steps": [
+     {
+      "t": "int",
+      "m": 300,
+      "lo": 2,
+      "hi": 3,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 25
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2300
+ },
+ {
+  "w": "2027-02-15",
+  "name": "Tempo",
+  "f": "",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2027-02-22",
+  "name": "Technik + Ausdauer",
+  "f": "Entlastungswoche",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-03-01",
+  "name": "CSS 100er",
+  "f": "",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 16×100 m @ §S0§ /100 m, 15 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 16,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-03-08",
+  "name": "Locker",
+  "f": "Halbmarathon-Test (So 14.03.)",
+  "text": "Locker: 1000–1500 m locker, Technik nach Gefühl, ohne Uhr",
+  "steps": [
+   {
+    "t": "int",
+    "m": 1200,
+    "note": "locker, Technik nach Gefühl, ohne Uhr"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-03-15",
+  "name": "CSS 400er",
+  "f": "",
+  "text": "CSS 400er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 4×400 m @ §S+3§–§S+4§ /100 m, 30 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 400,
+      "lo": 3,
+      "hi": 4,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-03-22",
+  "name": "CSS-Test",
+  "f": "Erste 30 km",
+  "text": "CSS-Test: Ein 400 m inkl. 4×50 m steigernd · 400 m maximal · 5–10 min locker · 200 m maximal · Aus 200 m · CSS = (Zeit 400 − Zeit 200) ÷ 2 → im Dashboard eintragen",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×50 m steigernd"
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "note": "TEST 400 m maximal, gleichmäßig – Zeit merken"
+   },
+   {
+    "t": "rec",
+    "note": "5–10 min locker schwimmen, dann Runden-Taste"
+   },
+   {
+    "t": "int",
+    "m": 200,
+    "note": "TEST 200 m maximal – Zeit merken"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-03-29",
+  "name": "Technik + Ausdauer",
+  "f": "Entlastung + FTP-Test",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-04-05",
+  "name": "CSS 100er",
+  "f": "Längster Lauf – Generalprobe",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 16×100 m @ §S0§ /100 m, 10 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 16,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 10
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-04-12",
+  "name": "Tempo",
+  "f": "Taper Woche 1 (−25 %)",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2027-04-19",
+  "name": "Technik + Ausdauer",
+  "f": "Taper Woche 2 (−40 %), letzte Beine-Einheit",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-04-26",
+  "name": "Locker",
+  "f": "Rennwoche – Marathon So 02.05.",
+  "text": "Locker: 1000–1500 m locker, Technik nach Gefühl, ohne Uhr",
+  "steps": [
+   {
+    "t": "int",
+    "m": 1200,
+    "note": "locker, Technik nach Gefühl, ohne Uhr"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-05-03",
+  "name": "Locker",
+  "f": "Erholung: kein Lauftempo",
+  "text": "Locker: 1000–1500 m locker, Technik nach Gefühl, ohne Uhr",
+  "steps": [
+   {
+    "t": "int",
+    "m": 1200,
+    "note": "locker, Technik nach Gefühl, ohne Uhr"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-05-10",
+  "name": "Technik + Ausdauer",
+  "f": "Langsam zurück",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-05-17",
+  "name": "CSS-Test",
+  "f": "Start 70.3-Block: Rad wird Priorität",
+  "text": "CSS-Test: Ein 400 m inkl. 4×50 m steigernd · 400 m maximal · 5–10 min locker · 200 m maximal · Aus 200 m · CSS = (Zeit 400 − Zeit 200) ÷ 2 → im Dashboard eintragen",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×50 m steigernd"
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "note": "TEST 400 m maximal, gleichmäßig – Zeit merken"
+   },
+   {
+    "t": "rec",
+    "note": "5–10 min locker schwimmen, dann Runden-Taste"
+   },
+   {
+    "t": "int",
+    "m": 200,
+    "note": "TEST 200 m maximal – Zeit merken"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-05-24",
+  "name": "CSS 100er",
+  "f": "FTP-Test",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 14×100 m @ §S0§ /100 m, 15 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 14,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2200
+ },
+ {
+  "w": "2027-05-31",
+  "name": "CSS 400er",
+  "f": "",
+  "text": "CSS 400er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 5×400 m @ §S+3§–§S+4§ /100 m, 30 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 5,
+    "steps": [
+     {
+      "t": "int",
+      "m": 400,
+      "lo": 3,
+      "hi": 4,
+      "note": "gleichmäßig, nicht schneller anfangen"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2800
+ },
+ {
+  "w": "2027-06-07",
+  "name": "Technik + Ausdauer",
+  "f": "Entlastung + Lauftest",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-06-14",
+  "name": "Renn-Simulation",
+  "f": "",
+  "text": "Renn-Simulation: Ein 300 m · 1200 m am Stück @ §S+1§–§S+3§, alle 6–8 Züge Sighting · Aus 200 m · ab Juni gern im Freiwasser mit Neo",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "int",
+    "m": 1200,
+    "lo": 1,
+    "hi": 3,
+    "note": "am Stück, Renntempo, alle 6–8 Züge Sighting"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2027-06-21",
+  "name": "CSS 100er",
+  "f": "",
+  "text": "CSS 100er: Ein 300 m locker + 4×50 m Technik + 4×25 m steigernd · Haupt 16×100 m @ §S0§ /100 m, 10 s Pause · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik (z. B. Abschlag, Zipper)"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 25,
+      "note": "steigernd"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "rep",
+    "n": 16,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo, gleichmäßig"
+     },
+     {
+      "t": "rest",
+      "s": 10
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-06-28",
+  "name": "Renn-Simulation",
+  "f": "",
+  "text": "Renn-Simulation: Ein 300 m · 1500 m am Stück @ §S+1§–§S+3§, alle 6–8 Züge Sighting · Aus 200 m · ab Juni gern im Freiwasser mit Neo",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "int",
+    "m": 1500,
+    "lo": 1,
+    "hi": 3,
+    "note": "am Stück, Renntempo, alle 6–8 Züge Sighting"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2000
+ },
+ {
+  "w": "2027-07-05",
+  "name": "Technik + Ausdauer",
+  "f": "Entlastung",
+  "text": "Technik + Ausdauer: Ein 300 m · 8×50 m Technik (Abschlag, Zipper, Seitlage 6 Beinschläge), 20 s P · Haupt 3×400 m @ §S+4§–§S+6§, 2. mit Pull-Buoy, 30 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "note": "Technik: Abschlag, Zipper, Seitlage 6 Beinschläge"
+     },
+     {
+      "t": "rest",
+      "s": 20
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "mit Pull-Buoy, nur Arme",
+    "eq": "pull_buoy"
+   },
+   {
+    "t": "rest",
+    "s": 30
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "lo": 4,
+    "hi": 6,
+    "note": "ruhig, lang gleiten"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2100
+ },
+ {
+  "w": "2027-07-12",
+  "name": "CSS-Test",
+  "f": "CSS-Test",
+  "text": "CSS-Test: Ein 400 m inkl. 4×50 m steigernd · 400 m maximal · 5–10 min locker · 200 m maximal · Aus 200 m · CSS = (Zeit 400 − Zeit 200) ÷ 2 → im Dashboard eintragen",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×50 m steigernd"
+   },
+   {
+    "t": "int",
+    "m": 400,
+    "note": "TEST 400 m maximal, gleichmäßig – Zeit merken"
+   },
+   {
+    "t": "rec",
+    "note": "5–10 min locker schwimmen, dann Runden-Taste"
+   },
+   {
+    "t": "int",
+    "m": 200,
+    "note": "TEST 200 m maximal – Zeit merken"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1200
+ },
+ {
+  "w": "2027-07-19",
+  "name": "Renn-Simulation",
+  "f": "FTP-Test, erstes Freiwasser mit Neo",
+  "text": "Renn-Simulation: Ein 300 m · 1900 m am Stück @ §S+1§–§S+3§, alle 6–8 Züge Sighting · Aus 200 m · ab Juni gern im Freiwasser mit Neo",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "int",
+    "m": 1900,
+    "lo": 1,
+    "hi": 3,
+    "note": "am Stück, Renntempo, alle 6–8 Züge Sighting"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2400
+ },
+ {
+  "w": "2027-07-26",
+  "name": "Renn-Simulation",
+  "f": "Rennsimulation",
+  "text": "Renn-Simulation: Ein 300 m · 2000 m am Stück @ §S+1§–§S+3§, alle 6–8 Züge Sighting · Aus 200 m · ab Juni gern im Freiwasser mit Neo",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "int",
+    "m": 2000,
+    "lo": 1,
+    "hi": 3,
+    "note": "am Stück, Renntempo, alle 6–8 Züge Sighting"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2500
+ },
+ {
+  "w": "2027-08-02",
+  "name": "Tempo",
+  "f": "Formtest (z. B. Olympische Distanz)",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2027-08-09",
+  "name": "Renn-Simulation",
+  "f": "Letzte harte Woche",
+  "text": "Renn-Simulation: Ein 300 m · 1500 m am Stück @ §S+1§–§S+3§, alle 6–8 Züge Sighting · Aus 200 m · ab Juni gern im Freiwasser mit Neo",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 300,
+    "note": "locker einschwimmen"
+   },
+   {
+    "t": "int",
+    "m": 1500,
+    "lo": 1,
+    "hi": 3,
+    "note": "am Stück, Renntempo, alle 6–8 Züge Sighting"
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 2000
+ },
+ {
+  "w": "2027-08-16",
+  "name": "Tempo",
+  "f": "Taper −40 %",
+  "text": "Tempo: Ein 400 m inkl. 4×25 m steigernd · 8×50 m @ §S-4§–§S-2§, 30 s P · 300 m locker · 4×100 m @ §S0§, 15 s P · Aus 200 m",
+  "steps": [
+   {
+    "t": "warmup",
+    "m": 400,
+    "note": "locker, darin 4×25 m steigernd"
+   },
+   {
+    "t": "rep",
+    "n": 8,
+    "steps": [
+     {
+      "t": "int",
+      "m": 50,
+      "lo": -4,
+      "hi": -2,
+      "note": "zügig, sauber bleiben"
+     },
+     {
+      "t": "rest",
+      "s": 30
+     }
+    ]
+   },
+   {
+    "t": "int",
+    "m": 300,
+    "note": "locker"
+   },
+   {
+    "t": "rep",
+    "n": 4,
+    "steps": [
+     {
+      "t": "int",
+      "m": 100,
+      "lo": 0,
+      "hi": 0,
+      "note": "CSS-Tempo"
+     },
+     {
+      "t": "rest",
+      "s": 15
+     }
+    ]
+   },
+   {
+    "t": "cool",
+    "m": 200,
+    "note": "locker ausschwimmen"
+   }
+  ],
+  "m": 1700
+ },
+ {
+  "w": "2027-08-23",
+  "name": "Locker",
+  "f": "Rennwoche – Ironman 70.3 So 29.08.",
+  "text": "Locker: 1000–1500 m locker, Technik nach Gefühl, ohne Uhr",
+  "steps": [
+   {
+    "t": "int",
+    "m": 1200,
+    "note": "locker, Technik nach Gefühl, ohne Uhr"
+   }
+  ],
+  "m": 1200
+ }
+]

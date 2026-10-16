@@ -28,6 +28,13 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.20.0
+
+- **Schwimm-Workouts direkt in Garmin Connect** (`garmin_swim.py`): Bei jedem Sync landen die Schwimmeinheiten der laufenden Woche (nur bis Donnerstag und nur, wenn diese Woche noch nicht geschwommen wurde) und der nächsten Woche als strukturierte Workouts im Garmin-Kalender. Sie sind auf Dienstag eingeplant; ist der Dienstag schon vorbei, auf Donnerstag. Jede Einheit ist mit Teilstrecken, Wiederholungen, festen Pausen, Pull-Buoy und Ziel-Pace angelegt, für ein 25-m-Becken. Die Ziel-Pace ist eine manuelle Pace (`pace.zone`) aus der Dashboard-CSS, nicht Garmins geschätzte CSS; eine einzelne Ziel-Pace bekommt ±2 s Spielraum. Lehnt Garmin das Pace-Ziel ab, wird ohne Ziel hochgeladen (Pace bleibt als Notiz).
+- Die Ziel-Paces kommen aus der CSS im Dashboard (`input_text.zielzeit_schwimm_pace_100m`, dafür neu `homeassistant_api: true`). Nach einem neuen CSS-Test werden die schon hochgeladenen Einheiten beim nächsten Sync ersetzt.
+- Einheiten aus `swim_plan.json`, erzeugt aus demselben Saisonplan wie `custom_templates/coach_plan.jinja`.
+- Neuer Sensor „Garmin Export Schwimmen“ zeigt, was im Garmin-Kalender liegt; neue Option `garmin_schwimm_export` (Standard an).
+
 ### 0.19.1
 
 - Wochenrahmen präzisiert (Alex, 14.10.2026): Mo Push · Di/Do Schwimmen und Beine in flexibler Reihenfolge · Mi Pull · Fr Push+Pull · Wochenende Zwift · Z2- und Qualitätslauf ohne festen Tag unter der Woche. `WEEK_TEMPLATE_BY_PHASE` und `ATHLETE_PROFILE` entsprechend angepasst; der Qualitätslauf hängt nicht mehr fest am Mittwoch.

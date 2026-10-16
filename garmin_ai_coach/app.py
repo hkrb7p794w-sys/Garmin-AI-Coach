@@ -16,6 +16,7 @@ from ha_publish import (
     publish_recommendation,
     publish_coach_status,
     publish_kraftwerte,
+    publish_swim_export,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -36,6 +37,7 @@ import progress
 import suggestions
 import chat
 import decoupling
+import garmin_swim
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -986,6 +988,19 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             publish_kraftwerte(progress.e1rm_summary(progress.update_e1rm(list(_load_strength_cache().values()))))
         except Exception as e:
             print(f"[kraftwerte] fehlgeschlagen: {e}")
+
+        # Schwimmeinheiten der laufenden + nächsten Woche als strukturierte
+        # Workouts in den Garmin-Kalender (v0.20.0, siehe garmin_swim.py).
+        # Eigener try-Block: ein Garmin-Fehler hier darf den Sync nie abbrechen.
+        if os.environ.get("GARMIN_SWIM_EXPORT", "true").lower() != "false":
+            try:
+                swim_done = any(t.get("key") == "swim" and (t.get("done") or 0) >= 1
+                                for t in plan_state.get("targets") or [])
+                publish_swim_export(garmin_swim.export_upcoming(
+                    client, today_date, swim_done_this_week=swim_done))
+            except Exception as e:
+                print(f"[garmin_swim] Export fehlgeschlagen: {e}")
+                publish_swim_export({"error": str(e)[:200]})
 
         # Tagesnotiz: KI formuliert, Regeln entscheiden. Fällt Gemini aus, steht die
         # regelbasierte Notiz im Dashboard - plus die letzte erfolgreiche KI-Notiz.

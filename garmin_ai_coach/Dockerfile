@@ -12,6 +12,8 @@ COPY decoupling.py /decoupling.py
 COPY plan.py /plan.py
 COPY recommendation.py /recommendation.py
 COPY progress.py /progress.py
+COPY garmin_swim.py /garmin_swim.py
+COPY swim_plan.json /swim_plan.json
 COPY run.sh /
 RUN chmod a+x /run.sh
 CMD [ "/run.sh" ]

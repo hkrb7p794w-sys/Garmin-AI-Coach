@@ -373,6 +373,10 @@ SENSORS = {
         "name": "Garmin Kraftwerte",
         "unit": None,
         "icon": "mdi:weight-lifter",
+    },    "export_schwimmen": {
+        "name": "Garmin Export Schwimmen",
+        "unit": None,
+        "icon": "mdi:swim",
     },
 }
 
@@ -414,7 +418,7 @@ ATTRIBUTE_SENSORS = {
     "coaching_note", "training_readiness", "training_status", "weekly_report",
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
     "chat_verlauf", "ftp", "hf_pace_kopplung",
-    "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte",
+    "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
 }
 
 
@@ -953,6 +957,15 @@ def publish_kraftwerte(summary: list):
     state = f"{len(summary)} Übungen" if summary else "noch keine Daten"
     _publish_json_sensor("kraftwerte", state, {"exercises": summary,
                                                "formula": "Epley: Gewicht × (1 + Wdh/30), geschätzt"})
+
+
+def publish_swim_export(result: dict):
+    if result.get("error"):
+        state = "Fehler"
+    else:
+        ws = result.get("workouts") or []
+        state = f"{len(ws)} im Garmin-Kalender" if ws else "nichts zu tun"
+    _publish_json_sensor("export_schwimmen", state, result)
 
 
 def publish_weekly_report(text: str, summary: dict = None):
