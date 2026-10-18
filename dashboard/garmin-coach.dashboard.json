@@ -483,6 +483,25 @@
           "type": "grid",
           "cards": [
             {
+              "type": "markdown",
+              "grid_options": {
+                "columns": "full"
+              },
+              "content": "{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}<details><summary><b>Einheiten der letzten 7 Tage</b> ({{ sessions | count }})</summary>\n\n{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}{% if not sessions %}Keine Kraft-Einheiten in den letzten 7 Tagen.{% else %}{% for s in sessions | sort(attribute='date', reverse=true) %}**{{ as_timestamp(s.date) | timestamp_custom('%d.%m.') }}**\n{% for ex in (s.exercises or []) %}- *{{ ex.exercise }}*: {% for st in (ex.sets or []) %}{{ st.reps if st.reps is not none else '?' }}×{{ (st.weight_kg ~ ' kg') if st.weight_kg is not none else 'ohne Gewicht' }}{{ ', ' if not loop.last else '' }}{% endfor %}\n{% endfor %}\n{% endfor %}{% endif %}\n</details>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "icon": "mdi:chat-processing-outline",
+      "max_columns": 3,
+      "path": "chat",
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
               "type": "heading",
               "heading": "Coach",
               "icon": "mdi:robot-outline",
@@ -500,7 +519,7 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set v = states.sensor.garmin_ai_coach_garmin_vorschlaege %}{% if v is none %}{% set v = states.sensor.garmin_ai_coach_garmin_vorschlage %}{% endif %}{% set pend = (v.attributes.pending if v is not none else []) or [] %}{% set acc = (v.attributes.accepted if v is not none else []) or [] %}{% if pend %}<details><summary><b>💡 {{ pend | count }} offene Vorschläge</b> · annehmen oder ablehnen</summary>\n\n{% for i in pend %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n</details>{% else %}<small>Keine offenen Vorschläge.</small>{% endif %}{% if acc %}\n\n<small>✅ Umgesetzt: {{ acc | map(attribute='title') | join(' · ') }}</small>{% endif %}"
+              "content": "{% set v = states.sensor.garmin_ai_coach_garmin_vorschlaege %}{% set a = v.attributes if v is not none else {} %}{% set pend = a.pending or [] %}{% set acc = a.accepted or [] %}{% set disc = [('schwimmen','🏊 Schwimmen'),('rad','🚴 Rad'),('laufen','🏃 Laufen'),('gym','🏋️ Gym'),('erholung','😴 Erholung'),('allgemein','🎯 Allgemein')] %}{% if pend %}<details><summary><b>💡 {{ pend | count }} {{ 'offener Vorschlag' if pend | count == 1 else 'offene Vorschläge' }}</b> · annehmen oder ablehnen</summary>\n\n{% for key, label in disc %}{% set items = pend | selectattr('discipline', 'defined') | selectattr('discipline', 'eq', key) | list %}{% if items %}**{{ label }}**\n{% for i in items %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}{% endfor %}{% set rest = pend | rejectattr('discipline', 'defined') | list %}{% if rest %}**Sonstige**\n{% for i in rest %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}<small>Quellen: Wochenreport (alle Disziplinen, montags), Plan-Kommentar (bei Phasenwechsel oder auffälligen Werten) und feste Gym-Punkte. Ein neuer Vorschlag ersetzt ältere zum selben Thema; offene KI-Vorschläge verfallen nach 10 Tagen.</small>\n</details>{% else %}<small>Keine offenen Vorschläge.</small>{% endif %}{% if acc %}\n\n<small>✅ Umgesetzt: {{ acc | map(attribute='title') | join(' · ') }}</small>{% endif %}"
             },
             {
               "entities": [
@@ -532,30 +551,9 @@
                   ]
                 }
               ]
-            },
-            {
-              "type": "markdown",
-              "grid_options": {
-                "columns": "full"
-              },
-              "content": "{% from 'coach_views.jinja' import gym_mapping_list %}{{ gym_mapping_list() }}"
-            },
-            {
-              "type": "markdown",
-              "grid_options": {
-                "columns": "full"
-              },
-              "content": "{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}<details><summary><b>Einheiten der letzten 7 Tage</b> ({{ sessions | count }})</summary>\n\n{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}{% if not sessions %}Keine Kraft-Einheiten in den letzten 7 Tagen.{% else %}{% for s in sessions | sort(attribute='date', reverse=true) %}**{{ as_timestamp(s.date) | timestamp_custom('%d.%m.') }}**\n{% for ex in (s.exercises or []) %}- *{{ ex.exercise }}*: {% for st in (ex.sets or []) %}{{ st.reps if st.reps is not none else '?' }}×{{ (st.weight_kg ~ ' kg') if st.weight_kg is not none else 'ohne Gewicht' }}{{ ', ' if not loop.last else '' }}{% endfor %}\n{% endfor %}\n{% endfor %}{% endif %}\n</details>"
             }
           ]
-        }
-      ]
-    },
-    {
-      "icon": "mdi:chat-processing-outline",
-      "max_columns": 3,
-      "path": "chat",
-      "sections": [
+        },
         {
           "cards": [
             {

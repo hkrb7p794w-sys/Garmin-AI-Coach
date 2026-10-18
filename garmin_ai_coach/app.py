@@ -884,8 +884,16 @@ def do_weekly_report(wellness: dict = None, history: list = None) -> str:
     try:
         if not os.environ.get("GEMINI_API_KEY"):
             raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
-        text = generate_weekly_report(wellness, summary)
+        # Seit v0.23.0 liefert der Wochenreport zusätzlich Einzelvorschläge über alle
+        # Disziplinen in den gemeinsamen Pool (suggestions.py, Dashboard "Chat" > Coach).
+        suggestions.cleanup()
+        text, week_vorschlaege = generate_weekly_report(
+            wellness, summary, suggestions_context=suggestions.context_for_prompt())
         progress.record_ai_result("weekly", True)
+        suggestions.sync_dynamic("wochenreport", week_vorschlaege)
+        publish_vorschlaege(suggestions.all_suggestions())
+        print(f"[weekly] {len(week_vorschlaege or [])} Einzelvorschlag/-vorschläge"
+              f"{'' if week_vorschlaege is not None else ' (Antwort nicht auswertbar, Pool unverändert)'}")
     except Exception as e:
         progress.record_ai_result("weekly", False, error=str(e))
         print(f"[weekly] Wochenreport fehlgeschlagen: {e}")
@@ -1046,6 +1054,9 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         # siehe ai_coach._render_gym_kritik). Günstig genug, um bei jedem Sync zu
         # laufen (reine Dict-/Datei-Operation, kein Gemini-Aufruf).
         suggestions.sync_suggestions("gym_kritik", TRAININGSPLAN_GYM_KRITIK)
+        # Seit v0.23.0: veraltete offene KI-Vorschläge auslaufen lassen und Dubletten
+        # zusammenführen, BEVOR Gemini den Pool als Kontext bekommt.
+        suggestions.cleanup()
 
         # Eigener, auf Krafttraining fokussierter Coaching-Tipp (siehe
         # ai_coach.generate_gym_coaching_note) - getrennt vom allgemeinen
@@ -1060,6 +1071,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
                 gym_note = generate_gym_coaching_note(
                     wellness["strength_exercises"], interference_note=interference_note,
                     progression_text=progression_text,
+                    suggestions_context=suggestions.context_for_prompt(),
                 )
                 progress.record_ai_result("gym", True)
         except Exception as e:
@@ -1135,24 +1147,19 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             if trigger_key:
                 if not os.environ.get("GEMINI_API_KEY"):
                     raise RuntimeError("Kein Gemini API Key in der Add-on-Konfiguration hinterlegt")
-                # Aktueller Annehmen/Ablehnen-Stand als Kontext für den Prompt (siehe
-                # suggestions.py): Gym-Status blendet abgelehnte Punkte aus, decided_context
-                # nennt bereits entschiedene frühere Einzelvorschläge aus DIESEM Kanal, damit
-                # Gemini angenommene nicht erneut vorschlägt und abgelehnte nicht wiederholt.
-                gym_status = {
-                    sid: rec["status"] for sid, rec in suggestions.by_source("gym_kritik").items()
-                }
-                decided_context = suggestions.context_for_prompt("trainingsplan_kommentar")
+                # Kompletter Vorschlags-Pool (alle Quellen, mit ids) als Kontext - so
+                # verwendet Gemini bestehende ids wieder statt Dubletten anzulegen, und die
+                # neue Liste ersetzt die offenen KI-Vorschläge (suggestions.sync_dynamic).
                 plan_note, plan_vorschlaege = generate_trainingsplan_kommentar(
                     trigger_key, trigger_detail, wellness, history,
-                    gym_status=gym_status, decided_context=decided_context,
+                    suggestions_context=suggestions.context_for_prompt(),
                     interference_note=interference_note,
                 )
                 progress.record_ai_result("plan", True)
-                suggestions.sync_suggestions("trainingsplan_kommentar", plan_vorschlaege)
+                suggestions.sync_dynamic("trainingsplan_kommentar", plan_vorschlaege)
                 publish_trainingsplan_kommentar(plan_note, trigger_key, trigger_detail)
                 print(f"[trainingsplan] Kommentar publiziert (Auslöser: {trigger_key}, "
-                      f"{len(plan_vorschlaege)} Einzelvorschlag/-vorschläge)")
+                      f"{len(plan_vorschlaege or [])} Einzelvorschlag/-vorschläge)")
         except Exception as e:
             # Bewusst KEIN publish_trainingsplan_kommentar(...) mit Fehlertext:
             # anders als bei den anderen Coaching-Texten soll bei einem Fehler
@@ -1218,8 +1225,7 @@ def _handle_vorschlag_accept(suggestion_id: str):
     "Garmin Vorschlag Auswahl" ausgewählten Vorschlag (siehe ha_publish.
     _on_message). Setzt dessen Status auf "accepted" (suggestions.py) - wird
     künftigen Trainingsplan-Kommentar-Prompts als bereits angenommen/
-    umgesetzt mitgegeben, siehe suggestions.context_for_prompt und
-    ai_coach._render_gym_kritik. Publiziert danach sofort den neuen
+    umgesetzt mitgegeben, siehe suggestions.context_for_prompt. Publiziert danach sofort den neuen
     Gesamtzustand, damit das Dashboard nicht bis zum nächsten Sync auf die
     Aktualisierung warten muss. Schnelle reine Datei-/MQTT-Operation, deshalb
     (anders als der Sync-Button) ohne eigenen Thread."""

@@ -2,7 +2,7 @@
 
 Kopie der Dateien, die in Home Assistant liegen – zur Versionierung und zum Wiederherstellen.
 Das Add-on selbst braucht sie nicht; Home Assistant liest sie aus `/config`.
-Stand: Karten 1.2.0 (ohne Gamification), passend zu Add-on 0.22.1.
+Stand: Karten 1.2.0 (ohne Gamification), passend zu Add-on 0.23.0.
 
 | Datei hier | Liegt in Home Assistant unter | Inhalt |
 |---|---|---|
@@ -43,3 +43,11 @@ Level/XP, Wochenserie mit Joker und Pausenwoche, Abzeichen, Meilensteine und das
 (Karten `coach-level`/`coach-achievements`, Ansicht „Erfolge“, `coach_game.jinja`, Zähler und Meilenstein-Helfer,
 Skript `coach_xp_vergeben`, fünf Automationen). Die Wochenquote bleibt als reine Anzeige „x von y Einheiten“
 (Makro `quote()` jetzt in `coach_app.jinja`). Sicherung davor: HA-Backup „Vor Entfernen Gamification 2026-10-18“.
+
+## Coach im Reiter Chat (18.10.2026, Add-on 0.23.0)
+
+Der Abschnitt „Coach“ (KI-Gym-Tipp, offene Vorschläge nach Disziplin, Annehmen/Ablehnen) steht jetzt im Reiter
+**Chat** statt im Reiter Gym. Die Vorschläge kommen aus einem gemeinsamen Pool (Add-on `suggestions.py`):
+Wochenreport (alle Disziplinen), Plan-Kommentar und feste Gym-Punkte – ohne Dubletten, eine neue Einschätzung
+ersetzt ältere offene KI-Vorschläge. Die Karte „Übungsnamen zusammengeführt“ (`gym_mapping_list()` in
+`coach_views.jinja`) ist ausgeblendet; die Zusammenführung der Übungsnamen läuft im Add-on weiter.

@@ -7,6 +7,7 @@ import time
 from ha_publish import extract_metrics
 import plan
 import ha_settings
+import suggestions
 
 # Google Gemini API - kostenloses Kontingent (Stand 09/2026: keine Kreditkarte nötig,
 # siehe https://ai.google.dev/gemini-api/docs/pricing). Key kommt aus den Add-on-Optionen.
@@ -64,6 +65,7 @@ def _privacy() -> str:
 # Entscheidungen!) für diesen Punkt zu verlieren.
 TRAININGSPLAN_GYM_KRITIK = [
     {
+        "discipline": "gym",
         "id": "gym_bizeps_redundanz",
         "title": "Curl in Pull B durch Pallof Press ersetzen",
         "text": (
@@ -73,6 +75,7 @@ TRAININGSPLAN_GYM_KRITIK = [
         ),
     },
     {
+        "discipline": "gym",
         "id": "gym_huefte_kreuzheben",
         "title": "Beinstrecken durch Rumänisches Kreuzheben ersetzen",
         "text": (
@@ -82,6 +85,7 @@ TRAININGSPLAN_GYM_KRITIK = [
         ),
     },
     {
+        "discipline": "gym",
         "id": "gym_rumpf_plank",
         "title": "Plank/Side Plank ergänzen",
         "text": (
@@ -90,6 +94,7 @@ TRAININGSPLAN_GYM_KRITIK = [
         ),
     },
     {
+        "discipline": "gym",
         "id": "gym_periodisierung",
         "title": "Phasenweise auf 3x6-8 statt durchgehend 2x12 wechseln",
         "text": (
@@ -122,6 +127,31 @@ def _render_gym_kritik(status_by_id: dict = None) -> str:
     if not lines:
         return "Keine offenen Gym-Anpassungsvorschläge (alle bereits entschieden)."
     return "\n".join(lines)
+
+
+# Gemeinsame Regeln für alle Prompts, die Einzelvorschläge erzeugen (Plan-
+# Kommentar, Wochenreport) - seit v0.23.0, siehe suggestions.py. Die Liste
+# ersetzt die offenen KI-Vorschläge, damit nie ein älterer einem neueren
+# widerspricht; feste Gym-Punkte und Entscheidungen werden nicht wiederholt.
+def _suggestion_rules(max_items: int, scope: str) -> str:
+    return (
+        f'"vorschläge": die VOLLSTÄNDIGE Liste der aktuell sinnvollen, konkreten Handlungs'
+        f"empfehlungen ({scope}), 0 bis maximal {max_items} Einträge. Diese Liste ERSETZT die "
+        "bisher offenen KI-Vorschläge: ein offener KI-Vorschlag, der weiterhin gilt, MUSS mit "
+        "exakt derselben id erneut aufgeführt werden; was du nicht erneut aufführst, gilt als "
+        "überholt und verschwindet. Regeln:\n"
+        "- höchstens ein Eintrag pro Thema, keine zwei Einträge mit derselben Massnahme\n"
+        "- kein Eintrag darf einem anderen Eintrag, einem ANGENOMMENEN Vorschlag oder einer "
+        "festen Gym-Anpassung widersprechen (z. B. nicht gleichzeitig Intensität senken und "
+        "steigern, nicht eine andere Übung für dasselbe Ziel vorschlagen)\n"
+        "- feste Gym-Anpassungen, ANGENOMMENE und ABGELEHNTE Vorschläge NICHT aufführen - auch "
+        "nicht umformuliert\n"
+        "- nur echte Massnahmen (was, wann, wie viel), keine reine Einschätzung; leere Liste, "
+        "wenn nichts geändert werden sollte\n"
+        "Format je Eintrag:\n"
+        '{"id": "kurze-kebab-case-id", "disziplin": "schwimmen|rad|laufen|gym|erholung|allgemein", '
+        '"title": "Kurztitel, max. 8 Wörter", "text": "1-2 Sätze, konkrete Massnahme"}'
+    )
 
 
 def _fmt(value, unit=""):
@@ -488,7 +518,8 @@ def _format_strength_sessions_detailed(sessions: list) -> str:
     return "\n".join(lines)
 
 
-def generate_gym_coaching_note(sessions: list, interference_note: str = "", progression_text: str = "") -> str:
+def generate_gym_coaching_note(sessions: list, interference_note: str = "", progression_text: str = "",
+                               suggestions_context: str = "") -> str:
     """Eigener, auf Krafttraining fokussierter KI-Tipp - getrennt vom
     allgemeinen Tages-Coaching-Tipp (generate_coaching_note), weil der sich
     auf Erholung/Tagesplanung über alle Disziplinen bezieht, während dieser
@@ -519,6 +550,15 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "", prog
             "\n\nErgebnis der regelbasierten Gewichts-Progression (Doppelprogression, "
             "ACSM 2009; die Zielgewichte sind bereits berechnet und dürfen von dir nicht "
             "verändert oder neu erfunden werden):\n" + progression_text
+        )
+
+    if suggestions_context:
+        interference_block += (
+            "\n\n" + suggestions_context + "\n"
+            "Dein Tipp darf diesen Vorschlägen NICHT widersprechen und keinen davon wortgleich "
+            "wiederholen. Adressiert eine offene oder angenommene Gym-Anpassung bereits das Problem "
+            "(z. B. fehlende Hüftstreckung -> Rumänisches Kreuzheben), empfiehl genau diese statt "
+            "einer anderen Übung; abgelehnte Massnahmen nicht empfehlen."
         )
 
     prompt = (
@@ -556,9 +596,13 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "", prog
     return text
 
 
-def generate_weekly_report(data: dict, summary: dict) -> str:
+def generate_weekly_report(data: dict, summary: dict, suggestions_context: str = "") -> tuple:
     """Wöchentlicher Rückblick: Soll/Ist der Wochenstruktur, Trends, Fokus für die
-    kommende Woche. Nutzt dieselbe Gemini-Anbindung wie die Tagesnotiz."""
+    kommende Woche. Seit v0.23.0 zusätzlich bis zu 4 Einzelvorschläge über alle
+    Disziplinen für den gemeinsamen Vorschlags-Pool (suggestions.py).
+
+    Gibt (report_text, vorschläge) zurück; vorschläge ist None, wenn die
+    Antwort nicht als JSON auswertbar war (dann bleibt der Pool unverändert)."""
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY ist nicht gesetzt")
 
@@ -645,7 +689,10 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         f"{strength_block}\n"
         f"{weekly_recovery}"
         f"{trend_note}\n\n"
-        "Schreibe den wöchentlichen Rückblick auf Deutsch als Stichpunkte im Markdown-Format, "
+        f"{suggestions_context + chr(10) + chr(10) if suggestions_context else ''}"
+        "Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt (kein Markdown-Codeblock, kein "
+        'Text davor oder danach): {"report": "...", "vorschläge": [...]}\n\n'
+        '"report": der wöchentliche Rückblick auf Deutsch als Stichpunkte im Markdown-Format, '
         "JEDER Punkt eine eigene Zeile beginnend mit '- ', KEIN Fliesstext und KEIN einleitender "
         "Satz davor. Genau diese Punkte, je maximal 1-2 Sätze, keine Wiederholung der reinen "
         "Zahlen (die stehen bereits in der Tabelle im Dashboard):\n"
@@ -655,13 +702,20 @@ def generate_weekly_report(data: dict, summary: dict) -> str:
         "- EIN konkreter Fokus für die kommende Woche, umsetzbar im bestehenden Zeitrahmen.\n"
         "- NUR falls das Zeitziel durch zu wenig Radtraining gefährdet ist: ein eigener Punkt "
         "dazu (sonst weglassen).\n"
-        "Sei realistisch und ohne Vorwürfe: verpasste Einheiten sind eingeplant. Schreibe "
-        "durchgängig in korrektem Deutsch mit echten Umlauten (ä, ö, ü, ß) - niemals die "
-        "Ersatzschreibweisen ae/oe/ue/ss."
+        "Sei realistisch und ohne Vorwürfe: verpasste Einheiten sind eingeplant.\n\n"
+        + _suggestion_rules(
+            4,
+            "über alle Disziplinen - Schwimmen, Rad, Laufen, Gym, Erholung - je Disziplin "
+            "höchstens einer, nur wo die Daten oben einen konkreten Anlass geben",
+        )
+        + "\nDer Fokus-Punkt im Report darf einen Vorschlag aufgreifen, ihm aber nicht "
+        "widersprechen.\n\n"
+        "Schreibe durchgängig in korrektem Deutsch mit echten Umlauten (ä, ö, ü, ß) - niemals "
+        "die Ersatzschreibweisen ae/oe/ue/ss."
     )
 
-    text, model = _generate(prompt, "weekly")
-    return text
+    text, model = _generate(prompt, "weekly", json_mode=True)
+    return _parse_json_with_suggestions(text, "report")
 
 
 def generate_chat_answer(question: str, data: dict, history: list, chat_context: str = "") -> str:
@@ -768,8 +822,7 @@ def generate_trainingsplan_kommentar(
     trigger_detail: str,
     data: dict,
     history: list,
-    gym_status: dict = None,
-    decided_context: str = "",
+    suggestions_context: str = "",
     interference_note: str = "",
 ) -> tuple:
     """Phasenspezifischer Gemini-Kommentar zu den Trainingsplänen im
@@ -783,11 +836,11 @@ def generate_trainingsplan_kommentar(
     stehen), sondern erklärt, warum JETZT eine Anpassung sinnvoll sein
     könnte - genau das war Alex' ausdrücklicher Design-Wunsch.
 
-    gym_status (optional): {suggestion_id: status} aus
-    suggestions.by_source("gym_kritik") - siehe _render_gym_kritik.
-    decided_context (optional): Text aus suggestions.context_for_prompt(
-    "trainingsplan_kommentar") über bereits angenommene/abgelehnte frühere
-    Einzelvorschläge aus DIESEM Kommentar-Kanal.
+    suggestions_context (optional, seit v0.23.0): suggestions.context_for_prompt() -
+    der komplette Vorschlags-Pool aller Quellen (feste Gym-Punkte, offene,
+    angenommene, abgelehnte Vorschläge) mit ids. Ersetzt gym_status/
+    decided_context: Gemini sah vorher die offenen Gym-Punkte ohne id und legte
+    sie unter neuer id doppelt an.
     interference_note (optional): Kontext-Satz aus app.py,
     _check_endurance_before_strength_interference() - siehe dort und
     Konzept-Dokument Abschnitt 1.5. Leerer String im Normalfall.
@@ -809,8 +862,7 @@ def generate_trainingsplan_kommentar(
     focus = PHASE_FOCUS.get(phase, "")
     plan_detail = TRAININGSPLAN_PHASE_DETAIL.get(phase, "")
     wv = data.get("weekly_volumes") or {}
-    gym_kritik_text = _render_gym_kritik(gym_status)
-    decided_block = f"\n\n{decided_context}" if decided_context else ""
+    decided_block = f"\n\n{suggestions_context}" if suggestions_context else ""
     interference_block = f"\n\n{interference_note}" if interference_note else ""
 
     prompt = (
@@ -819,9 +871,7 @@ def generate_trainingsplan_kommentar(
         f"{ATHLETE_PROFILE}\n\n"
         f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}).\n\n"
         "Der Athlet hat bereits konkrete, phasenabhängige Trainingspläne für Laufen, Schwimmen "
-        f"und Rad im Dashboard hinterlegt. Für die aktuelle Phase gilt:\n{plan_detail}\n\n"
-        f"Offene Gym-Plan-Anpassungen (bereits vorgeschlagen, Umsetzung liegt beim Athleten):\n"
-        f"{gym_kritik_text}"
+        f"und Rad im Dashboard hinterlegt. Für die aktuelle Phase gilt:\n{plan_detail}"
         f"{decided_block}\n\n"
         f"AUSLOESER für diesen Kommentar JETZT: {trigger_detail}\n\n"
         "Aktuelle Werte: "
@@ -851,70 +901,71 @@ def generate_trainingsplan_kommentar(
         "weglassen).\n"
         "- NUR falls oben ein Hinweis zur Trainingsreihenfolge steht: kurz einordnen, ob das für "
         "diesen Kommentar relevant ist (sonst nicht erwähnen).\n\n"
-        '"vorschläge": Liste von 0 bis maximal 3 konkreten, einzeln umsetzbaren '
-        "Handlungsempfehlungen an einem der vier Pläne (Lauf/Schwimm/Rad/Gym) - NICHT die reine "
-        'Einschätzung/Begründung (die gehört in "kommentar"). Leere Liste, wenn der Plan '
-        "unverändert bleiben sollte. Jeder Eintrag:\n"
-        '{"id": "kurze-kebab-case-id", "title": "Kurztitel, max. 8 Wörter", '
-        '"text": "1-2 Sätze, konkrete Massnahme"}\n'
-        "Falls einer deiner Vorschläge inhaltlich identisch mit einem bereits oben unter "
-        '"entschiedene frühere Einzelvorschläge" genannten ist, wiederverwende dessen id exakt '
-        "(gleiche Schreibweise) - sonst eine neue, inhaltlich passende id.\n\n"
+        + _suggestion_rules(
+            4,
+            "an den bestehenden Plänen Lauf/Schwimm/Rad/Gym oder zur Erholung, vor allem zum "
+            "Auslöser oben",
+        )
+        + "\n\n"
         "Sei konkret und begründet, keine allgemeinen Trainingsplatitüden. Schreibe die Texte in "
         '"kommentar" und "vorschläge" durchgängig in korrektem Deutsch mit echten Umlauten '
         "(ä, ö, ü, ß) - niemals die Ersatzschreibweisen ae/oe/ue/ss."
     )
 
     text, model = _generate(prompt, "plan", json_mode=True)
-    return _parse_trainingsplan_response(text)
+    kommentar, vorschläge = _parse_json_with_suggestions(text, "kommentar")
+    return kommentar, vorschläge
 
 
-def _parse_trainingsplan_response(text: str) -> tuple:
-    """Parst die JSON-Antwort von generate_trainingsplan_kommentar() (siehe
-    dort) - eigene, direkt testbare Funktion, weil Gemini sich trotz
-    Anweisung nicht IMMER an reines JSON hält (z.B. ein umschliessender
-    ```json-Codeblock). Wird defensiv behandelt statt den ganzen Sync zu
-    gefährden (siehe do_sync()-try/except um den Aufruf in app.py). Gibt
-    IMMER (kommentar_text, vorschlaege_liste) zurück - im schlimmsten Fall
-    (kompletter Parse-Fehlschlag) den rohen Text als Kommentar mit leerer
-    Vorschlagsliste."""
-    raw = text.strip()
-    # Häufigstes Abweichungsmuster: Gemini umschliesst die JSON-Antwort trotz
-    # gegenteiliger Anweisung mit einem Markdown-Codeblock (```json ... ``` oder ``` ... ```).
+def _parse_json_with_suggestions(text: str, text_key: str) -> tuple:
+    """Parst eine JSON-Antwort {text_key: "...", "vorschläge": [...]} (Plan-
+    Kommentar: "kommentar", Wochenreport: "report"). Defensiv, weil Gemini
+    sich nicht IMMER an reines JSON hält (z. B. ```json-Codeblock).
+
+    Gibt (text, vorschläge) zurück. vorschläge ist None, wenn die Antwort
+    nicht auswertbar war - suggestions.sync_dynamic lässt den Pool dann
+    unverändert, statt offene Vorschläge fälschlich als überholt zu markieren.
+    Jeder Vorschlag: {"id", "title", "text", "discipline"}."""
+    raw = (text or "").strip()
     fence_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", raw, re.DOTALL)
     candidate = fence_match.group(1) if fence_match else raw
     try:
         parsed = json.loads(candidate)
     except (json.JSONDecodeError, ValueError) as e:
-        print(f"[ai_coach] Trainingsplan-Kommentar: JSON-Parsing fehlgeschlagen ({e}), "
-              "nutze Rohtext als Kommentar ohne Einzelvorschläge")
-        return raw, []
-
+        print(f"[ai_coach] JSON-Antwort ({text_key}) nicht auswertbar ({e}), nutze Rohtext")
+        return raw, None
     if not isinstance(parsed, dict):
-        print("[ai_coach] Trainingsplan-Kommentar: JSON-Antwort ist kein Objekt, "
-              "nutze Rohtext als Kommentar ohne Einzelvorschläge")
-        return raw, []
+        print(f"[ai_coach] JSON-Antwort ({text_key}) ist kein Objekt, nutze Rohtext")
+        return raw, None
 
-    kommentar = parsed.get("kommentar")
-    if not isinstance(kommentar, str) or not kommentar.strip():
-        kommentar = raw
-    kommentar = kommentar.strip()
+    body = parsed.get(text_key)
+    if isinstance(body, list):   # Gemini liefert die Stichpunkte gelegentlich als Liste
+        body = "\n".join(f"- {str(x).lstrip('- ').strip()}" for x in body if str(x).strip())
+    if not isinstance(body, str) or not body.strip():
+        body = raw
+    body = body.strip()
 
+    items = parsed.get("vorschläge")
+    if items is None:
+        items = parsed.get("vorschlaege")
+    if not isinstance(items, list):
+        return body, None
     vorschläge = []
-    for item in parsed.get("vorschläge") or []:
+    for item in items:
         if not isinstance(item, dict):
             continue
-        sid_raw = str(item.get("id") or "").strip()
         title = str(item.get("title") or "").strip()
         vtext = str(item.get("text") or "").strip()
-        if not sid_raw or not title:
+        sid = suggestions.normalize_id(item.get("id") or title)
+        if not sid or not title:
             continue
-        # id robust normalisieren (Gemini hält sich nicht IMMER exakt an kebab-case) -
-        # sonst würde eine leicht andere Schreibweise (Grossbuchstaben, Leerzeichen, ...)
-        # fälschlich als neuer Vorschlag statt als Wiederverwendung eines bereits
-        # entschiedenen erkannt (siehe suggestions.sync_suggestions).
-        sid = re.sub(r"[^a-z0-9-]+", "-", sid_raw.lower()).strip("-")
-        if not sid:
-            continue
-        vorschläge.append({"id": sid, "title": title, "text": vtext})
-    return kommentar, vorschläge
+        disc = suggestions.normalize_discipline(
+            item.get("disziplin") or item.get("discipline"), title, vtext)
+        vorschläge.append({"id": sid, "title": title, "text": vtext, "discipline": disc})
+    return body, vorschläge
+
+
+def _parse_trainingsplan_response(text: str) -> tuple:
+    """Kompatibilität (Tests/Altaufrufe): wie früher immer eine Liste."""
+    kommentar, vorschläge = _parse_json_with_suggestions(text, "kommentar")
+    return kommentar, vorschläge or []

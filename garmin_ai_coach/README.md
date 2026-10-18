@@ -28,6 +28,19 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.23.0
+
+- **Coach-Vorschläge für alle Disziplinen statt nur fürs Gym:** Der Wochenreport (montags bzw. beim „Jetzt synchronisieren“) liefert jetzt zusätzlich bis zu 4 Einzelvorschläge – je Disziplin höchstens einer (Schwimmen, Rad, Laufen, Gym, Erholung). Jeder Vorschlag trägt eine Disziplin; das Dashboard sortiert danach.
+- **Keine doppelten oder widersprüchlichen Vorschläge mehr** (`suggestions.py`):
+  - Gemini sieht vor jeder Generierung den kompletten Vorschlags-Pool aller Quellen mit ids (vorher sah der Plan-Kommentar die offenen Gym-Punkte ohne id und legte sie dreifach unter neuen ids an).
+  - Deterministischer Abgleich: Ein Vorschlag mit im Kern gleichem Titel in derselben Disziplin wird dem bestehenden Eintrag zugeordnet – feste Gym-Punkte und frühere Entscheidungen haben Vorrang, abgelehnte bleiben abgelehnt.
+  - Die Liste einer neuen Einschätzung ersetzt die offenen KI-Vorschläge; was Gemini nicht erneut aufführt, gilt als überholt. Offene KI-Vorschläge verfallen nach 10 Tagen.
+  - Der KI-Gym-Tipp kennt den Pool und darf ihm nicht widersprechen (z. B. nicht Ausfallschritte empfehlen, wenn Rumänisches Kreuzheben offen ist).
+  - Altbestand wird beim ersten Sync aufgeräumt (bei Alex: 8 offen → 2).
+- **Fix Auswahl-Dropdown:** Jeder MQTT-Reconnect hat die Optionsliste auf „noch keine Vorschläge“ zurückgesetzt, bis zum nächsten Sync. Die Discovery publiziert jetzt die aktuellen Optionen, und die Auswahl steht immer auf einem gültigen Eintrag.
+- ids mit Umlauten werden transliteriert („plank-ergaenzen“ statt „plank-erg-nzen“).
+- Dashboard: Abschnitt „Coach“ (KI-Gym-Tipp, offene Vorschläge, Annehmen/Ablehnen) vom Reiter Gym in den Reiter Chat verschoben; Karte „Übungsnamen zusammengeführt“ ausgeblendet (die Zusammenführung läuft weiter im Hintergrund).
+
 ### 0.22.2
 
 - **Schwimmeinheiten: 200 m statt 300 m** beim Einschwimmen (31 Einheiten) und für die lockere Strecke zwischen den Serien der Tempo-Einheiten (6 Einheiten). Gesamtstrecken in `swim_plan.json` neu berechnet (je −100 m). Bereits an Garmin übertragene Workouts werden beim nächsten Sync automatisch ersetzt (geänderte Signatur → altes Workout löschen, neues am selben Tag einplanen). Die Hauptserie „CSS 300er“ (5×300 m) bleibt unverändert.

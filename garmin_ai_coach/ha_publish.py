@@ -1,5 +1,6 @@
 import os, json, datetime
 import paho.mqtt.client as mqtt
+import suggestions
 
 MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
@@ -51,6 +52,7 @@ _vorschlag_accept_callback = None
 _vorschlag_reject_callback = None
 _vorschlag_label_map = {}
 _selected_suggestion_id = None
+_selected_suggestion_label = None
 
 # Freier Gemini-Chat im Dashboard-Tab "Chat" (siehe chat.py sowie
 # publish_chat_history unten). Ein MQTT-"text"-Entity statt eines HA-
@@ -119,7 +121,7 @@ def _on_connect(client, userdata, flags, rc):
 
 
 def _on_message(client, userdata, msg):
-    global _selected_suggestion_id
+    global _selected_suggestion_id, _selected_suggestion_label
     if msg.topic == SYNC_BUTTON_COMMAND_TOPIC:
         print("[mqtt] Sync-Button-Nachricht empfangen")
         if _sync_button_callback:
@@ -132,6 +134,7 @@ def _on_message(client, userdata, msg):
     elif msg.topic == VORSCHLAG_SELECT_COMMAND_TOPIC:
         label = msg.payload.decode("utf-8", errors="replace")
         _selected_suggestion_id = _vorschlag_label_map.get(label)
+        _selected_suggestion_label = label
         # optimistic=True in der Discovery-Config reicht theoretisch für die
         # sofortige UI-Anzeige, trotzdem den gewählten Wert als state zurückpublizieren -
         # so zeigt auch ein zweiter Dashboard-Client/-Tab sofort denselben Stand.
@@ -475,29 +478,16 @@ def publish_discovery():
         retain=True,
     )
 
-    # Annehmen/Ablehnen für KI-Trainingsplan-Vorschläge (Dashboard-Tab "Vorschläge",
-    # siehe VORSCHLAG_*_COMMAND_TOPIC/_on_message oben sowie publish_vorschlaege unten
-    # und suggestions.py). Hier nur die initiale/Fallback-Registrierung mit einer
-    # Platzhalter-Optionsliste, damit die drei Entities sofort nach einem Add-on-(Neu-)
-    # Start existieren, auch vor dem ersten Sync - publish_vorschlaege() republished die
-    # Select-Discovery-Config danach bei jedem Sync sowie nach jedem Annehmen/Ablehnen
-    # mit der jeweils aktuellen Optionsliste (die Optionen sind Teil der Discovery-
-    # Config, es gibt dafür keinen separaten State).
-    select_payload = {
-        "name": "Garmin Vorschlag Auswahl",
-        "unique_id": "garmin_ai_coach_vorschlag_auswahl",
-        "command_topic": VORSCHLAG_SELECT_COMMAND_TOPIC,
-        "state_topic": "garmin_ai_coach/vorschlag_auswahl/state",
-        "options": ["(noch keine Vorschläge - nach dem ersten Sync verfügbar)"],
-        "optimistic": True,
-        "icon": "mdi:format-list-checks",
-        "device": DEVICE,
-    }
-    client.publish(
-        "homeassistant/select/garmin_ai_coach_vorschlag_auswahl/config",
-        json.dumps(select_payload),
-        retain=True,
-    )
+    # Annehmen/Ablehnen für den Vorschlags-Pool (siehe VORSCHLAG_*_COMMAND_TOPIC/_on_message
+    # oben, publish_vorschlaege unten und suggestions.py).
+    # Seit v0.23.0 mit der AKTUELLEN Optionsliste aus dem gespeicherten Zustand statt eines
+    # Platzhalters: publish_discovery() läuft bei jedem MQTT-(Re-)Connect, und der Platzhalter
+    # hat die Auswahlliste bis zum nächsten Sync geleert ("noch keine Vorschläge", obwohl
+    # 8 offen waren).
+    try:
+        _publish_vorschlag_select(suggestions.all_suggestions())
+    except Exception as e:
+        print(f"[mqtt] Vorschlag-Auswahl nicht publiziert: {e}")
     accept_payload = {
         "name": "Garmin Vorschlag Annehmen",
         "unique_id": "garmin_ai_coach_vorschlag_annehmen",
@@ -547,27 +537,37 @@ def publish_discovery():
     )
 
 
+_VORSCHLAG_STATUS_ORDER = {"pending": 0, "accepted": 1, "rejected": 2}
+_VORSCHLAG_STATUS_EMOJI = {"pending": "⏳", "accepted": "✅", "rejected": "❌"}
+_DISCIPLINE_ORDER = list(suggestions.DISCIPLINES)
+
+
+def _visible(state: dict) -> list:
+    """Sichtbare Vorschläge (ohne überholte/zusammengeführte), sortiert nach
+    Status, Disziplin, Datum - dieselbe Reihenfolge für Liste und Dropdown."""
+    items = [(sid, rec) for sid, rec in (state or {}).items()
+             if rec.get("status") in suggestions.VISIBLE_STATUSES]
+    items.sort(key=lambda kv: (
+        _VORSCHLAG_STATUS_ORDER.get(kv[1].get("status"), 0),
+        _DISCIPLINE_ORDER.index(kv[1]["discipline"]) if kv[1].get("discipline") in _DISCIPLINE_ORDER else 99,
+        kv[1].get("created_at") or "",
+    ))
+    return items
+
+
 def _vorschlag_options_and_labels(state: dict):
-    """Baut die Dropdown-Optionen (Label-Text je Vorschlag: Status-Emoji +
-    Titel, sortiert offen -> angenommen -> abgelehnt) sowie die Label->id-
-    Zuordnung für die Auswahl-Select-Entity (siehe publish_vorschlaege).
-    Die Zuordnung wird in _vorschlag_label_map gemerkt, damit _on_message
-    eine eingehende Auswahl auf die zugehörige suggestion_id auflösen kann."""
-    order = {"pending": 0, "accepted": 1, "rejected": 2}
-    emoji = {"pending": "⏳", "accepted": "✅", "rejected": "❌"}
-    items = sorted(
-        state.items(),
-        key=lambda kv: (order.get(kv[1].get("status"), 0), kv[1].get("updated_at") or ""),
-    )
+    """Dropdown-Optionen (Status-Emoji + Disziplin-Emoji + Titel) und die
+    Label->id-Zuordnung für die Auswahl-Select-Entity. HA begrenzt Optionen
+    nicht hart, aber der Titel ist ohnehin auf ~8 Wörter beschränkt."""
     labels = []
     label_map = {}
-    for sid, rec in items:
-        base = f"{emoji.get(rec.get('status'), '⏳')} {rec.get('title') or sid}"
+    for sid, rec in _visible(state):
+        disc = suggestions.DISCIPLINES.get(rec.get("discipline"), "")
+        base = (f"{_VORSCHLAG_STATUS_EMOJI.get(rec.get('status'), '⏳')} {disc} "
+                f"{rec.get('title') or sid}").replace("  ", " ")
         label = base
-        # Eindeutigkeit erzwingen, falls zwei Vorschläge zufällig denselben Titel
-        # hätten (Kollisionsschutz für die Label->id-Auflösung).
         suffix = 2
-        while label in label_map:
+        while label in label_map:   # Kollisionsschutz für die Label->id-Auflösung
             label = f"{base} ({suffix})"
             suffix += 1
         labels.append(label)
@@ -577,28 +577,12 @@ def _vorschlag_options_and_labels(state: dict):
     return labels, label_map
 
 
-def publish_vorschlaege(state: dict):
-    """Published den Annehmen/Ablehnen-Zustand der Trainingsplan-Vorschläge
-    (siehe suggestions.py, Dashboard-Tab "Vorschläge") als Sensor-Attribute
-    (für die Anzeige) sowie die aktuelle Optionsliste der Auswahl-Select-
-    Entity (per erneutem Discovery-Publish - siehe _vorschlag_options_and_labels).
-    Aufgerufen von app.py nach jedem Sync sowie sofort nach jedem Annehmen/
-    Ablehnen-Tastendruck, damit das Dashboard immer den aktuellen Stand zeigt."""
-    global _vorschlag_label_map
-    state = state or {}
-    pending = [{**v, "id": k} for k, v in state.items() if v.get("status") == "pending"]
-    accepted = [{**v, "id": k} for k, v in state.items() if v.get("status") == "accepted"]
-    rejected = [{**v, "id": k} for k, v in state.items() if v.get("status") == "rejected"]
-    client.publish("garmin_ai_coach/vorschlaege/state", f"{len(pending)} offen", retain=True)
-    client.publish(
-        "garmin_ai_coach/vorschlaege/attributes",
-        json.dumps(
-            {"pending": pending, "accepted": accepted, "rejected": rejected},
-            ensure_ascii=False, default=str,
-        ),
-        retain=True,
-    )
-
+def _publish_vorschlag_select(state: dict):
+    """Select-Discovery mit aktueller Optionsliste + gültiger Auswahl. Die
+    Auswahl bleibt auf demselben Vorschlag, solange es ihn gibt, sonst springt
+    sie auf den ersten (offenen) - so wirkt "Annehmen" immer auf das, was im
+    Dropdown steht."""
+    global _vorschlag_label_map, _selected_suggestion_id, _selected_suggestion_label
     labels, label_map = _vorschlag_options_and_labels(state)
     _vorschlag_label_map = label_map
     select_payload = {
@@ -616,6 +600,36 @@ def publish_vorschlaege(state: dict):
         json.dumps(select_payload, ensure_ascii=False),
         retain=True,
     )
+    keep = next((lbl for lbl, sid in label_map.items() if sid == _selected_suggestion_id), None)
+    chosen = keep or labels[0]
+    _selected_suggestion_label = chosen
+    _selected_suggestion_id = label_map.get(chosen)
+    client.publish("garmin_ai_coach/vorschlag_auswahl/state", chosen, retain=True)
+
+
+def publish_vorschlaege(state: dict):
+    """Published den Vorschlags-Pool (suggestions.py; Dashboard "Chat" > Coach)
+    als Sensor-Attribute und die Optionsliste der Auswahl-Select-Entity.
+    Überholte/zusammengeführte Einträge werden nicht angezeigt. Aufgerufen
+    nach jedem Sync, nach dem Wochenreport sowie nach Annehmen/Ablehnen."""
+    visible = _visible(state)
+    pending = [{**v, "id": k} for k, v in visible if v.get("status") == "pending"]
+    accepted = [{**v, "id": k} for k, v in visible if v.get("status") == "accepted"]
+    rejected = [{**v, "id": k} for k, v in visible if v.get("status") == "rejected"]
+    for lst in (pending, accepted, rejected):
+        for rec in lst:
+            rec["emoji"] = suggestions.DISCIPLINES.get(rec.get("discipline"), "")
+    client.publish("garmin_ai_coach/vorschlaege/state", f"{len(pending)} offen", retain=True)
+    client.publish(
+        "garmin_ai_coach/vorschlaege/attributes",
+        json.dumps(
+            {"pending": pending, "accepted": accepted[-15:], "rejected": rejected[-15:],
+             "disciplines": suggestions.DISCIPLINES},
+            ensure_ascii=False, default=str,
+        ),
+        retain=True,
+    )
+    _publish_vorschlag_select(state)
 
 
 def _extract_ftp_watts(raw):
