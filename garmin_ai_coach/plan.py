@@ -350,6 +350,14 @@ def build_plan_state(today: datetime.date, race_date: datetime.date, weekly_volu
     weekday = today.weekday()
     today_fixed = [dict(item) for item in WEEK_TEMPLATE_BY_PHASE.get(phase, WEEK_TEMPLATE).get(weekday, [])]
     days_left_in_week = 6 - weekday
+    # Rad am Wochenende: Ist das Wochen-Soll schon erreicht (z. B. Zwift am Samstag), ist die Einheit von heute
+    # ("falls Samstag nicht geklappt hat") hinfällig. Ohne diesen Zusatz verordnete die KI-Notiz sie am
+    # Sonntag noch einmal (18.10.2026).
+    bike_min = max(targets_cfg["bike"]["min"], 1)
+    for item in today_fixed:
+        if item.get("type") == "bike" and weekday >= 5 and done["bike"] >= bike_min:
+            item["done"] = True
+            item["text"] += " - diese Woche schon erledigt"
 
     return {
         "date": today.isoformat(),

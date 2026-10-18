@@ -8,8 +8,11 @@
  * 1.1.0 (16.10.2026): coach-hr und coach-lifts statt Tabellen, Schlüsselwochen in coach-phases,
  *   Tagesampel wirkt auf die Einheiten (⅓ weniger Sätze, Qualität „nicht heute“), offener Lauf wird
  *   aus der HF-Verteilung bestimmt, Vergleich Ø 7 Tage für schwankende Werte, Beschriftung neben der Kurve.
+ * 1.1.1 (18.10.2026): Hinweise je Einheit kommen jetzt komplett aus coach_today() (coach_app.jinja) – die Karte
+ *   rechnet nichts mehr nach. Am letzten Tag der Woche kein „nicht heute“ mehr: Was nicht mehr geht, steht unter
+ *   „Fällt diese Woche aus“; Überschrift „Heute noch möglich“ statt „Diese Woche noch offen“.
  */
-const CC_VERSION = '1.1.0';
+const CC_VERSION = '1.1.1';
 const ICONS = {};
 
 const E = {
@@ -258,7 +261,8 @@ class CoachHero extends CoachBase {
 
     this._lvl = lvl;
     const items = (t.items || []).map((x, i) => this._item(x, `i${i}`)).join('');
-    const open = (t.open || []).map((x) => this._refineRun(x)).map((x, i) => this._item(x, `o${i}`, true)).join('');
+    const open = (t.open || []).map((x, i) => this._item(x, `o${i}`, true)).join('');
+    const skip = (t.skip || []).map((x, i) => this._item(x, `s${i}`, true)).join('');
 
     const noteSt = this._st(E.note);
     const noteLines = String(noteSt?.attributes?.full_text || '').split('\n').map((s) => s.replace(/^[-•]\s*/, '').trim()).filter(Boolean);
@@ -294,7 +298,8 @@ class CoachHero extends CoachBase {
       <div class="hr"></div>
       <div class="eyebrow">Heute</div>
       ${items || `<div class="small muted" style="padding:8px 0">Kein fester Termin – Zeit für eine offene Einheit oder Erholung.</div>`}
-      ${open ? `<div class="eyebrow" style="margin-top:10px">Diese Woche noch offen</div>${open}` : ''}
+      ${open ? `<div class="eyebrow" style="margin-top:10px">${t.dl > 0 ? 'Diese Woche noch offen' : 'Heute noch möglich'}</div>${open}` : ''}
+      ${skip ? `<div class="eyebrow" style="margin-top:10px">Fällt diese Woche aus</div>${skip}` : ''}
       ${t.hint ? `<div class="small muted">${icon('informationOutline', 14, 'inl')} ${esc(t.hint)}</div>` : ''}
       ${noteLines.length ? `<div class="hr"></div><div class="note tap" data-toggle="note">${icon('robotOutline')}<div style="flex:1"><div class="${this._open.has('note') ? '' : 'clamp'}">${esc(noteLines[0])}</div>${this._open.has('note') && noteLines.length > 1 ? noteLines.slice(1).map((l) => `<div style="margin-top:6px">${esc(l)}</div>`).join('') : ''}${noteLines.length > 1 ? `<div><button class="link">${this._open.has('note') ? 'weniger' : 'mehr'}</button></div>` : ''}</div></div>` : ''}
       ${coachBad ? `<div class="warnline">KI-Coach ${esc(this._st(E.coach).state)} – Tagesnotiz kommt aus den Regeln.</div>` : ''}
@@ -302,26 +307,13 @@ class CoachHero extends CoachBase {
       ${nt && ntDays != null && ntDays <= 21 ? `<div class="small muted" style="margin-top:10px">${icon('target', 14, 'inl')} Nächster Test: ${esc(nt.f)} (ab ${ddmm(new Date(nt.w))})</div>` : ''}
     </div>`;
   }
-  _refineRun(x) {
-    // "Noch 1 Lauf: Qualität oder Z2" – welcher fehlt, verrät die HF-Verteilung der laufenden Woche:
-    // war der erledigte Lauf überwiegend locker, fehlt die Qualität und umgekehrt.
-    if (x.s !== 'run' || x.t !== 'Noch 1 Lauf' || !x.d) return x;
-    const w = ((this._attr(E.zones, 'distribution') || {}).per_week || [])[0];
-    if (!w || !w.run || mondayOf(new Date(w.week_start)).getTime() !== mondayOf(new Date()).getTime()) return x;
-    const m = /^Qualität: (.*) · Z2: (.*)$/.exec(x.d); if (!m) return x;
-    if ((+w.run.easy_pct || 0) >= 80) return { ...x, t: 'Qualitätslauf', c: m[1].split(':')[0], d: m[1] };
-    if ((+w.run.mid_pct || 0) + (+w.run.hard_pct || 0) >= 40) return { ...x, t: 'Lockerer Lauf (Z2)', c: m[2].split(' (')[0], d: m[2] };
-    return x;
-  }
   _item(x, key, open = false) {
     const isOpen = this._open.has(key);
     const has = !!x.d;
     const c = this._c();
-    // Tagesampel gelb/rot: bei der heutigen Einheit direkt sagen, was das konkret heißt
-    const hard = /qualit|test|intervall|schwelle/i.test(`${x.t} ${x.c || ''}`);
-    const yellow = this._lvl === 'locker' || this._lvl === 'pause';
-    const adapt = !x.ok && x.s !== 'rest' && yellow && (!open || hard)
-      ? `<span class="chip" style="margin-left:6px;background:${this._lvl === 'pause' ? c.critical : c.warn}26;font-size:11px;padding:1px 7px">${open ? 'nicht heute' : this._lvl === 'pause' ? 'nur locker bewegen' : (x.s === 'strength' ? '⅓ weniger Sätze' : 'locker / kürzer')}</span>` : '';
+    // Hinweis-Chip kommt fertig aus coach_today() (x.a) – Wochentag, Ampel und Art der Einheit sind dort berücksichtigt
+    const adapt = x.a
+      ? `<span class="chip" style="margin-left:6px;background:${this._lvl === 'pause' ? c.critical : c.warn}26;font-size:11px;padding:1px 7px">${esc(x.a)}</span>` : '';
     return `<div class="item ${has ? 'tap' : ''}" ${has ? `data-toggle="${key}"` : ''}>
       ${this._sportIc(x.s)}
       <div style="flex:1;min-width:0">

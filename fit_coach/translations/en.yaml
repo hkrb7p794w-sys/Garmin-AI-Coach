@@ -1,0 +1,4 @@
+configuration:
+  sync_hours:
+    name: Sync hours
+    description: Full hours at which Garmin and Yazio are fetched (comma separated, e.g. 6,12,20).

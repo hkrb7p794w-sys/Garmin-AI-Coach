@@ -3,7 +3,11 @@
     coach_week()   -> JSON: Einheiten der laufenden Woche je Sportart, Musterwoche, Prioritäten, nächste Woche
     coach_today_text() -> Klartext für die Morgen-Push-Nachricht
     Planinhalte aus coach_plan.jinja, Wochenrahmen aus coach_days.jinja, Ist-Werte aus sensor.garmin_ai_coach_garmin_plan.
-    Rad: angezeigt wird der Workout-Name ("Z01 Sweet Spot 3×10"), nicht nur der Code. -#}
+    Rad: angezeigt wird der Workout-Name ("Z01 Sweet Spot 3×10"), nicht nur der Code.
+    Seit 18.10.2026 eine Quelle für alle Hinweise: Jede Einheit bekommt hier ihren Hinweis-Chip ('a'),
+    abhängig von Tagesampel, Art der Einheit und den restlichen Tagen der Woche ('dl', Sonntag = 0).
+    Karte und Push zeigen nur noch an, was hier steht – dadurch kann am letzten Wochentag kein
+    „nicht heute“ mehr erscheinen und Karte und Push widersprechen sich nicht. -#}
 {%- from 'coach_plan.jinja' import coach_plan -%}
 {%- from 'coach_days.jinja' import coach_frame -%}
 {%- from 'coach_game.jinja' import quote -%}
@@ -17,15 +21,37 @@
 {{- {'swim': d.swim, 'run': d.run, 'bike': d.bike, 'strength': d.strength} | to_json -}}
 {%- endmacro -%}
 
+{%- macro _chip(lvl, x, open, dl) -%}
+{#- Hinweis-Chip je Einheit bei gelber/roter Tagesampel (sonst leer).
+    x.h: 2 = hart (Qualität, Test, Intervall) · 1 = gemischt („Noch 1 Lauf“: Qualität oder Z2) · 0 = locker.
+    dl: restliche Tage der Woche nach heute (Sonntag = 0).
+    Liefert 'skip', wenn die Einheit diese Woche nicht mehr stattfinden kann (letzter Tag + Ampel erlaubt sie nicht):
+    sie landet dann in der Liste „fällt diese Woche aus“ statt unter „noch offen“. -#}
+{%- set h = x.h | default(0) | int -%}
+{%- if x.ok or x.s == 'rest' or lvl not in ['locker', 'pause'] -%}
+{%- elif not open -%}{{- 'nur locker bewegen' if lvl == 'pause' else ('⅓ weniger Sätze' if x.s == 'strength' else 'locker / kürzer') -}}
+{%- elif h == 0 -%}
+{%- elif lvl == 'locker' and h == 1 -%}heute nur Z2
+{%- elif dl > 0 -%}nicht heute
+{%- else -%}skip
+{%- endif -%}
+{%- endmacro -%}
+
 {%- macro coach_today() -%}
 {%- set plan = coach_plan() | from_json -%}
 {%- set today = now().date() -%}
 {%- set mon = (today - timedelta(days=today.weekday())).isoformat() -%}
 {%- set ws = plan.weeks | map(attribute='w') | list -%}
 {%- set wd = today.weekday() -%}
+{%- set dl = 6 - wd -%}
 {%- set e = states.sensor.garmin_ai_coach_garmin_tagesempfehlung -%}
 {%- set ok_e = e is not none and e.state not in ['unknown', 'unavailable'] -%}
-{%- set gym_today = ((state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or []) | selectattr('date', 'eq', today.isoformat()) | list | count) > 0 -%}
+{%- set lvl = e.attributes.level if ok_e else '' -%}
+{%- set sess = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] -%}
+{%- set gym_today = (sess | selectattr('date', 'eq', today.isoformat()) | list | count) > 0 -%}
+{%- set gym_tue = wd > 1 and (sess | selectattr('date', 'eq', (today - timedelta(days=wd - 1)).isoformat()) | list | count) > 0 -%}
+{%- set zw = (state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'distribution') or {}).get('per_week') or [] -%}
+{%- set zr = zw[0].run if (zw and zw[0].week_start == mon and zw[0].run is defined and zw[0].run) else none -%}
 {%- set r = namespace(items=[], open=[], hint='', ph='', f='', wi=0, wn=ws | count) -%}
 {%- if mon in ws -%}
 {%- set wk = plan.weeks[ws.index(mon)] -%}
@@ -38,15 +64,24 @@
 {%- elif k == 'rest' -%}
 {%- set r.items = r.items + [{'s': 'rest', 't': 'Ruhetag', 'c': 'Spazieren, Mobility', 'd': '', 'ok': false}] -%}
 {%- elif k == 'swimlegs' -%}
-{%- if dn.swim >= 1 -%}
-{%- set r.items = r.items + [{'s': 'strength', 't': 'Beine', 'c': 'vor der Arbeit', 'd': 'Schwimmen ist diese Woche schon erledigt.', 'ok': gym_today}] -%}
+{#- Di/Do: 1x Schwimmen + 1x Beine, Reihenfolge frei. Kraft-Einheiten haben ein Datum, Schwimmen nur den Wochenzähler. -#}
+{%- if gym_today -%}
+{%- set r.items = r.items + [{'s': 'strength', 't': 'Beine', 'c': 'vor der Arbeit', 'd': '' if dn.swim >= 1 else ('Schwimmen dann am Donnerstag.' if wd == 1 else 'Schwimmen fehlt diese Woche noch.'), 'ok': true}] -%}
+{%- elif wd == 1 and dn.swim >= 1 -%}
+{%- set r.items = r.items + [{'s': 'swim', 't': 'Schwimmen', 'c': wk.sc, 'd': 'Beine dann am Donnerstag.', 'ok': true}] -%}
 {%- elif wd == 1 -%}
 {%- set r.items = r.items + [{'s': 'swim', 't': 'Schwimmen oder Beine', 'c': wk.sc, 'd': wk.s ~ ' · Das andere am Donnerstag.', 'ok': false}] -%}
+{%- elif gym_tue and dn.swim >= 1 -%}
+{%- set r.items = r.items + [{'s': 'swim', 't': 'Schwimmen', 'c': wk.sc, 'd': 'Beine am Dienstag erledigt.', 'ok': true}] -%}
+{%- elif gym_tue -%}
+{%- set r.items = r.items + [{'s': 'swim', 't': 'Schwimmen', 'c': wk.sc, 'd': wk.s ~ ' · Beine am Dienstag erledigt.', 'ok': false}] -%}
+{%- elif dn.swim >= 1 -%}
+{%- set r.items = r.items + [{'s': 'strength', 't': 'Beine', 'c': 'vor der Arbeit', 'd': 'Schwimmen ist diese Woche schon erledigt.', 'ok': false}] -%}
 {%- else -%}
 {%- set r.items = r.items + [{'s': 'swim', 't': 'Schwimmen', 'c': wk.sc, 'd': wk.s ~ ' · Beine nur, falls sie am Dienstag ausgefallen sind.', 'ok': false}] -%}
 {%- endif -%}
 {%- elif k == 'z' -%}
-{%- set r.items = r.items + [{'s': 'bike', 't': 'Zwift (Sa oder So)', 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z, 'ok': dn.bike >= 1}] -%}
+{%- set r.items = r.items + [{'s': 'bike', 't': ('Zwift – diese Woche schon erledigt' if (wd == 6 and dn.bike >= 1) else 'Zwift (Sa oder So)'), 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z, 'ok': dn.bike >= 1}] -%}
 {%- elif k == 'l' and dn.run < 3 -%}
 {%- set r.items = r.items + [{'s': 'run', 't': 'Longrun (Sa oder So)', 'c': ((wk.lr | string).replace('.', ',') ~ ' km') if wk.lr else '', 'd': wk.l, 'ok': false}] -%}
 {%- elif k == 'zlong' and wk.z2 -%}
@@ -55,29 +90,53 @@
 {%- endfor -%}
 {%- set n_flex = 2 if wk.q != '–' else 1 -%}
 {%- set open_runs = [n_flex - dn.run, 0] | max -%}
+{%- set q_item = {'s': 'run', 't': 'Qualitätslauf', 'c': wk.qc, 'd': wk.q, 'h': 2} -%}
+{%- set e_item = {'s': 'run', 't': 'Lockerer Lauf (Z2)', 'c': wk.e.split(' (')[0], 'd': wk.e, 'h': 0} -%}
 {%- if open_runs > 0 and ('q' in fr.flex or 'e' in fr.flex) -%}
 {%- if open_runs >= 2 -%}
-{%- set r.open = r.open + [{'s': 'run', 't': 'Qualitätslauf', 'c': wk.qc, 'd': wk.q}, {'s': 'run', 't': 'Lockerer Lauf (Z2)', 'c': wk.e.split(' (')[0], 'd': wk.e}] -%}
+{%- set r.open = r.open + [q_item, e_item] -%}
 {%- elif wk.q != '–' -%}
-{%- set r.open = r.open + [{'s': 'run', 't': 'Noch 1 Lauf', 'c': wk.qc ~ ' oder Z2 – je nachdem, was fehlt', 'd': 'Qualität: ' ~ wk.q ~ ' · Z2: ' ~ wk.e}] -%}
+{#- Welcher Lauf fehlt, verrät die HF-Verteilung der laufenden Woche: war der erledigte Lauf überwiegend
+    locker, fehlt die Qualität und umgekehrt (früher in coach-cards.js, jetzt hier – damit Push und Karte gleich sind). -#}
+{%- if zr and (zr.easy_pct | float(0)) >= 80 -%}
+{%- set r.open = r.open + [q_item] -%}
+{%- elif zr and ((zr.mid_pct | float(0)) + (zr.hard_pct | float(0))) >= 40 -%}
+{%- set r.open = r.open + [e_item] -%}
 {%- else -%}
-{%- set r.open = r.open + [{'s': 'run', 't': 'Lockerer Lauf (Z2)', 'c': wk.e.split(' (')[0], 'd': wk.e}] -%}
+{%- set r.open = r.open + [{'s': 'run', 't': 'Noch 1 Lauf', 'c': wk.qc ~ ' oder Z2 – je nachdem, was fehlt', 'd': 'Qualität: ' ~ wk.q ~ ' · Z2: ' ~ wk.e, 'h': 1}] -%}
 {%- endif -%}
-{%- if wd in [1, 3] -%}{%- set r.hint = 'Qualitätslauf nicht am Tag nach Beine und nicht direkt vor dem Longrun.' -%}{%- endif -%}
+{%- else -%}
+{%- set r.open = r.open + [e_item] -%}
+{%- endif -%}
 {%- endif -%}
 {%- if 'zi' in fr.flex and dn.bike < 1 and wd < 5 -%}
-{%- set r.open = r.open + [{'s': 'bike', 't': 'Zwift-Intervall', 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z}] -%}
+{%- set r.open = r.open + [{'s': 'bike', 't': 'Zwift-Intervall', 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z, 'h': 2}] -%}
+{%- endif -%}
+{%- if wd in [1, 3] and (r.open | selectattr('s', 'eq', 'run') | selectattr('h', 'ge', 1) | list | count) > 0 -%}
+{%- set r.hint = 'Qualitätslauf nicht am Tag nach Beine und nicht direkt vor dem Longrun.' -%}
 {%- endif -%}
 {%- endif -%}
+{%- set out = namespace(items=[], open=[], skip=[]) -%}
+{%- for x in r.items -%}{%- set out.items = out.items + [dict(x, a=(_chip(lvl, x, false, dl) | trim))] -%}{%- endfor -%}
+{%- for x in r.open -%}
+{%- set a = _chip(lvl, x, true, dl) | trim -%}
+{%- if a == 'skip' -%}{%- set out.skip = out.skip + [dict(x, a='')] -%}{%- else -%}{%- set out.open = out.open + [dict(x, a=a)] -%}{%- endif -%}
+{%- endfor -%}
+{#- Ratschlag der Tagesampel passt nicht mehr, wenn die geplante Einheit schon erledigt ist. -#}
+{%- set fixed = r.items | rejectattr('s', 'eq', 'rest') | list -%}
+{%- set all_done = (fixed | count) > 0 and (fixed | selectattr('ok') | list | count) == (fixed | count) -%}
+{%- set advice = (e.attributes.advice if ok_e else '') or '' -%}
+{%- if all_done and lvl == 'locker' -%}{%- set advice = 'Geplante Einheit erledigt – heute nichts Hartes mehr nachlegen.' -%}
+{%- elif all_done and lvl == 'pause' -%}{%- set advice = 'Geplante Einheit erledigt – den Rest des Tages erholen.' -%}{%- endif -%}
 {%- set tests = plan.weeks | selectattr('w', 'gt', mon) | selectattr('f', 'search', '(?i)test') | list -%}
 {%- set nt = {'f': tests[0].f, 'w': tests[0].w} if tests else none -%}
 {{- {
-  'lvl': e.attributes.level if ok_e else '',
+  'lvl': lvl,
   'label': e.state if ok_e else '',
-  'advice': (e.attributes.advice if ok_e else '') or '',
+  'advice': advice,
   'reasons': (e.attributes.reasons if ok_e else []) or [],
-  'items': r.items, 'open': r.open, 'hint': r.hint,
-  'ph': r.ph, 'f': r.f, 'wi': r.wi, 'wn': r.wn,
+  'items': out.items, 'open': out.open, 'skip': out.skip, 'hint': r.hint,
+  'ph': r.ph, 'f': r.f, 'wi': r.wi, 'wn': r.wn, 'dl': dl,
   'dm': (strptime(plan.marathon, '%Y-%m-%d').date() - today).days,
   'dr': (strptime(plan.race, '%Y-%m-%d').date() - today).days,
   'wd': ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][wd],
@@ -115,18 +174,20 @@
 {%- endmacro -%}
 
 {%- macro coach_today_text() -%}
+{#- Gleiche Daten und Hinweise wie die Karte (coach_today): kein eigener Wochentags-Text mehr. -#}
 {%- set t = coach_today() | from_json -%}
 {%- set ic = {'swim': '🏊', 'bike': '🚴', 'run': '🏃', 'strength': '🏋️', 'rest': '😌'} -%}
 {%- set names = {'swim': 'Schwimmen', 'bike': 'Rad', 'run': 'Laufen', 'strength': 'Kraft'} -%}
 {%- set tg = state_attr('sensor.garmin_ai_coach_garmin_plan', 'targets') or [] -%}
 {%- set lines = namespace(l=[], miss=[]) -%}
-{%- for x in t['items'] -%}{%- set lines.l = lines.l + [ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' · ' ~ x.c) if x.c else '') ~ (' ✓' if x.ok else '')] -%}{%- endfor -%}
-{%- for x in t.open -%}{%- set lines.l = lines.l + ['Offen: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '')] -%}{%- endfor -%}
+{%- for x in t['items'] -%}{%- set lines.l = lines.l + [ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' · ' ~ x.c) if x.c else '') ~ (' ✓' if x.ok else '') ~ ((' → ' ~ x.a) if x.a else '')] -%}{%- endfor -%}
+{%- for x in t.open -%}{%- set lines.l = lines.l + ['Offen: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '') ~ ((' → ' ~ x.a) if x.a else '')] -%}{%- endfor -%}
+{%- for x in t.skip -%}{%- set lines.l = lines.l + ['Entfällt diese Woche: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '')] -%}{%- endfor -%}
 {%- for x in tg -%}{%- if (x.done | int(0)) < (x.min | int(0)) -%}{%- set lines.miss = lines.miss + [names.get(x.key, x.key) ~ ' ' ~ x.done ~ '/' ~ x.min] -%}{%- endif -%}{%- endfor -%}
 {%- set q = quote(tg) | int -%}
 {%- set z = states('input_number.coach_wochenziel') | int(80) -%}
 {%- set s = states('counter.coach_serie') | int(0) -%}
 {%- set lines.l = lines.l + ['Woche ' ~ q ~ ' % (Ziel ' ~ z ~ ' %)' ~ ((' · 🔥 ' ~ s) if s > 0 else '') ~ ((' · fehlt: ' ~ lines.miss | join(', ')) if (q < z and lines.miss) else '')] -%}
-{%- if t.lvl == 'pause' -%}{%- set lines.l = lines.l + ['Erholung geht vor: harte Einheit streichen, nur lockere Bewegung.'] -%}{%- elif t.lvl == 'locker' -%}{%- set lines.l = lines.l + ['Intensität raus, Qualität auf einen frischen Tag schieben.'] -%}{%- endif -%}
+{%- if t.lvl in ['locker', 'pause'] and t.advice -%}{%- set lines.l = lines.l + [t.advice] -%}{%- endif -%}
 {{- lines.l | join('\n') -}}
 {%- endmacro -%}

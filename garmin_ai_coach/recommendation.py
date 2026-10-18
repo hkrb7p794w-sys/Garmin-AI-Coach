@@ -108,5 +108,10 @@ def fallback_note(rec: dict, plan_state: dict) -> str:
         lines.append("- Heute laut Wochenrahmen: " + ", ".join(today) + ".")
     open_items = (plan_state or {}).get("week_open") or []
     if open_items:
-        lines.append("- Diese Woche noch offen: " + ", ".join(open_items) + ".")
+        if (plan_state or {}).get("days_left_in_week") == 0:
+            # Letzter Tag der Woche: kein "später", nichts verschieben.
+            rest = "nur noch heute möglich" if rec["level"] == "normal" else "entfällt bei dieser Tagesampel diese Woche"
+            lines.append(f"- Offen, heute letzter Tag der Woche ({rest}): " + ", ".join(open_items) + ".")
+        else:
+            lines.append("- Diese Woche noch offen: " + ", ".join(open_items) + ".")
     return "\n".join(lines)

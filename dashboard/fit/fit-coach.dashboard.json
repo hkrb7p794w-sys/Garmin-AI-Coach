@@ -1,0 +1,240 @@
+{
+  "title": "Fit",
+  "views": [
+    {
+      "title": "Heute",
+      "path": "heute",
+      "icon": "mdi:home-heart",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-hero",
+              "week_path": "woche",
+              "weight_path": "gewicht",
+              "badges_path": "erfolge"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-week"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-badges",
+              "nav": "erfolge"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Laufen",
+      "path": "laufen",
+      "icon": "mdi:run",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-run"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Gewicht",
+      "path": "gewicht",
+      "icon": "mdi:scale-bathroom",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-weight"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-food"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Gym",
+      "path": "gym",
+      "icon": "mdi:dumbbell",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-gym"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Woche",
+      "path": "woche",
+      "icon": "mdi:calendar-week",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-week"
+            }
+          ]
+        }
+      ],
+      "subview": true,
+      "back_path": "/fit-coach/heute"
+    },
+    {
+      "title": "Erfolge",
+      "path": "erfolge",
+      "icon": "mdi:trophy-outline",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-badges",
+              "mode": "full"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Einstellungen",
+      "path": "einstellungen",
+      "icon": "mdi:cog-outline",
+      "type": "sections",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:fit-status"
+            },
+            {
+              "type": "heading",
+              "heading": "Ziele",
+              "heading_style": "title",
+              "icon": "mdi:flag-checkered",
+              "visibility": [
+                {
+                  "condition": "state",
+                  "entity": "sensor.fit_coach_status",
+                  "state_not": "unavailable"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "number.fit_coach_ziel_laeufe",
+              "name": "Läufe pro Woche",
+              "features": [
+                {
+                  "type": "numeric-input",
+                  "style": "buttons"
+                }
+              ],
+              "grid_options": {
+                "columns": 6
+              },
+              "visibility": [
+                {
+                  "condition": "state",
+                  "entity": "sensor.fit_coach_status",
+                  "state_not": "unavailable"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "number.fit_coach_ziel_gym",
+              "name": "Gym pro Woche",
+              "features": [
+                {
+                  "type": "numeric-input",
+                  "style": "buttons"
+                }
+              ],
+              "grid_options": {
+                "columns": 6
+              },
+              "visibility": [
+                {
+                  "condition": "state",
+                  "entity": "sensor.fit_coach_status",
+                  "state_not": "unavailable"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "number.fit_coach_zielgewicht",
+              "name": "Zielgewicht (0 = aus Yazio/Garmin)",
+              "features": [
+                {
+                  "type": "numeric-input",
+                  "style": "buttons"
+                }
+              ],
+              "grid_options": {
+                "columns": 12
+              },
+              "visibility": [
+                {
+                  "condition": "state",
+                  "entity": "sensor.fit_coach_status",
+                  "state_not": "unavailable"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "### So rechnet der Fit Coach\n**Gewicht** – Trend = geglätteter Mittelwert (10 % pro Tag), weil das Tagesgewicht um 1–2 kg schwankt. Regelmäßiges Wiegen hängt mit mehr Abnahme zusammen, ohne negative psychische Folgen ([Zheng 2015](https://doi.org/10.1002/oby.20946)). Zielkorridor **0,5–1 % des Gewichts pro Woche**: Bei ~0,7 %/Woche blieb mehr Muskelmasse erhalten als bei ~1,4 % ([Garthe 2011](https://doi.org/10.1123/ijsnem.21.2.97)). Die Prognose ist grob, die Abnahme verlangsamt sich meist ([Thomas 2013](https://doi.org/10.1038/ijo.2013.51)).\n\n**Essen** – Wer häufiger protokolliert, nimmt mehr ab ([Harvey 2019](https://doi.org/10.1002/oby.22382)). Eiweiß-Richtwert 1,2–1,6 g pro kg Zielgewicht: hilft, Muskeln zu erhalten ([Cava 2017](https://doi.org/10.3945/an.116.014506)); mehr als ~1,6 g/kg bringt bei Krafttraining keinen Zusatznutzen ([Morton 2018](https://doi.org/10.1136/bjsports-2017-097608)). Hinweis unter 1.200 kcal/Tag (Leitlinie: 1.200–1.500 kcal für Frauen, [Jensen 2014](https://doi.org/10.1161/01.cir.0000437739.71477.ee); zu wenig Energie bremst Training, [IOC REDs 2023](https://doi.org/10.1136/bjsports-2023-106994)). Der „echte Verbrauch“ = Ø Aufnahme − Trendänderung × 7.700 kcal/kg, weil Uhren den Verbrauch ungenau schätzen ([Shcherbina 2017](https://doi.org/10.3390/jpm7020003)).\n\n**Laufen** – Überwiegend locker (≈ 80 % in Zone 1–2) verbessert Freizeitläufer mindestens so gut wie viel mittleres Tempo ([Muñoz 2014](https://doi.org/10.1123/ijspp.2012-0350)). Hinweis erst ab +30 % Wochenkilometern über 2 Wochen ([Nielsen 2014](https://doi.org/10.2519/jospt.2014.5164)); die starre 10-%-Regel hat Verletzungen nicht verhindert ([Buist 2008](https://doi.org/10.1177/0363546507307505)).\n\n**Gym** – Krafttraining erhält beim Abnehmen Muskeln ([Cava 2017](https://doi.org/10.3945/an.116.014506)). Rekord = bester Satz nach e1RM (Epley, bis 12 Wdh.). Steigerung per doppelter Progression im Bereich 8–12 Wdh. ([ACSM 2009](https://doi.org/10.1249/MSS.0b013e3181915670)). Die aktualisierte ACSM-Übersicht nennt für mehr Kraft ≥ 2 Einheiten pro Woche mit 2–3 Sätzen ([Currier 2026](https://doi.org/10.1249/MSS.0000000000003897)) – 1× pro Woche ist ein guter Start.\n\n**Woche** – 150 Minuten Bewegung = Untergrenze der WHO-Empfehlung ([Bull 2020](https://doi.org/10.1136/bjsports-2020-102955)). Mehr Schritte gehen bis etwa 8.000–10.000/Tag mit niedrigerer Sterblichkeit einher ([Paluch 2022](https://doi.org/10.1016/S2468-2667(21)00302-9)).\n\n*Keine medizinische Beratung. Bei Beschwerden, Vorerkrankungen oder Schwangerschaft ärztlich abklären.*"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

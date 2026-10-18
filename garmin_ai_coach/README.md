@@ -28,6 +28,12 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.22.1
+
+- **Erledigte Wochenend-Einheit wird nicht noch einmal verordnet:** Ist das Rad-Soll der Woche erreicht (z. B. Zwift am Samstag), markiert `plan.build_plan_state()` die Sonntags-Einheit („falls Samstag nicht geklappt hat“) als erledigt. Die KI-Notiz bekam sie vorher noch als offene Aufgabe und schrieb am Sonntag „Absolviere heute auf Zwift …“.
+- **Letzter Tag der Woche:** Der KI-Prompt benennt ihn jetzt ausdrücklich („nichts auf spätere Tage dieser Woche verschieben, nicht von einem frischen Tag sprechen“); die regelbasierte Ersatznotiz schreibt am Sonntag „heute letzter Tag der Woche“ und sagt, ob das Offene noch heute möglich ist oder bei dieser Tagesampel entfällt.
+- Dashboard (Karten 1.1.1, Datei `coach_app.jinja`): alle Hinweise je Einheit kommen aus einer Stelle; am Sonntag kein „nicht heute“ mehr, siehe `dashboard/README.md`.
+
 ### 0.22.0
 
 - **Einstellungen im Dashboard:** Sync-Zeiten, KI-Datenschutz und der Garmin-Export der Schwimmeinheiten stehen jetzt auf der Dashboard-Seite „Einstellungen“ (Helfer `input_text.coach_sync_zeiten`, `input_select.coach_ki_datenschutz`, `input_boolean.coach_garmin_schwimmexport`). Das Add-on liest sie über die Home-Assistant-API (`ha_settings.py`); fehlt ein Helfer oder ist der Wert ungültig, gilt die Add-on-Option wie bisher.

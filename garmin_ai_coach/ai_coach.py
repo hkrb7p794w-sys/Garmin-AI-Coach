@@ -373,6 +373,11 @@ def generate_coaching_note(data: dict, rec: dict = None, plan_state: dict = None
         f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n"
         f"Laut Wochenrahmen heute: {today_items}. Diese Woche noch offen: {open_items} "
         f"(noch {ps.get('days_left_in_week', '?')} Tage in der Woche).\n"
+        + ("Heute ist der LETZTE Tag der Woche: Offenes kann nicht mehr nachgeholt werden - nichts auf "
+           "spätere Tage dieser Woche verschieben und nicht von einem \"frischen Tag\" sprechen; was bei der "
+           "Tagesentscheidung nicht mehr geht, entfällt diese Woche.\n"
+           if ps.get("days_left_in_week") == 0 else "")
+        +
         f"Wochenvolumen bisher: Schwimmen {_fmt(wv.get('swim_km'), ' km')}, "
         f"Rad {_fmt(wv.get('bike_km'), ' km')}, Lauf {_fmt(wv.get('run_km'), ' km')}.\n\n"
         "Erholung:\n"
@@ -382,7 +387,8 @@ def generate_coaching_note(data: dict, rec: dict = None, plan_state: dict = None
         'AUSSCHLIESSLICH mit JSON der Form {"punkte": ["...", "..."]} mit 2-3 Punkten, je '
         "ein Satz, ohne Aufzählungszeichen im Text:\n"
         "1. Was heute konkret trainiert wird (passend zu Wochentag, offener Woche und der "
-        "Tagesentscheidung - bei 'locker' eine entschärfte Variante, bei 'Ruhetag' nichts Hartes).\n"
+        "Tagesentscheidung - bei 'locker' eine entschärfte Variante, bei 'Ruhetag' nichts Hartes). "
+        "Einheiten mit dem Zusatz 'schon erledigt' nicht noch einmal verordnen.\n"
         "2. Ein Satz zur Einordnung der Erholung (keine Rohzahlen aufzählen).\n"
         "3. Optional: ein Hinweis, wie die offene Woche im bestehenden Rahmen noch sinnvoll "
         "aufgeht - keine zusätzlichen Einheiten fordern.\n"

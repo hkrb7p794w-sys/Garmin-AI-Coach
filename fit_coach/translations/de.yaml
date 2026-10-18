@@ -1,0 +1,4 @@
+configuration:
+  sync_hours:
+    name: Abrufzeiten
+    description: Volle Stunden, zu denen Garmin und Yazio abgerufen werden (kommagetrennt, z. B. 6,12,20).
