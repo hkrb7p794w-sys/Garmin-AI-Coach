@@ -28,6 +28,11 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.22.2
+
+- **Schwimmeinheiten: 200 m statt 300 m** beim Einschwimmen (31 Einheiten) und für die lockere Strecke zwischen den Serien der Tempo-Einheiten (6 Einheiten). Gesamtstrecken in `swim_plan.json` neu berechnet (je −100 m). Bereits an Garmin übertragene Workouts werden beim nächsten Sync automatisch ersetzt (geänderte Signatur → altes Workout löschen, neues am selben Tag einplanen). Die Hauptserie „CSS 300er“ (5×300 m) bleibt unverändert.
+- Dashboard: gleiche Änderung im Plantext (`coach_plan.jinja`); außerdem Gamification entfernt (Karten 1.2.0, siehe `dashboard/README.md`).
+
 ### 0.22.1
 
 - **Erledigte Wochenend-Einheit wird nicht noch einmal verordnet:** Ist das Rad-Soll der Woche erreicht (z. B. Zwift am Samstag), markiert `plan.build_plan_state()` die Sonntags-Einheit („falls Samstag nicht geklappt hat“) als erledigt. Die KI-Notiz bekam sie vorher noch als offene Aufgabe und schrieb am Sonntag „Absolviere heute auf Zwift …“.

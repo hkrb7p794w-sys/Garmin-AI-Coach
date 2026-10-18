@@ -22,9 +22,6 @@
             {
               "type": "custom:coach-week",
               "mode": "compact"
-            },
-            {
-              "type": "custom:coach-level"
             }
           ]
         },
@@ -38,11 +35,6 @@
                   "icon": "heartPulse",
                   "label": "Erholung",
                   "path": "/garmin-coach/home"
-                },
-                {
-                  "icon": "trophyOutline",
-                  "label": "Erfolge",
-                  "path": "/garmin-coach/erfolge"
                 },
                 {
                   "icon": "calendarStar",
@@ -871,16 +863,6 @@
                 "columns": "full"
               },
               "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der 70.3-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen."
-            },
-            {
-              "type": "heading",
-              "heading": "Meilensteine & Abzeichen",
-              "icon": "mdi:trophy-outline",
-              "heading_style": "subtitle",
-              "tap_action": {
-                "action": "navigate",
-                "navigation_path": "/garmin-coach/erfolge"
-              }
             }
           ]
         }
@@ -917,99 +899,6 @@
       "back_path": "/garmin-coach/laufen"
     },
     {
-      "title": "Erfolge",
-      "path": "erfolge",
-      "icon": "mdi:trophy-outline",
-      "type": "sections",
-      "max_columns": 3,
-      "sections": [
-        {
-          "type": "grid",
-          "cards": [
-            {
-              "type": "custom:coach-achievements"
-            }
-          ]
-        },
-        {
-          "type": "grid",
-          "cards": [
-            {
-              "type": "heading",
-              "heading": "Meilensteine abhaken",
-              "icon": "mdi:flag-checkered",
-              "heading_style": "title"
-            },
-            {
-              "type": "entities",
-              "grid_options": {
-                "columns": "full"
-              },
-              "show_header_toggle": false,
-              "entities": [
-                {
-                  "entity": "input_boolean.meilenstein_longrun_25_km",
-                  "name": "Longrun 25 km"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_longrun_30_km",
-                  "name": "Longrun 30 km"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_marathon_verpflegung_getestet",
-                  "name": "Marathon-Verpflegung im Longrun getestet"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_marathon_finish",
-                  "name": "Marathon gefinisht"
-                }
-              ],
-              "title": "Marathon"
-            },
-            {
-              "type": "entities",
-              "grid_options": {
-                "columns": "full"
-              },
-              "show_header_toggle": false,
-              "entities": [
-                {
-                  "entity": "input_boolean.meilenstein_erster_koppellauf",
-                  "name": "Erster Koppellauf"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_rad_90km",
-                  "name": "90 km am Stück"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_freiwasser_neo",
-                  "name": "Freiwasser mit Neopren"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_verpflegung_renntempo",
-                  "name": "Verpflegung im Renntempo"
-                },
-                {
-                  "entity": "input_boolean.meilenstein_formtest",
-                  "name": "Formtest"
-                }
-              ],
-              "title": "Ironman 70.3"
-            },
-            {
-              "type": "markdown",
-              "grid_options": {
-                "columns": "full"
-              },
-              "content": "<small>Tests (CSS, FTP, Lauftest, Halbmarathon) haken sich selbst ab, sobald du den Wert in den Einstellungen einträgst. Jeder Meilenstein bringt 100 XP.</small>"
-            }
-          ]
-        }
-      ],
-      "subview": true,
-      "back_path": "/garmin-coach/start"
-    },
-    {
       "title": "Einstellungen",
       "path": "einstellungen",
       "icon": "mdi:cog-outline",
@@ -1024,7 +913,7 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set z = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} %}{% set zu = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated') %}{% set g = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] %}{% set up = g | selectattr('status', 'eq', 'erhöhen') | list | count %}{% set chk = g | selectattr('status', 'eq', 'prüfen') | list | count %}**Läuft automatisch – hier musst du nichts tun**\n- ❤️ HF-Zonen: Schwelle Laufen {{ z.run.lthr if z.run else '–' }} bpm, zuletzt berechnet {{ strptime(zu, '%Y-%m-%d').strftime('%d.%m.') if zu else '–' }}\n- 🏋️ Gewichte: {{ up }} {{ 'Steigerung' if up == 1 else 'Steigerungen' }} empfohlen{{ (', ' ~ chk ~ ' zu prüfen') if chk else '' }}\n- 🎯 Wochenziel {{ states('input_number.coach_wochenziel') | int }} %{{ ' – passt sich montags an deinen Schnitt an' if is_state('input_boolean.coach_ziel_automatisch', 'on') else ' (fest eingestellt)' }}\n- 📐 Paces, Watt und Schwimmzeiten rechnen sich aus deinen Testwerten unten\n\n<small>Du stellst nur ein, was sich nicht messen lässt: Testergebnisse, Ziele und wie der Coach dich erreichen soll.</small>"
+              "content": "{% set z = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} %}{% set zu = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated') %}{% set g = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] %}{% set up = g | selectattr('status', 'eq', 'erhöhen') | list | count %}{% set chk = g | selectattr('status', 'eq', 'prüfen') | list | count %}**Läuft automatisch – hier musst du nichts tun**\n- ❤️ HF-Zonen: Schwelle Laufen {{ z.run.lthr if z.run else '–' }} bpm, zuletzt berechnet {{ strptime(zu, '%Y-%m-%d').strftime('%d.%m.') if zu else '–' }}\n- 🏋️ Gewichte: {{ up }} {{ 'Steigerung' if up == 1 else 'Steigerungen' }} empfohlen{{ (', ' ~ chk ~ ' zu prüfen') if chk else '' }}\n- 📐 Paces, Watt und Schwimmzeiten rechnen sich aus deinen Testwerten unten\n\n<small>Du stellst nur ein, was sich nicht messen lässt: Testergebnisse, Ziele und wie der Coach dich erreichen soll.</small>"
             },
             {
               "type": "heading",
@@ -1195,8 +1084,8 @@
             },
             {
               "type": "heading",
-              "heading": "Motivation",
-              "icon": "mdi:fire",
+              "heading": "Benachrichtigung",
+              "icon": "mdi:bell-outline",
               "heading_style": "subtitle"
             },
             {
@@ -1207,24 +1096,8 @@
               "show_header_toggle": false,
               "entities": [
                 {
-                  "entity": "input_number.coach_wochenziel",
-                  "name": "Wochenziel für die Serie"
-                },
-                {
-                  "entity": "input_boolean.coach_ziel_automatisch",
-                  "name": "Ziel wächst automatisch mit"
-                },
-                {
-                  "entity": "input_boolean.coach_pausenwoche",
-                  "name": "Pausenwoche (Urlaub/Krankheit)"
-                },
-                {
                   "entity": "input_boolean.coach_push_morgens",
                   "name": "Morgen-Push mit Tagesplan"
-                },
-                {
-                  "entity": "input_boolean.coach_push_erfolge",
-                  "name": "Push bei Erfolgen"
                 }
               ]
             },
@@ -1258,32 +1131,6 @@
                   "name": "Jetzt synchronisieren"
                 }
               ]
-            },
-            {
-              "type": "entities",
-              "grid_options": {
-                "columns": "full"
-              },
-              "show_header_toggle": false,
-              "entities": [
-                {
-                  "entity": "counter.coach_xp",
-                  "name": "XP"
-                },
-                {
-                  "entity": "counter.coach_serie",
-                  "name": "Wochen-Serie"
-                },
-                {
-                  "entity": "counter.coach_beste_serie",
-                  "name": "Beste Serie"
-                },
-                {
-                  "entity": "counter.coach_joker",
-                  "name": "Joker"
-                }
-              ],
-              "title": "Korrektur (nur bei Fehlern)"
             }
           ]
         }

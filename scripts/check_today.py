@@ -55,8 +55,6 @@ def make_env(today, lvl, done, gym_dates, zones_run):
         'sensor.garmin_ai_coach_garmin_krafttraining_uebungen': State('x', {'sessions': [{'date': d} for d in gym_dates]}),
         'sensor.garmin_ai_coach_garmin_herzfrequenzzonen': State('x', {'distribution': {'per_week': (
             [{'week_start': MON.isoformat(), 'run': zones_run}] if zones_run else [])}}),
-        'input_number.coach_wochenziel': State('80'),
-        'counter.coach_serie': State('2'),
     }
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(TPL_DIR), undefined=jinja2.Undefined)
     st = States(data)

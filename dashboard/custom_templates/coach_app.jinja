@@ -10,7 +10,16 @@
     „nicht heute“ mehr erscheinen und Karte und Push widersprechen sich nicht. -#}
 {%- from 'coach_plan.jinja' import coach_plan -%}
 {%- from 'coach_days.jinja' import coach_frame -%}
-{%- from 'coach_game.jinja' import quote -%}
+
+{%- macro quote(targets) -%}
+{#- Wochenquote in %: je Sportart höchstens bis zum Soll gezählt (Mehrarbeit gleicht nichts aus). -#}
+{%- set ns = namespace(d=0, n=0) -%}
+{%- for t in (targets or []) -%}
+{%- set mn = t.min | int(0) -%}
+{%- if mn > 0 -%}{%- set ns.d = ns.d + ([t.done | int(0), mn] | min) -%}{%- set ns.n = ns.n + mn -%}{%- endif -%}
+{%- endfor -%}
+{{- ((ns.d / ns.n * 100) | round(0) | int) if ns.n else 100 -}}
+{%- endmacro -%}
 
 {%- macro _done() -%}
 {%- set tg = state_attr('sensor.garmin_ai_coach_garmin_plan', 'targets') or [] -%}
@@ -185,9 +194,7 @@
 {%- for x in t.skip -%}{%- set lines.l = lines.l + ['Entfällt diese Woche: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '')] -%}{%- endfor -%}
 {%- for x in tg -%}{%- if (x.done | int(0)) < (x.min | int(0)) -%}{%- set lines.miss = lines.miss + [names.get(x.key, x.key) ~ ' ' ~ x.done ~ '/' ~ x.min] -%}{%- endif -%}{%- endfor -%}
 {%- set q = quote(tg) | int -%}
-{%- set z = states('input_number.coach_wochenziel') | int(80) -%}
-{%- set s = states('counter.coach_serie') | int(0) -%}
-{%- set lines.l = lines.l + ['Woche ' ~ q ~ ' % (Ziel ' ~ z ~ ' %)' ~ ((' · 🔥 ' ~ s) if s > 0 else '') ~ ((' · fehlt: ' ~ lines.miss | join(', ')) if (q < z and lines.miss) else '')] -%}
+{%- set lines.l = lines.l + ['Woche ' ~ q ~ ' %' ~ ((' · fehlt: ' ~ lines.miss | join(', ')) if lines.miss else '')] -%}
 {%- if t.lvl in ['locker', 'pause'] and t.advice -%}{%- set lines.l = lines.l + [t.advice] -%}{%- endif -%}
 {{- lines.l | join('\n') -}}
 {%- endmacro -%}

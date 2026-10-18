@@ -11,8 +11,10 @@
  * 1.1.1 (18.10.2026): Hinweise je Einheit kommen jetzt komplett aus coach_today() (coach_app.jinja) – die Karte
  *   rechnet nichts mehr nach. Am letzten Tag der Woche kein „nicht heute“ mehr: Was nicht mehr geht, steht unter
  *   „Fällt diese Woche aus“; Überschrift „Heute noch möglich“ statt „Diese Woche noch offen“.
+ * 1.2.0 (18.10.2026): Gamification entfernt (Level/XP, Serie, Joker, Abzeichen, Meilensteine, Wochenziel).
+ *   coach-week zeigt nur noch die erledigten Pflichteinheiten der Woche.
  */
-const CC_VERSION = '1.1.1';
+const CC_VERSION = '1.2.0';
 const ICONS = {};
 
 const E = {
@@ -27,19 +29,7 @@ const E = {
   coach: 'sensor.garmin_ai_coach_garmin_coach_status',
   sync: 'sensor.garmin_ai_coach_garmin_sync_status',
   last: 'sensor.garmin_ai_coach_garmin_last_sync',
-  xp: 'counter.coach_xp',
-  streak: 'counter.coach_serie',
-  best: 'counter.coach_beste_serie',
-  joker: 'counter.coach_joker',
-  perfect: 'counter.coach_perfekte_wochen',
-  records: 'counter.coach_rekorde',
-  goal: 'input_number.coach_wochenziel',
-  hist: 'input_text.coach_wochenhistorie',
-  log: 'input_text.coach_xp_log',
-  pause: 'input_boolean.coach_pausenwoche',
-  goalAuto: 'input_boolean.coach_ziel_automatisch',
   report: 'sensor.garmin_ai_coach_garmin_wochenreport',
-  quote: 'sensor.coach_wochenquote',
   zones: 'sensor.garmin_ai_coach_garmin_herzfrequenzzonen',
   gym: 'sensor.garmin_ai_coach_garmin_gym_progression',
   strength: 'sensor.garmin_ai_coach_garmin_krafttraining_uebungen',
@@ -57,21 +47,6 @@ const PALETTE = {
   light: { swim: '#2a78d6', bike: '#eb6834', run: '#1baf7a', strength: '#eda100', good: '#0ca30c', warn: '#fab219', serious: '#ec835a', critical: '#d03b3b', goodText: '#006300', track: 'rgba(11,11,11,0.08)', grid: '#e1e0d9', band: 'rgba(12,163,12,0.10)', neutral: '#898781' },
   dark: { swim: '#3987e5', bike: '#d95926', run: '#199e70', strength: '#c98500', good: '#0ca30c', warn: '#fab219', serious: '#ec835a', critical: '#d03b3b', goodText: '#0ca30c', track: 'rgba(255,255,255,0.10)', grid: '#2c2c2a', band: 'rgba(12,163,12,0.16)', neutral: '#898781' },
 };
-const MILESTONES = [
-  { id: 'css_test', t: 'CSS-Test', g: 'Tests', i: 'swim' },
-  { id: 'ftp_test', t: 'FTP-Test', g: 'Tests', i: 'bike' },
-  { id: 'lauftest_30_min', t: '30-min-Lauftest', g: 'Tests', i: 'run' },
-  { id: 'halbmarathon_test', t: 'Halbmarathon-Test', g: 'Tests', i: 'timerOutline' },
-  { id: 'longrun_25_km', t: 'Longrun 25 km', g: 'Marathon', i: 'roadVariant' },
-  { id: 'longrun_30_km', t: 'Longrun 30 km', g: 'Marathon', i: 'roadVariant' },
-  { id: 'marathon_verpflegung_getestet', t: 'Verpflegung getestet', g: 'Marathon', i: 'foodApple' },
-  { id: 'marathon_finish', t: 'Marathon-Finisher', g: 'Marathon', i: 'medal' },
-  { id: 'erster_koppellauf', t: 'Erster Koppellauf', g: 'Ironman 70.3', i: 'run' },
-  { id: 'rad_90km', t: '90 km am Stück', g: 'Ironman 70.3', i: 'bike' },
-  { id: 'freiwasser_neo', t: 'Freiwasser mit Neo', g: 'Ironman 70.3', i: 'water' },
-  { id: 'verpflegung_renntempo', t: 'Verpflegung im Renntempo', g: 'Ironman 70.3', i: 'foodApple' },
-  { id: 'formtest', t: 'Formtest', g: 'Ironman 70.3', i: 'flagCheckered' },
-];
 
 /* ---------- Helfer ---------- */
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -86,9 +61,6 @@ const fmtNum = (v, d = 0) => (v == null ? '–' : Number(v).toLocaleString('de-D
 const fmtMMSS = (s) => { if (s == null) return '–'; const t = Math.round(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const fmtVal = (v, fmt, d) => (fmt === 'mmss' ? fmtMMSS(v) : fmtNum(v, d ?? 0));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const levelOf = (xp) => Math.floor((1 + Math.sqrt(1 + (4 * Math.max(0, xp)) / 25)) / 2);
-const levelXp = (l) => 25 * l * (l - 1);
-const tierOf = (l) => (l >= 15 ? 'Platin' : l >= 10 ? 'Gold' : l >= 5 ? 'Silber' : 'Bronze');
 const ddmm = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
 const mondayOf = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 
@@ -210,7 +182,7 @@ class CoachBase extends HTMLElement {
 
 /* ================= Hero: Heute ================= */
 class CoachHero extends CoachBase {
-  _entities() { return [E.rec, E.ready, E.hrv, E.sleep, E.sleepScore, E.rhr, E.note, E.coach, E.streak, E.plan, E.sync, E.last, E.report]; }
+  _entities() { return [E.rec, E.ready, E.hrv, E.sleep, E.sleepScore, E.rhr, E.note, E.coach, E.plan, E.sync, E.last, E.report]; }
   _templates() { return { today: "{% from 'coach_app.jinja' import coach_today %}{{ coach_today() }}" }; }
   _css() {
     return `.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}
@@ -271,7 +243,6 @@ class CoachHero extends CoachBase {
     const lastSync = this._st(E.last)?.state; const age = lastSync ? (Date.now() - new Date(lastSync).getTime()) / 36e5 : null;
 
     const nt = t.next_test; const ntDays = nt ? Math.round((new Date(nt.w) - mondayOf(new Date())) / 864e5) : null;
-    const streak = this._num(E.streak) || 0;
 
     return `<div class="card">
       <div class="top">
@@ -279,7 +250,6 @@ class CoachHero extends CoachBase {
           <div class="eyebrow">${esc(t.wd || '')} ${esc(t.date || '')}${t.ph ? ` · ${esc(t.ph)}` : ''}${t.wi ? ` · Woche ${t.wi}/${t.wn}` : ''}</div>
         </div>
         <div class="row" style="gap:6px;flex-wrap:wrap">
-          ${streak > 0 ? `<span class="chip tap" data-nav="/garmin-coach/erfolge" style="color:${c.serious}">${icon('fire', 14)}${streak}</span>` : ''}
           ${t.dm >= 0 ? `<span class="chip tap" title="Tage bis zum Marathon" data-nav="/garmin-coach/marathon">${icon('run', 14)}${t.dm} Tage</span>` : ''}
           ${t.dr >= 0 ? `<span class="chip tap" title="Tage bis zum Ironman 70.3" data-nav="/garmin-coach/saison">${icon('flagCheckered', 14)}${t.dr} Tage</span>` : ''}
         </div>
@@ -328,7 +298,7 @@ class CoachHero extends CoachBase {
 
 /* ================= Woche: Ringe ================= */
 class CoachWeek extends CoachBase {
-  _entities() { return [E.plan, E.goal, E.streak, E.pause]; }
+  _entities() { return [E.plan]; }
   _templates() { return this._config?.mode === 'full' ? { week: "{% from 'coach_app.jinja' import coach_week %}{{ coach_week() }}" } : {}; }
   _css() {
     return `.rings{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px}
@@ -350,10 +320,8 @@ class CoachWeek extends CoachBase {
     SPORT_ORDER.forEach((k) => { const t = by[k]; if (!t) return; const mn = +t.min || 0; if (mn > 0) { d += Math.min(sameWeek ? +t.done || 0 : 0, mn); n += mn; } });
     const pct = n ? Math.round((d / n) * 100) : null;
     if (pct == null) return `<div class="card"><div class="eyebrow">Diese Woche</div><div class="small muted" style="margin-top:6px">Noch kein Wochenplan vom Add-on – erscheint nach dem nächsten Sync.</div></div>`;
-    const goal = this._num(E.goal) ?? 80;
     const left = 6 - ((new Date().getDay() + 6) % 7);
-    const pause = this._st(E.pause)?.state === 'on';
-    const kind = pct >= 100 ? 'good' : pct >= goal ? 'good' : 'neutral';
+    const kind = pct >= 100 ? 'good' : 'neutral';
     const full = this._config?.mode === 'full';
     const w = this._tpl.week || {};
 
@@ -368,10 +336,10 @@ class CoachWeek extends CoachBase {
     const header = `<div class="row between">
         <div><div class="eyebrow">Diese Woche${w.range ? ` · ${esc(w.range)}` : ''}</div>
           <div class="row" style="gap:8px;margin-top:4px"><span class="big" style="color:${kind === 'good' ? c.goodText : 'inherit'}">${pct} %</span>
-          <span class="small muted">${pct >= goal ? (pct >= 100 ? 'Woche komplett' : 'Wochenziel erreicht') : `Ziel ${goal} %`}</span></div></div>
-        <div class="small muted" style="text-align:right">${left > 0 ? `noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : 'letzter Tag'}${pause ? '<br>Pausenwoche' : ''}</div>
+          <span class="small muted">${pct >= 100 ? 'Woche komplett' : `${d} von ${n} Einheiten`}</span></div></div>
+        <div class="small muted" style="text-align:right">${left > 0 ? `noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : 'letzter Tag'}</div>
       </div>
-      <div class="bar" style="margin-top:10px"><i style="width:${clamp(pct, 0, 100)}%;background:${pct >= goal ? c.good : c.swim}"></i><span class="marker" style="left:calc(${goal}% - 1px)"></span></div>`;
+      <div class="bar" style="margin-top:10px"><i style="width:${clamp(pct, 0, 100)}%;background:${pct >= 100 ? c.good : c.swim}"></i></div>`;
 
     let body = `<div class="rings">${rings}</div>`;
     if (full && w.ok) {
@@ -392,132 +360,6 @@ class CoachWeek extends CoachBase {
       body += `<div class="small muted" style="margin-top:10px;text-align:center">Details und Plan im Reiter „Woche“</div>`;
     }
     return `<div class="card ${full ? '' : 'tap'}" ${full ? '' : 'data-nav="/garmin-coach/woche"'}>${header}${body}</div>`;
-  }
-}
-
-/* ================= Gamification: kompakt ================= */
-function badgeList(card) {
-  const n = (id) => card._num(id) || 0;
-  const on = (id) => card._st(`input_boolean.meilenstein_${id}`)?.state === 'on';
-  const lvl = levelOf(n(E.xp));
-  const best = n(E.best); const perf = n(E.perfect); const rec = n(E.records);
-  const tiers = [
-    ...[4, 8, 12, 26].map((k) => ({ id: `s${k}`, t: `${k} Wochen Serie`, g: 'Konstanz', i: 'fire', have: best, need: k })),
-    ...[1, 5, 10].map((k) => ({ id: `p${k}`, t: k === 1 ? 'Erste perfekte Woche' : `${k} perfekte Wochen`, g: 'Konstanz', i: 'checkCircle', have: perf, need: k })),
-    ...[1, 10, 25].map((k) => ({ id: `r${k}`, t: k === 1 ? 'Erster Bestwert' : `${k} Bestwerte`, g: 'Fortschritt', i: 'trendingUp', have: rec, need: k })),
-    ...[5, 10, 15].map((k) => ({ id: `l${k}`, t: `Level ${k} · ${tierOf(k)}`, g: 'Fortschritt', i: 'star', have: lvl, need: k })),
-  ].map((b) => ({ ...b, ok: b.have >= b.need, prog: clamp(b.have / b.need, 0, 1) }));
-  const ms = MILESTONES.map((m) => ({ id: m.id, t: m.t, g: m.g, i: m.i, ok: on(m.id), prog: on(m.id) ? 1 : 0, manual: true }));
-  return [...tiers, ...ms];
-}
-
-class CoachLevel extends CoachBase {
-  _entities() { return [E.xp, E.streak, E.best, E.joker, E.perfect, E.records, E.log, ...MILESTONES.map((m) => `input_boolean.meilenstein_${m.id}`)]; }
-  _css() { return `.grid3{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center}
-    .lvl{display:flex;align-items:baseline;gap:6px}
-    .stat{display:flex;align-items:center;gap:6px;font-size:13px}
-    .stat .ic{width:18px;height:18px}`; }
-  _render() {
-    const c = this._c();
-    const xp = this._num(E.xp) || 0; const lvl = levelOf(xp); const a = levelXp(lvl); const b = levelXp(lvl + 1);
-    const streak = this._num(E.streak) || 0; const joker = this._num(E.joker) || 0;
-    const badges = badgeList(this);
-    const got = badges.filter((x) => x.ok).length;
-    const next = ['s', 'p', 'r', 'l'].map((f) => badges.find((x) => !x.ok && !x.manual && x.id.startsWith(f) && /\d/.test(x.id[1]))).filter(Boolean).sort((x, y) => y.prog - x.prog)[0];
-    const lastLog = (this._st(E.log)?.state || '').split('|')[0];
-    return `<div class="card tap" data-nav="/garmin-coach/erfolge">
-      <div class="grid3">
-        ${this._ring(((xp - a) / (b - a)) * 100, c.strength, 64, 7, `<div style="line-height:1"><div style="font-size:20px;font-weight:700">${lvl}</div><div class="small muted" style="font-size:10px">LEVEL</div></div>`)}
-        <div>
-          <div class="row between"><b>${tierOf(lvl)}</b><span class="small muted">${fmtNum(xp)} / ${fmtNum(b)} XP</span></div>
-          <div class="row" style="gap:14px;margin-top:8px;flex-wrap:wrap">
-            <span class="stat" style="color:${streak > 0 ? c.serious : 'var(--secondary-text-color)'}">${icon('fire')}<b style="color:var(--primary-text-color)">${streak}</b><span class="muted">Wo. Serie</span></span>
-            <span class="stat muted">${icon('shieldCheck')}<b style="color:var(--primary-text-color)">${joker}</b> Joker</span>
-            <span class="stat muted">${icon('medal')}<b style="color:var(--primary-text-color)">${got}/${badges.length}</b> Abzeichen</span>
-          </div>
-        </div>
-      </div>
-      ${next ? `<div class="small muted" style="margin-top:12px">Nächstes Abzeichen: <b style="color:var(--primary-text-color)">${esc(next.t)}</b> (${next.have}/${next.need})</div>` : ''}
-      ${lastLog ? `<div class="small muted" style="margin-top:4px">Zuletzt: ${esc(lastLog)}</div>` : ''}
-    </div>`;
-  }
-}
-
-/* ================= Gamification: Erfolge (voll) ================= */
-class CoachAchievements extends CoachBase {
-  _entities() { return [E.xp, E.streak, E.best, E.joker, E.perfect, E.records, E.log, E.hist, E.goal, E.quote, E.pause, ...MILESTONES.map((m) => `input_boolean.meilenstein_${m.id}`)]; }
-  _css() { return `.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-    .st{background:var(--cc-track);border-radius:12px;padding:10px;text-align:center}
-    .st b{display:block;font-size:22px;font-weight:650}
-    .st span{font-size:11px;color:var(--secondary-text-color)}
-    .hist{display:flex;align-items:flex-end;justify-content:flex-end;gap:4px;height:84px;margin-top:10px;position:relative}
-    .hist .b{flex:1;max-width:22px;border-radius:4px 4px 2px 2px;min-height:3px;position:relative}
-    .hist .goal{position:absolute;left:0;right:0;border-top:1px solid var(--primary-text-color);opacity:.4}
-    .badges{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
-    .bd{display:flex;flex-direction:column;align-items:center;text-align:center;gap:5px;padding:8px 4px;border-radius:12px;background:var(--cc-track);font-size:10.5px;line-height:1.2}
-    .bd .ico{width:34px;height:34px;border-radius:50%;display:grid;place-items:center}
-    .bd.off{opacity:.55}
-    .bd .pb{width:70%;height:4px;border-radius:2px;background:var(--divider-color,rgba(127,127,127,.25));overflow:hidden}
-    .bd .pb i{display:block;height:100%}
-    .log div{padding:6px 0;border-top:1px solid var(--divider-color,var(--cc-track));font-size:13px}`; }
-  _render() {
-    const c = this._c();
-    const xp = this._num(E.xp) || 0; const lvl = levelOf(xp); const a = levelXp(lvl); const b = levelXp(lvl + 1);
-    const goal = this._num(E.goal) ?? 80;
-    const hist = (this._st(E.hist)?.state || '').split(',').map((s) => s.trim()).filter((s) => s && s !== 'unknown').slice(0, 12).reverse();
-    const cur = this._num(E.quote);
-    const colorFor = (v) => (v >= goal ? c.good : v >= 50 ? c.warn : c.serious);
-    const bars = hist.map((h) => {
-      if (h === 'p') return `<div class="b" title="Pausenwoche" style="height:12%;background:${c.neutral};opacity:.5"></div>`;
-      const v = parseInt(h, 10) || 0; const j = h.endsWith('j');
-      return `<div class="b" title="${v} %${j ? ' (Joker)' : ''}" style="height:${clamp(v, 3, 100)}%;background:${colorFor(v)}${j ? ';opacity:.6' : ''}"></div>`;
-    });
-    if (cur != null) bars.push(`<div class="b" title="laufende Woche ${cur} %" style="height:${clamp(cur, 3, 100)}%;background:${c.swim};opacity:.55"></div>`);
-    const badges = badgeList(this);
-    const groups = ['Konstanz', 'Fortschritt', 'Tests', 'Marathon', 'Ironman 70.3'];
-    const log = (this._st(E.log)?.state || '').split('|').filter((s) => s && s !== 'unknown');
-    const showAllLog = this._open.has('log');
-    return `<div class="card">
-      <div class="row" style="gap:14px">
-        ${this._ring(((xp - a) / (b - a)) * 100, c.strength, 84, 9, `<div style="line-height:1"><div style="font-size:28px;font-weight:700">${lvl}</div><div class="small muted" style="font-size:10px">LEVEL</div></div>`)}
-        <div style="flex:1"><div style="font-size:18px;font-weight:650">${tierOf(lvl)}</div>
-          <div class="small muted">${fmtNum(xp)} XP · noch ${fmtNum(b - xp)} bis Level ${lvl + 1}</div>
-          <div class="bar" style="margin-top:8px"><i style="width:${clamp(((xp - a) / (b - a)) * 100, 0, 100)}%;background:${c.strength}"></i></div></div>
-      </div>
-      <div class="stats">
-        <div class="st"><b style="color:${(this._num(E.streak) || 0) > 0 ? c.serious : 'inherit'}">${this._num(E.streak) || 0}</b><span>Wochen-Serie</span></div>
-        <div class="st"><b>${this._num(E.best) || 0}</b><span>Beste Serie</span></div>
-        <div class="st"><b>${this._num(E.joker) || 0}<span style="font-size:13px">/2</span></b><span>Joker</span></div>
-      </div>
-      <div class="hr"></div>
-      <div class="row between"><div class="eyebrow">Wochenquote${hist.length ? `, letzte ${hist.length} ${hist.length === 1 ? 'Woche' : 'Wochen'}` : ''}</div><div class="small muted">Ziel ${goal} %${this._st(E.goalAuto)?.state === 'on' ? ' · passt sich an' : ''}</div></div>
-      ${hist.length ? `<div class="hist"><div class="goal" style="bottom:${goal}%"></div>${bars.join('')}</div>
-        <div class="row between small muted" style="margin-top:4px"><span>ältere</span><span>laufende Woche</span></div>` : `<div class="row" style="gap:10px;margin-top:8px"><div class="bar" style="flex:1"><i style="width:${clamp(cur ?? 0, 0, 100)}%;background:${(cur ?? 0) >= goal ? c.good : c.swim}"></i><span class="marker" style="left:calc(${goal}% - 1px)"></span></div><b>${cur ?? 0} %</b></div><div class="small muted" style="margin-top:6px">Laufende Woche. Gewertet wird am Montag beim ersten Sync – ab dann wächst hier dein Verlauf.</div>`}
-      <div class="hr"></div>
-      ${(() => {
-        const got = badges.filter((x) => x.ok); const next = ['s', 'p', 'r', 'l'].map((f) => badges.find((x) => !x.ok && !x.manual && x.id.startsWith(f) && /\d/.test(x.id[1]))).filter(Boolean);
-        const tile = (x) => `<div class="bd ${x.ok ? '' : 'off'}"><div class="ico" style="background:${x.ok ? c.strength : 'transparent'};color:${x.ok ? '#1a1a19' : 'var(--secondary-text-color)'};${x.ok ? '' : 'border:2px dashed var(--secondary-text-color)'}">${icon(x.ok ? x.i : (x.manual ? 'lock' : x.i), 18)}</div><div>${esc(x.t)}</div>${!x.ok && !x.manual ? `<div class="pb"><i style="width:${Math.round(x.prog * 100)}%;background:${c.strength}"></i></div>` : ''}</div>`;
-        const all = this._open.has('badges');
-        return `<div class="row between"><div class="eyebrow">Abzeichen · ${got.length}/${badges.length}</div></div>
-          ${got.length ? `<div class="badges">${got.map(tile).join('')}</div>` : ''}
-          <div class="eyebrow" style="margin-top:12px">Als Nächstes</div><div class="badges">${next.map(tile).join('')}</div>
-          <button class="link" data-toggle="badges" style="margin-top:10px">${all ? 'weniger' : `alle ${badges.length} Abzeichen anzeigen`}</button>
-          ${all ? groups.map((g) => { const list = badges.filter((x) => x.g === g); return `<div class="eyebrow" style="margin-top:12px">${g} · ${list.filter((x) => x.ok).length}/${list.length}</div><div class="badges">${list.map(tile).join('')}</div>`; }).join('') : ''}`;
-      })()}
-      <div class="hr"></div>
-      <div class="eyebrow">Letzte Punkte</div>
-      <div class="log">${(showAllLog ? log : log.slice(0, 3)).map((l) => `<div>${esc(l)}</div>`).join('') || '<div class="muted">Noch keine Punkte.</div>'}</div>
-      ${log.length > 3 ? `<button class="link" data-toggle="log">${showAllLog ? 'weniger' : `alle ${log.length} anzeigen`}</button>` : ''}
-      <div class="hr"></div>
-      <div class="tap" data-toggle="rules"><div class="row between"><span class="eyebrow">So funktioniert's</span><span class="muted">${icon(this._open.has('rules') ? 'chevronDown' : 'chevronRight', 18)}</span></div>
-      ${this._open.has('rules') ? `<div class="details" style="line-height:1.55">
-        <b>Serie:</b> Eine Woche zählt, wenn du mindestens ${goal} % deiner geplanten Einheiten schaffst (je Sportart höchstens bis zum Soll, Mehrarbeit gleicht nichts aus). Gewertet wird beim ersten Sync am Montag.<br>
-        <b>Ziel wächst mit:</b> Ist „Ziel automatisch“ an, setzt der Coach das Wochenziel jeden Montag auf deinen üblichen Wert der letzten 6 Wochen plus 5 Punkte (70–90 %). So bleibt die Serie fordernd, aber erreichbar.<br>
-        <b>Joker:</b> Je 4 geschaffte Wochen gibt es einen Joker (max. 2). Er rettet die Serie automatisch in einer Woche, die das Ziel verfehlt. Für Urlaub oder Krankheit: „Pausenwoche“ in den Einstellungen – die Woche zählt dann weder für noch gegen dich.<br>
-        <b>XP:</b> +10 je geplanter Einheit (bis zum Plan-Maximum) · +30 Woche geschafft · +50 perfekte Woche · +50 Test eingetragen · +30 Bestwert (CSS, FTP, Schwelle, VO2max) · +15 je Gewichtssteigerung im Gym · +100 Meilenstein (Marathon-Finish +300).<br>
-        <b>Level:</b> Level L ab 25 × L × (L − 1) XP. Bronze 1–4, Silber 5–9, Gold 10–14, Platin ab 15.<br>
-        Bewusst ohne Punkte: Zusatzumfang über den Plan hinaus. Erholung bleibt Teil des Trainings.</div>` : ''}</div>
-    </div>`;
   }
 }
 
@@ -933,8 +775,6 @@ class CoachMetrics extends CoachBase {
 const defs = [
   ['coach-hero', CoachHero, 'Coach: Heute'],
   ['coach-week', CoachWeek, 'Coach: Woche'],
-  ['coach-level', CoachLevel, 'Coach: Level & Serie'],
-  ['coach-achievements', CoachAchievements, 'Coach: Erfolge'],
   ['coach-trend', CoachTrend, 'Coach: Trend'],
   ['coach-zones', CoachZones, 'Coach: Intensität'],
   ['coach-gym', CoachGym, 'Coach: Gym'],
