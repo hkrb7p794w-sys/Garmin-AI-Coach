@@ -12,6 +12,15 @@
           "type": "grid",
           "cards": [
             {
+              "type": "custom:fit-daisy",
+              "name": "Jana"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
               "type": "custom:fit-hero",
               "week_path": "woche",
               "weight_path": "gewicht",
