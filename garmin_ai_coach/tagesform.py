@@ -42,7 +42,7 @@ import progress
 
 DATA_DIR = "/data"
 CACHE_FILE = os.path.join(DATA_DIR, "session_eval.json")
-CACHE_SCHEMA = 2  # 2: Sweet-Spot-Erkennung, Backfill (0.24.2)
+CACHE_SCHEMA = 3  # 3: Z3-Regel nur noch fürs Rad (0.24.3)
 CACHE_KEEP_DAYS = 180
 
 BASELINE_DAYS = 60
@@ -63,10 +63,20 @@ LOW_RPE = 6                   # RPE <= 6 bei harter Einheit = Reserve vorhanden
 MIN_DURATION_MIN = 15
 
 HARD_HIGH_ZONE_SHARE = 0.15   # >= 15 % Zeit in Zone 4-5 zählt als harte Einheit
-HARD_MID_ZONE_SHARE = 0.35    # ... oder >= 35 % in Zone 3-5 (Sweet Spot, Tempo)
+HARD_MID_ZONE_SHARE = 0.35    # Rad: auch >= 35 % in Zone 3-5 (Sweet Spot). Nicht beim
+                              # Laufen: Z3 kommt dort auch in lockeren Läufen vor.
 HARD_NAME_KEYWORDS = ("intervall", "interval", "schwelle", "threshold", "tempo",
                       "vo2", "sprint", "test", "css", "ftp", "rennen", "race",
                       "sweet", "over-under", "overunder", "ramp")
+# Harte Einheiten nur mit gleichartigen vergleichen: Der Schnitt eines 4x4-min-
+# VO2max-Laufs (mit Trabpausen) ist nicht mit einem 3x2-km-Schwellenlauf
+# vergleichbar (live gesehen in 0.24.1: -13 % für "4x4min VO2max" gegen
+# Schwellenläufe). Reihenfolge = Priorität.
+HARD_KINDS = (
+    ("test", ("test", "ramp", "ftp")),
+    ("vo2", ("vo2", "4x4", "sprint", "intervall", "interval")),
+    ("schwelle", ("schwelle", "threshold", "tempo", "sweet", "over-under", "overunder", "css")),
+)
 BACKFILL_START, BACKFILL_LIMIT = 50, 100  # einmalig ältere Aktivitäten als Vergleichsbasis
 EASY_MAX_HIGH_ZONE_SHARE = decoupling.MAX_HIGH_ZONE_SHARE  # 10 %
 
@@ -234,8 +244,23 @@ def _is_hard(act: dict, sport: str) -> bool:
     share = decoupling.high_zone_share(act)
     if share is not None and share >= HARD_HIGH_ZONE_SHARE:
         return True
+    if sport != "ride":
+        return False
     z = decoupling.zone_seconds(act)
     return bool(z) and (z[2] + z[3] + z[4]) / sum(z) >= HARD_MID_ZONE_SHARE
+
+
+def _kind(entry: dict) -> str:
+    """Vergleichsgruppe innerhalb von Sport + hart/locker."""
+    if not entry.get("hard"):
+        return "locker"
+    if entry.get("sport") == "strength":
+        return "gym"
+    name = (entry.get("name") or "").lower()
+    for kind, words in HARD_KINDS:
+        if any(w in name for w in words):
+            return kind
+    return "hart"
 
 
 def _extract(act: dict, sport: str) -> dict:
@@ -477,7 +502,8 @@ def evaluate(cache: dict, history: list, strength_sessions: list, today: datetim
             continue
         sport, hard = e.get("sport"), bool(e.get("hard"))
         form = day_form(e["date"], history)
-        same = [p for p in entries[:i] if p.get("sport") == sport and bool(p.get("hard")) == hard][-COMPARE_N:]
+        kind = _kind(e)
+        same = [p for p in entries[:i] if p.get("sport") == sport and _kind(p) == kind][-COMPARE_N:]
         if sport == "strength":
             perf_pct, band, n_cmp = _gym_relative(e["date"], strength_sessions)
             ef_pct = None
@@ -497,7 +523,7 @@ def evaluate(cache: dict, history: list, strength_sessions: list, today: datetim
                 verdict = "locker gehalten – Zurückhaltung ist hier richtig"
         sessions.append({
             "date": e["date"], "name": e.get("name"), "sport": SPORT_DE.get(sport, sport),
-            "intent": "hart" if hard else "locker", "duration_min": e.get("duration_min"),
+            "intent": "hart" if hard else "locker", "kind": kind, "duration_min": e.get("duration_min"),
             "form": FORM_DE.get(form["level"]) if form["level"] else "ohne Baseline",
             "form_level": form["level"], "form_reasons": form["reasons"],
             "perf_pct": perf_pct, "perf_band_pct": band, "perf": PERF_DE.get(perf) if perf else None,

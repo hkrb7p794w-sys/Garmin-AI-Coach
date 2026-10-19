@@ -28,6 +28,11 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.24.3
+
+- Tagesform-Leistung: harte Einheiten werden nur noch mit gleichartigen verglichen (Test, VO2max/Intervalle, Schwelle/Tempo/Sweet Spot, sonstige harte). Vorher stand der Schnitt eines 4x4-min-VO2max-Laufs mit Trabpausen gegen Schwellenläufe (−13 %), was nichts über die Tagesleistung sagt.
+- Die Zone-3-Regel für „hart“ gilt nur noch fürs Rad; beim Laufen kommt Zone 3 auch in lockeren Läufen vor.
+
 ### 0.24.2
 
 - Tagesform-Leistung nach dem ersten echten Sync nachgeschärft:
