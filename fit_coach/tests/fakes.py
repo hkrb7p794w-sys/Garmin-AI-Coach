@@ -219,12 +219,19 @@ class FakeYazioHTTP:
             import json as _j
             body = _j.loads(body)
         self.calls.append(("POST", url, body.get("grant_type")))
+        # Stand 10/2026: nur v22 + aktueller App-Client + App-User-Agent, sonst leeres 400
+        ua = (headers or {}).get("User-Agent", "")
+        if (not url.endswith("/v22/oauth/token") or not str(body.get("client_id", "")).startswith("3_")
+                or not ua.startswith("YAZIO/26")):
+            return FakeResponse(400, None, text="")
         if body.get("grant_type") == "password" and body.get("password") != self.password:
             return FakeResponse(400, {"error": "invalid_grant"})
         return FakeResponse(200, {"access_token": "AT", "refresh_token": "RT", "expires_in": 172800, "token_type": "bearer"})
 
     def get(self, url, params=None, headers=None, timeout=None):
         self.calls.append(("GET", url, (params or {}).get("date")))
+        if "/v20/" not in url or (headers or {}).get("Authorization") != "Bearer AT":
+            return FakeResponse(401)
         d = datetime.date.fromisoformat(params["date"])
         if url.endswith("/user/widgets/daily-summary"):
             return FakeResponse(200, yazio_summary(d))

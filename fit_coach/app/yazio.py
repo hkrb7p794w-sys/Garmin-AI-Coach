@@ -1,7 +1,7 @@
 """Inoffizieller Yazio-Client (Yazio hat keine öffentliche API).
 
-Grundlage: das gepflegte Open-Source-Projekt juriadams/yazio (Stand 10/2026,
-API v20) und die Dokumentation saganos/yazio_public_api (API v15). Login per
+Grundlage: die Open-Source-Projekte juriadams/yazio bzw. der Fork dimensi/yazio
+(Stand 10/2026: Login über API v22, Abfragen über v20). Login per
 OAuth2 „password“-Grant mit dem Client der Yazio-App; danach wird nur das
 Token-Paar gespeichert (Datei mit Rechten 0600 in /data), nie das Passwort.
 Läuft das Access-Token ab (ca. 48 h), wird es mit dem Refresh-Token erneuert.
@@ -13,18 +13,35 @@ Hinweise:
   Abfrage ist deshalb einzeln abgesichert; ein Fehler legt nur den Yazio-Teil
   lahm, nie den Garmin-Sync.
 """
+import os
 import time
 import datetime
 import requests
 
 import store
 
-BASES = ("https://yzapi.yazio.com/v20", "https://yzapi.yazio.com/v15")  # für Abfragen mit gespeichertem Token
-CLIENT_ID = "1_4hiybetvfksgw40o0sog4s884kwc840wwso8go4k8c04goo4c"
-CLIENT_SECRET = "6rok2m65xuskgkgogw40wkkk8sw0osg84s8cggsc4woos4s8o"
+DATA_BASE = "https://yzapi.yazio.com/v20"  # Abfragen (Tagesübersicht, Gewicht, Ziele)
 TOKEN_FILE = "yazio_token.json"
 TIMEOUT = 20
-HEADERS = {"Accept": "application/json", "User-Agent": "YAZIO/12 (Fit Coach Home Assistant)"}
+
+# Seit 10/2026 nimmt Yazio die Anmeldung nur noch über /v22/oauth/token mit dem
+# OAuth-Client der aktuellen App an, und unbekannte User-Agents werden abgewiesen
+# („version_blocked“, oft nur als leeres HTTP 400). Werte wie im gepflegten Fork
+# dimensi/yazio (PR #1 „update mobile authentication“). Der alte Client bleibt als
+# Rückfall für ältere API-Stände.
+USER_AGENT = os.environ.get(
+    "YAZIO_USER_AGENT", "YAZIO/26.30.1 (com.yazio.ios.YAZIO; build:2607271240; iOS 27.0.0) Ktor")
+HEADERS = {"Accept": "application/json", "User-Agent": USER_AGENT}
+
+CLIENTS = {
+    "app2026": ("https://yzapi.yazio.com/v22/oauth/token",
+                "3_5rbw4kehpugw8ogsc8ck8oo4ogswgckcskc04gcg8kk8k48ssw",
+                "25gdtt1hvdi8gwowoww4oo88sgsw0oo04o0og0kkgwwks8k0k"),
+    "legacy": ("https://yzapi.yazio.com/v20/oauth/token",
+               "1_4hiybetvfksgw40o0sog4s884kwc840wwso8go4k8c04goo4c",
+               "6rok2m65xuskgkgogw40wkkk8sw0osg84s8cggsc4woos4s8o"),
+}
+ORDER = ("app2026", "legacy")
 
 
 class YazioError(Exception):
@@ -38,17 +55,6 @@ class YazioAuthError(YazioError):
 def is_connected() -> bool:
     tok = store.load(TOKEN_FILE, {})
     return bool(tok.get("refresh_token") or tok.get("access_token"))
-
-
-# Varianten der Token-Anfrage, wichtigste zuerst. Variante 1 entspricht exakt dem
-# gepflegten Projekt juriadams/yazio (JSON-Text ohne eigenen Content-Type und ohne
-# eigenen User-Agent), die anderen fangen ältere API-Stände ab.
-ATTEMPTS = (
-    ("v20", "json-text"),
-    ("v20", "json"),
-    ("v20", "form"),
-    ("v15", "form"),
-)
 
 
 def _redact(text: str) -> str:
@@ -68,26 +74,21 @@ def _describe(r) -> str:
     return _redact(r.text)
 
 
-def _post_token(payload: dict) -> dict:
-    """Probiert die Varianten nacheinander und protokolliert jede Antwort (ohne
-    Passwort). Falsche Zugangsdaten (invalid_grant / 401) brechen sofort ab – kein
-    mehrfaches Probieren mit demselben falschen Passwort."""
-    import json as _json
+def _post_token(fields: dict, clients=ORDER) -> dict:
+    """Token holen; probiert die Clients nacheinander und protokolliert jede Antwort
+    (ohne Passwort). Falsche Zugangsdaten (invalid_grant / 401) brechen sofort ab –
+    kein mehrfaches Probieren mit demselben falschen Passwort."""
     seen = []
-    grant = payload.get("grant_type")
-    for ver, mode in ATTEMPTS:
-        url = f"https://yzapi.yazio.com/{ver}/oauth/token"
+    grant = fields.get("grant_type")
+    for name in clients:
+        url, cid, secret = CLIENTS[name]
+        payload = {"client_id": cid, "client_secret": secret, **fields}
         try:
-            if mode == "json-text":
-                r = requests.post(url, data=_json.dumps(payload).encode(), timeout=TIMEOUT,
-                                  headers={"Content-Type": "text/plain;charset=UTF-8", "Accept": "*/*"})
-            elif mode == "json":
-                r = requests.post(url, json=payload, headers=HEADERS, timeout=TIMEOUT)
-            else:
-                r = requests.post(url, data=payload, headers=HEADERS, timeout=TIMEOUT)
+            r = requests.post(url, json=payload, timeout=TIMEOUT,
+                              headers=dict(HEADERS, **{"Content-Type": "application/json"}))
         except requests.RequestException as e:
-            print(f"[yazio] {grant} {ver}/{mode}: nicht erreichbar ({e})", flush=True)
-            seen.append(f"{ver}/{mode}: nicht erreichbar")
+            print(f"[yazio] {grant} {name}: nicht erreichbar ({e})", flush=True)
+            seen.append(f"{name}: nicht erreichbar")
             continue
         if r.status_code == 200:
             try:
@@ -95,27 +96,28 @@ def _post_token(payload: dict) -> dict:
             except ValueError:
                 data = {}
             if data.get("access_token"):
-                print(f"[yazio] {grant} {ver}/{mode}: ok", flush=True)
-                data["base"] = f"https://yzapi.yazio.com/{ver}"
+                print(f"[yazio] {grant} {name}: ok", flush=True)
+                data["client"] = name
                 data["expires_at"] = time.time() + float(data.get("expires_in") or 3600) - 300
                 return data
-            print(f"[yazio] {grant} {ver}/{mode}: 200 ohne Token: {_redact(r.text)}", flush=True)
-            seen.append(f"{ver}/{mode}: Antwort ohne Token")
+            print(f"[yazio] {grant} {name}: 200 ohne Token: {_redact(r.text)}", flush=True)
+            seen.append(f"{name}: Antwort ohne Token")
             continue
         why = _describe(r)
-        print(f"[yazio] {grant} {ver}/{mode}: HTTP {r.status_code}: {why}", flush=True)
+        print(f"[yazio] {grant} {name}: HTTP {r.status_code}: {why or '(leere Antwort)'}", flush=True)
         low = why.lower()
         if r.status_code == 401 or "invalid_grant" in low or "credentials" in low or "password" in low:
             raise YazioAuthError("Yazio meldet: E-Mail oder Passwort falsch (oder Konto ohne Yazio-Passwort, "
                                  f"z. B. Apple-/Google-Anmeldung). Antwort: {why[:160]}")
-        seen.append(f"{ver}/{mode}: HTTP {r.status_code} {why[:120]}")
+        if "version_blocked" in low:
+            why = "App-Version abgelehnt (version_blocked) – Fit Coach braucht ein Update"
+        seen.append(f"{name}: HTTP {r.status_code} {why[:120]}".strip())
     raise YazioError("Yazio-Login fehlgeschlagen – " + " | ".join(seen[:2]))
 
 
 def login(email: str, password: str) -> dict:
-    data = _post_token({"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
-                        "username": email.strip(), "password": password, "grant_type": "password"})
-    store.save(TOKEN_FILE, {k: data.get(k) for k in ("access_token", "refresh_token", "expires_at", "base")}, private=True)
+    data = _post_token({"username": email.strip(), "password": password, "grant_type": "password"})
+    store.save(TOKEN_FILE, {k: data.get(k) for k in ("access_token", "refresh_token", "expires_at", "client")}, private=True)
     return data
 
 
@@ -132,19 +134,20 @@ def _token() -> dict:
     if not tok.get("refresh_token"):
         raise YazioAuthError("Yazio-Anmeldung abgelaufen - bitte neu anmelden")
     try:
-        data = _post_token({"client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
-                            "refresh_token": tok["refresh_token"], "grant_type": "refresh_token"})
-    except YazioAuthError:
+        client = tok.get("client") if tok.get("client") in CLIENTS else "legacy"
+        data = _post_token({"refresh_token": tok["refresh_token"], "grant_type": "refresh_token"}, clients=(client,))
+    except YazioError:
+        # auch ein Token des alten Clients, den Yazio nicht mehr annimmt
         raise YazioAuthError("Yazio-Anmeldung abgelaufen - bitte neu anmelden")
     tok = {"access_token": data["access_token"], "refresh_token": data.get("refresh_token") or tok["refresh_token"],
-           "expires_at": data["expires_at"], "base": data.get("base") or tok.get("base")}
+           "expires_at": data["expires_at"], "client": data.get("client")}
     store.save(TOKEN_FILE, tok, private=True)
     return tok
 
 
 def _get(path: str, params=None):
     tok = _token()
-    base = tok.get("base") or BASES[0]
+    base = DATA_BASE
     h = dict(HEADERS, Authorization=f"Bearer {tok['access_token']}")
     r = requests.get(f"{base}{path}", params=params, headers=h, timeout=TIMEOUT)
     if r.status_code == 401:

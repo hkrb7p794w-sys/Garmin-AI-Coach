@@ -179,6 +179,7 @@ def test_full_sync_end_to_end(env):
     tok = json.load(open(env["tmp"] / "yazio_token.json"))
     assert "password" not in json.dumps(tok) and tok["refresh_token"] == "RT"
     assert oct(os.stat(env["tmp"] / "yazio_token.json").st_mode)[-3:] == "600"
+    assert tok["client"] == "app2026"
 
     assert sync.full_sync("test", force=True)
     mq = env["mq"]
@@ -347,3 +348,26 @@ def test_expired_garmin_tokens_ask_for_new_login(env, monkeypatch):
     assert sync.full_sync("test", force=True)
     assert st(env["mq"], "status") == "neu anmelden"
     assert attrs(env["mq"], "status")["garmin"]["needs_login"] is True
+
+
+def test_yazio_login_2026_and_refresh(env):
+    import yazio, datetime as _dt
+    fy = env["yazio"]
+    yazio.login("jana@example.org", "geheim")
+    posts = [c for c in fy.calls if c[0] == "POST"]
+    assert len(posts) == 1 and posts[0][1].endswith("/v22/oauth/token")
+    # abgelaufenes Token wird mit demselben (neuen) Client erneuert, Abfragen gehen an v20
+    store_mod = __import__("store")
+    store_mod.update(yazio.TOKEN_FILE, {}, lambda t: {**t, "expires_at": 0})
+    assert yazio.daily_summary(TODAY) is not None
+    assert [c for c in fy.calls if c[0] == "POST"][-1][2] == "refresh_token"
+    assert [c for c in fy.calls if c[0] == "GET"][-1][1].startswith("https://yzapi.yazio.com/v20/")
+
+
+def test_yazio_old_token_asks_for_relogin(env):
+    import yazio
+    store_mod = __import__("store")
+    store_mod.save(yazio.TOKEN_FILE, {"access_token": "alt", "refresh_token": "alt", "expires_at": 0,
+                                      "base": "https://yzapi.yazio.com/v20"}, private=True)
+    with pytest.raises(yazio.YazioAuthError):
+        yazio.daily_summary(TODAY)
