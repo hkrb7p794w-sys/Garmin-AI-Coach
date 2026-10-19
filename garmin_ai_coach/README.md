@@ -28,6 +28,16 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.24.0
+
+- **Leistung im Verhältnis zur Tagesform** (neues Modul `tagesform.py`, Konzept und Quellen in `claude/konzept-tagesform-leistung.md`). Jede Einheit der letzten 28 Tage wird auf drei getrennten Achsen eingeordnet, ohne Gesamtnote:
+  - **Tagesform am Trainingstag** gegen die persönliche 60-Tage-Baseline: 7-Tage-Mittel von ln(HRV) ±0,5 SD (Plews/Buchheit), Ruhepuls und Schlaf-Score ±1 SD. Garmin Training Readiness geht bewusst nicht ein (enthält die Trainingslast).
+  - **Leistung gegen die eigenen letzten 8 Einheiten derselben Art** (Sport + hart/locker): Lauf-/Schwimmtempo, Rad-(Normalized-)Power, Gym-e1RM je Übung; dazu der Efficiency Factor (Leistung pro Herzschlag). Unter 4 Vergleichseinheiten: „zu wenig Vergleichsdaten“.
+  - **Anstrengung** aus der Garmin-Selbstbewertung (RPE, Gefühl). Bei Zwift wird die parallele 0-km-Uhrenaufzeichnung für HF und RPE herangezogen.
+  - „Potenzial liegen gelassen“ oder „stark trotz Müdigkeit“ wird nur bei harten Einheiten bewertet; bei lockeren wird nur geprüft, ob sie locker blieben. Hinweis auf funktionelles Overreaching ab 3 harten Einheiten in 14 Tagen, die trotz Tagesform unter Baseline voll gelaufen sind.
+  - Neuer Sensor „Garmin Tagesform Leistung“; die letzten harten Einheiten fließen in Tagesnotiz und Wochenreport ein.
+  - **Voraussetzung für RPE:** Selbstbewertung auf der Uhr aktivieren (Einstellungen der Aktivität → Selbstbewertung).
+
 ### 0.23.1
 
 - **Schwimm-Workouts: Ziel-Pace als echtes Ziel auf der Uhr statt als Notiz** (`garmin_swim.py`). Jede Strecke mit Plan-Pace bekommt jetzt beide Ziele, die auch der Garmin-Connect-Editor für Schwimmschritte kennt (gegengeprüft am gespeicherten Workout-JSON):

@@ -395,6 +395,11 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:heart-pulse",
     },
+    "tagesform_leistung": {
+        "name": "Garmin Tagesform Leistung",
+        "unit": None,
+        "icon": "mdi:scale-balance",
+    },
 }
 
 # Garmin liefert den Trainingsstatus als Code (z. B. "RECOVERY_2") - bisher
@@ -436,7 +441,7 @@ ATTRIBUTE_SENSORS = {
     "strength_exercises", "gym_coaching_note", "trainingsplan_kommentar", "vorschlaege",
     "chat_verlauf", "ftp", "hf_pace_kopplung",
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
-    "gym_progression", "herzfrequenzzonen",
+    "gym_progression", "herzfrequenzzonen", "tagesform_leistung",
 }
 
 
@@ -1000,6 +1005,11 @@ def publish_gym_progression(progression: list, mapping: list, state_text: str):
 
 def publish_hr_zones(result: dict, state_text: str):
     _publish_json_sensor("herzfrequenzzonen", state_text, result)
+
+
+def publish_tagesform(result: dict, state_text: str):
+    """Leistung im Verhältnis zur Tagesform (v0.24.0, siehe tagesform.py)."""
+    _publish_json_sensor("tagesform_leistung", state_text, result)
 
 
 def publish_swim_export(result: dict):

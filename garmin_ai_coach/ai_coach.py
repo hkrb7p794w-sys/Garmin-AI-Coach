@@ -413,6 +413,12 @@ def generate_coaching_note(data: dict, rec: dict = None, plan_state: dict = None
         "Erholung:\n"
         f"{vitals_block(metrics, rec)}\n"
         f"VERBINDLICHE Tagesentscheidung (regelbasiert, nicht ändern): {rec_text}\n\n"
+        + (("Letzte harte Einheiten im Verhältnis zur damaligen Tagesform (regelbasiert "
+            "bewertet, Zahlen nicht neu interpretieren):\n" + data["tagesform_text"] + "\n"
+            "Nur aufgreifen, wenn es für heute zählt (z. B. Overreaching-Hinweis, oder bei guter "
+            "Form zuletzt Potenzial liegen gelassen und heute steht eine harte Einheit an).\n\n")
+           if data.get("tagesform_text") else "")
+        +
         "Aufgabe: Formuliere daraus eine kurze, konkrete Umsetzung für heute. Antworte "
         'AUSSCHLIESSLICH mit JSON der Form {"punkte": ["...", "..."]} mit 2-3 Punkten, je '
         "ein Satz, ohne Aufzählungszeichen im Text:\n"
@@ -688,7 +694,10 @@ def generate_weekly_report(data: dict, summary: dict, suggestions_context: str =
         f"Veränderung {_fmt(s.get('volume_change_pct'), '%')})\n"
         f"{strength_block}\n"
         f"{weekly_recovery}"
-        f"{trend_note}\n\n"
+        + (("Harte Einheiten im Verhältnis zur Tagesform (regelbasiert, Tagesform gegen persönliche "
+            "Baseline, Leistung gegen eigene Vergleichseinheiten):\n" + data["tagesform_text"] + "\n")
+           if (data or {}).get("tagesform_text") else "")
+        + f"{trend_note}\n\n"
         f"{suggestions_context + chr(10) + chr(10) if suggestions_context else ''}"
         "Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt (kein Markdown-Codeblock, kein "
         'Text davor oder danach): {"report": "...", "vorschläge": [...]}\n\n'

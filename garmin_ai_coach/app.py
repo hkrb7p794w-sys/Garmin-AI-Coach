@@ -19,6 +19,7 @@ from ha_publish import (
     publish_swim_export,
     publish_gym_progression,
     publish_hr_zones,
+    publish_tagesform,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -44,6 +45,7 @@ import chat
 import decoupling
 import garmin_swim
 import ha_settings
+import tagesform
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -986,6 +988,21 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             "decoupling", lambda: _update_decoupling_cache(client, recent_activities)
         ) or []
 
+        # Leistung im Verhältnis zur Tagesform (v0.24.0, siehe tagesform.py und
+        # claude/konzept-tagesform-leistung.md). Vor dem Schreiben von data.json,
+        # damit Tagesnotiz und Wochenreport (auch der manuelle /weekly-Weg) den
+        # Block kennen. Die Historie wird dafür schon hier um den heutigen Tag
+        # ergänzt (_update_history ersetzt den Tageseintrag, später erneut harmlos).
+        tagesform_result = {}
+        try:
+            tf_cache = tagesform.update_sessions(client, recent_activities)
+            tagesform_result = tagesform.evaluate(
+                tf_cache, _update_history(wellness), _strength_history()[1], today_date)
+            wellness["tagesform_text"] = tagesform.prompt_block(tagesform_result)
+            wellness["tagesform_summary"] = tagesform_result.get("summary")
+        except Exception as e:
+            print(f"[tagesform] fehlgeschlagen: {e}")
+
         # Interferenz-Hinweis Ausdauer-vor-Kraft <3h (siehe
         # _check_endurance_before_strength_interference) - reine Berechnung
         # auf bereits geladenen Aktivitätsdaten, kein zusätzlicher
@@ -1023,6 +1040,8 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_sync_status(ok=True)
         publish_strength_exercises(wellness["strength_exercises"])
         publish_decoupling(wellness["decoupling_sessions"], skipped=_decoupling_skipped())
+        if tagesform_result:
+            publish_tagesform(tagesform_result, tagesform.state_text(tagesform_result))
 
         # Herzfrequenzzonen (v0.21.0, siehe hr_zones.py): Zonen der Uhr aus Garmin,
         # schwellenbasierte Coach-Zonen, Zeit-in-Zone-Verteilung. Eigener try-Block:
