@@ -19,7 +19,7 @@ import requests
 
 import store
 
-BASES = ("https://yzapi.yazio.com/v20", "https://yzapi.yazio.com/v15")
+BASES = ("https://yzapi.yazio.com/v20", "https://yzapi.yazio.com/v15")  # für Abfragen mit gespeichertem Token
 CLIENT_ID = "1_4hiybetvfksgw40o0sog4s884kwc840wwso8go4k8c04goo4c"
 CLIENT_SECRET = "6rok2m65xuskgkgogw40wkkk8sw0osg84s8cggsc4woos4s8o"
 TOKEN_FILE = "yazio_token.json"
@@ -40,34 +40,76 @@ def is_connected() -> bool:
     return bool(tok.get("refresh_token") or tok.get("access_token"))
 
 
+# Varianten der Token-Anfrage, wichtigste zuerst. Variante 1 entspricht exakt dem
+# gepflegten Projekt juriadams/yazio (JSON-Text ohne eigenen Content-Type und ohne
+# eigenen User-Agent), die anderen fangen ältere API-Stände ab.
+ATTEMPTS = (
+    ("v20", "json-text"),
+    ("v20", "json"),
+    ("v20", "form"),
+    ("v15", "form"),
+)
+
+
+def _redact(text: str) -> str:
+    return (text or "").replace("\n", " ")[:400]
+
+
+def _describe(r) -> str:
+    """Yazios Fehlermeldung lesbar machen (error / error_description / message)."""
+    try:
+        j = r.json()
+    except ValueError:
+        return _redact(r.text)
+    if isinstance(j, dict):
+        parts = [str(j.get(k)) for k in ("error", "error_description", "message", "title", "detail") if j.get(k)]
+        if parts:
+            return " – ".join(parts)
+    return _redact(r.text)
+
+
 def _post_token(payload: dict) -> dict:
-    """Probiert JSON (v20) und Formular-Kodierung (v15). Falsche Zugangsdaten
-    (invalid_grant/401) brechen sofort ab - kein mehrfaches Probieren mit
-    demselben falschen Passwort."""
-    last = None
-    for base in BASES:
-        for mode in ("json", "form"):
+    """Probiert die Varianten nacheinander und protokolliert jede Antwort (ohne
+    Passwort). Falsche Zugangsdaten (invalid_grant / 401) brechen sofort ab – kein
+    mehrfaches Probieren mit demselben falschen Passwort."""
+    import json as _json
+    seen = []
+    grant = payload.get("grant_type")
+    for ver, mode in ATTEMPTS:
+        url = f"https://yzapi.yazio.com/{ver}/oauth/token"
+        try:
+            if mode == "json-text":
+                r = requests.post(url, data=_json.dumps(payload).encode(), timeout=TIMEOUT,
+                                  headers={"Content-Type": "text/plain;charset=UTF-8", "Accept": "*/*"})
+            elif mode == "json":
+                r = requests.post(url, json=payload, headers=HEADERS, timeout=TIMEOUT)
+            else:
+                r = requests.post(url, data=payload, headers=HEADERS, timeout=TIMEOUT)
+        except requests.RequestException as e:
+            print(f"[yazio] {grant} {ver}/{mode}: nicht erreichbar ({e})", flush=True)
+            seen.append(f"{ver}/{mode}: nicht erreichbar")
+            continue
+        if r.status_code == 200:
             try:
-                if mode == "json":
-                    r = requests.post(f"{base}/oauth/token", json=payload, headers=HEADERS, timeout=TIMEOUT)
-                else:
-                    r = requests.post(f"{base}/oauth/token", data=payload, headers=HEADERS, timeout=TIMEOUT)
-            except requests.RequestException as e:
-                last = YazioError(f"Yazio nicht erreichbar: {e}")
-                continue
-            if r.status_code == 200:
                 data = r.json()
-                if data.get("access_token"):
-                    data["base"] = base
-                    data["expires_at"] = time.time() + float(data.get("expires_in") or 3600) - 300
-                    return data
-                last = YazioError("Yazio-Antwort ohne Token")
-                continue
-            body = (r.text or "")[:300].lower()
-            if r.status_code in (400, 401) and ("invalid_grant" in body or "credentials" in body or r.status_code == 401):
-                raise YazioAuthError("E-Mail oder Passwort falsch (oder Konto ohne Yazio-Passwort, z. B. Apple-/Google-Anmeldung).")
-            last = YazioError(f"Yazio-Login fehlgeschlagen (HTTP {r.status_code})")
-    raise last or YazioError("Yazio-Login fehlgeschlagen")
+            except ValueError:
+                data = {}
+            if data.get("access_token"):
+                print(f"[yazio] {grant} {ver}/{mode}: ok", flush=True)
+                data["base"] = f"https://yzapi.yazio.com/{ver}"
+                data["expires_at"] = time.time() + float(data.get("expires_in") or 3600) - 300
+                return data
+            print(f"[yazio] {grant} {ver}/{mode}: 200 ohne Token: {_redact(r.text)}", flush=True)
+            seen.append(f"{ver}/{mode}: Antwort ohne Token")
+            continue
+        why = _describe(r)
+        print(f"[yazio] {grant} {ver}/{mode}: HTTP {r.status_code}: {why}", flush=True)
+        low = why.lower()
+        if r.status_code == 401 or "invalid_grant" in low or "credentials" in low or "password" in low:
+            raise YazioAuthError("Yazio meldet: E-Mail oder Passwort falsch (oder Konto ohne Yazio-Passwort, "
+                                 f"z. B. Apple-/Google-Anmeldung). Antwort: {why[:160]}")
+        seen.append(f"{ver}/{mode}: HTTP {r.status_code} {why[:120]}")
+    raise YazioError("Yazio-Login fehlgeschlagen – " + " | ".join(seen[:2]))
 
 
 def login(email: str, password: str) -> dict:

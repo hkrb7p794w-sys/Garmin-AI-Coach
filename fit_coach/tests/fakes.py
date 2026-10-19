@@ -215,6 +215,9 @@ class FakeYazioHTTP:
 
     def post(self, url, json=None, data=None, headers=None, timeout=None):
         body = json or data or {}
+        if isinstance(body, (bytes, str)):  # JSON als Text (wie die Yazio-App)
+            import json as _j
+            body = _j.loads(body)
         self.calls.append(("POST", url, body.get("grant_type")))
         if body.get("grant_type") == "password" and body.get("password") != self.password:
             return FakeResponse(400, {"error": "invalid_grant"})
