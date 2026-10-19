@@ -223,9 +223,9 @@ class FakeYazioHTTP:
         ua = (headers or {}).get("User-Agent", "")
         if (not url.endswith("/v22/oauth/token") or not str(body.get("client_id", "")).startswith("3_")
                 or not ua.startswith("YAZIO/26")):
-            return FakeResponse(400, None, text="")
+            return FakeResponse(400, [{"property_path": "", "message": "Invalid client"}])
         if body.get("grant_type") == "password" and body.get("password") != self.password:
-            return FakeResponse(400, {"error": "invalid_grant"})
+            return FakeResponse(400, None, text="")  # so antwortet Yazio 10/2026 bei falschem Passwort
         return FakeResponse(200, {"access_token": "AT", "refresh_token": "RT", "expires_in": 172800, "token_type": "bearer"})
 
     def get(self, url, params=None, headers=None, timeout=None):

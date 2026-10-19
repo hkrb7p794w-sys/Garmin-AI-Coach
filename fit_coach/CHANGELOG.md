@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.3 – 19.10.2026
+- Yazio: Ein leeres HTTP 400 bedeutet bei Yazio „E-Mail oder Passwort falsch“ (live geprüft: Format und App-Client werden akzeptiert). Fit Coach sagt das jetzt klar, statt „Login fehlgeschlagen“, und probiert ein falsches Passwort nicht mehrfach.
+
 ## 0.1.2 – 19.10.2026
 - Yazio-Anmeldung repariert: Yazio hat die App-Anmeldung umgestellt (Token jetzt über API v22, neuer OAuth-Client der aktuellen App, fremde User-Agents werden mit leerem HTTP 400 abgewiesen). Fit Coach meldet sich jetzt wie die aktuelle Yazio-App an; Abfragen laufen weiter über v20. Der alte Client bleibt als Rückfall.
 - Bereits gespeicherte Yazio-Tokens des alten Clients führen zu „bitte neu anmelden“ statt zu Dauerfehlern.

@@ -106,9 +106,13 @@ def _post_token(fields: dict, clients=ORDER) -> dict:
         why = _describe(r)
         print(f"[yazio] {grant} {name}: HTTP {r.status_code}: {why or '(leere Antwort)'}", flush=True)
         low = why.lower()
-        if r.status_code == 401 or "invalid_grant" in low or "credentials" in low or "password" in low:
-            raise YazioAuthError("Yazio meldet: E-Mail oder Passwort falsch (oder Konto ohne Yazio-Passwort, "
-                                 f"z. B. Apple-/Google-Anmeldung). Antwort: {why[:160]}")
+        # Yazio (Stand 10/2026): falsche E-Mail/Passwort -> HTTP 400 mit leerem Inhalt;
+        # Formatfehler und falscher Client kommen dagegen als JSON-Liste zurück.
+        empty = r.status_code == 400 and not (r.text or "").strip()
+        if empty or r.status_code == 401 or "invalid_grant" in low or "credentials" in low or "password" in low:
+            raise YazioAuthError("Yazio lehnt E-Mail oder Passwort ab. Bitte prüfen – und falls das Yazio-Konto "
+                                 "über „Mit Apple/Google anmelden“ läuft, gibt es kein Yazio-Passwort: dann in der "
+                                 "Yazio-App bzw. über „Passwort vergessen“ eines festlegen.")
         if "version_blocked" in low:
             why = "App-Version abgelehnt (version_blocked) – Fit Coach braucht ein Update"
         seen.append(f"{name}: HTTP {r.status_code} {why[:120]}".strip())
