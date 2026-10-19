@@ -28,6 +28,14 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.24.2
+
+- Tagesform-Leistung nach dem ersten echten Sync nachgeschärft:
+  - Sweet-Spot-/Tempo-Einheiten zählen als hart (Name enthält „Sweet“, „Ramp“, „Over-Under“ oder ≥ 35 % Zeit in Zone 3–5). Vorher landete „Zwift – Sweet Spot 3x10“ bei den lockeren Einheiten.
+  - Einmalig werden 100 ältere Aktivitäten als Vergleichsbasis nachgeladen; vorher reichte die Basis bei kaum einer Einheitsart für 4 Vergleiche.
+  - Gym vergleicht zusätzlich mit der 180-Tage-e1RM-Historie statt nur mit dem ~6-Wochen-Übungscache.
+  - RPE/Gefühl aus der Selbstbewertung live bestätigt (`summaryDTO.directWorkoutRpe`/`directWorkoutFeel`).
+
 ### 0.24.1
 
 - Fix: `tagesform.py` fehlte im Dockerfile (0.24.0 startete nicht).

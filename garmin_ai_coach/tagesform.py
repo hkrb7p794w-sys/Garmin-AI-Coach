@@ -42,7 +42,7 @@ import progress
 
 DATA_DIR = "/data"
 CACHE_FILE = os.path.join(DATA_DIR, "session_eval.json")
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2  # 2: Sweet-Spot-Erkennung, Backfill (0.24.2)
 CACHE_KEEP_DAYS = 180
 
 BASELINE_DAYS = 60
@@ -63,8 +63,11 @@ LOW_RPE = 6                   # RPE <= 6 bei harter Einheit = Reserve vorhanden
 MIN_DURATION_MIN = 15
 
 HARD_HIGH_ZONE_SHARE = 0.15   # >= 15 % Zeit in Zone 4-5 zählt als harte Einheit
+HARD_MID_ZONE_SHARE = 0.35    # ... oder >= 35 % in Zone 3-5 (Sweet Spot, Tempo)
 HARD_NAME_KEYWORDS = ("intervall", "interval", "schwelle", "threshold", "tempo",
-                      "vo2", "sprint", "test", "css", "ftp", "rennen", "race")
+                      "vo2", "sprint", "test", "css", "ftp", "rennen", "race",
+                      "sweet", "over-under", "overunder", "ramp")
+BACKFILL_START, BACKFILL_LIMIT = 50, 100  # einmalig ältere Aktivitäten als Vergleichsbasis
 EASY_MAX_HIGH_ZONE_SHARE = decoupling.MAX_HIGH_ZONE_SHARE  # 10 %
 
 FEEL_DE = {0: "sehr schwach", 25: "schwach", 50: "normal", 75: "stark", 100: "sehr stark"}
@@ -95,12 +98,12 @@ def _mean_sd(values):
     return statistics.mean(vals), statistics.stdev(vals)
 
 
-def _load_cache() -> dict:
+def _load_raw() -> dict:
     try:
         with open(CACHE_FILE) as f:
             raw = json.load(f) or {}
         if raw.get("_schema") == CACHE_SCHEMA:
-            return raw.get("data") or {}
+            return raw
     except FileNotFoundError:
         pass
     except Exception as e:
@@ -108,12 +111,18 @@ def _load_cache() -> dict:
     return {}
 
 
-def _save_cache(cache: dict) -> dict:
+def _load_cache() -> dict:
+    return _load_raw().get("data") or {}
+
+
+def _save_cache(cache: dict, meta: dict = None) -> dict:
     cutoff = (datetime.date.today() - datetime.timedelta(days=CACHE_KEEP_DAYS)).isoformat()
     cache = {k: v for k, v in cache.items() if (v.get("date") or "") >= cutoff}
+    meta = meta if meta is not None else (_load_raw().get("meta") or {})
     try:
         with open(CACHE_FILE, "w") as f:
-            json.dump({"_schema": CACHE_SCHEMA, "data": cache}, f, indent=2, ensure_ascii=False, default=str)
+            json.dump({"_schema": CACHE_SCHEMA, "meta": meta, "data": cache}, f,
+                      indent=2, ensure_ascii=False, default=str)
     except Exception as e:
         print(f"[tagesform] Cache konnte nicht geschrieben werden: {e}")
     return cache
@@ -223,7 +232,10 @@ def _is_hard(act: dict, sport: str) -> bool:
     if sport == "swim":
         return False  # Handgelenk-HF im Wasser ist zu unzuverlässig für Zonen
     share = decoupling.high_zone_share(act)
-    return share is not None and share >= HARD_HIGH_ZONE_SHARE
+    if share is not None and share >= HARD_HIGH_ZONE_SHARE:
+        return True
+    z = decoupling.zone_seconds(act)
+    return bool(z) and (z[2] + z[3] + z[4]) / sum(z) >= HARD_MID_ZONE_SHARE
 
 
 def _extract(act: dict, sport: str) -> dict:
@@ -274,12 +286,28 @@ def _read_self_eval(raw) -> tuple:
 def update_sessions(client, activities: list) -> dict:
     """Ergänzt den Cache um neue Einheiten aus der Aktivitätenliste und lädt
     RPE/Gefühl für jüngere Einheiten nach (höchstens RPE_MAX_FETCH Abrufe)."""
-    cache = _load_cache()
+    raw = _load_raw()
+    cache = raw.get("data") or {}
+    meta = raw.get("meta") or {}
     changed = False
     now = datetime.datetime.now()
     budget = RPE_MAX_FETCH
 
-    for act in activities or []:
+    # Einmalig ältere Aktivitäten als Vergleichsbasis nachladen - der Sync
+    # holt nur die letzten 50, das reicht für 4 Vergleichseinheiten je Art
+    # erst nach Wochen. Ein einziger zusätzlicher Garmin-Aufruf.
+    activities = list(activities or [])
+    if not meta.get("backfilled"):
+        try:
+            older = client.get_activities(BACKFILL_START, BACKFILL_LIMIT) or []
+            activities += older
+            meta["backfilled"] = now.date().isoformat()
+            changed = True
+            print(f"[tagesform] {len(older)} ältere Aktivitäten als Vergleichsbasis geladen")
+        except Exception as e:
+            print(f"[tagesform] Nachladen älterer Aktivitäten fehlgeschlagen: {e}")
+
+    for act in activities:
         try:
             aid = act.get("activityId")
             start = _parse_dt(act.get("startTimeLocal"))
@@ -337,7 +365,7 @@ def update_sessions(client, activities: list) -> dict:
             print(f"[tagesform] Einheit konnte nicht erfasst werden: {e}")
 
     if changed:
-        cache = _save_cache(cache)
+        cache = _save_cache(cache, meta)
     return cache
 
 
@@ -373,6 +401,16 @@ def _gym_relative(day: str, strength_sessions: list):
             if best > 0:
                 per = per_ex.setdefault(name, {})
                 per[d] = max(per.get(d, 0), best)
+    # Ältere Tage aus der e1RM-Historie (180 Tage, progress.py) ergänzen - der
+    # Übungs-Cache reicht nur ~6 Wochen zurück, zu wenig für 4 Vergleiche je Übung.
+    try:
+        for name, days in (progress._load_e1rm() or {}).items():
+            per = per_ex.setdefault(name, {})
+            for d, v in days.items():
+                if d not in per and isinstance(v, (int, float)) and v > 0:
+                    per[d] = v
+    except Exception as e:
+        print(f"[tagesform] e1RM-Historie nicht lesbar: {e}")
     devs, bands = [], []
     for name, days in per_ex.items():
         if day not in days:
