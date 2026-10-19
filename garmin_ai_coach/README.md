@@ -28,6 +28,10 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.24.1
+
+- Fix: `tagesform.py` fehlte im Dockerfile (0.24.0 startete nicht).
+
 ### 0.24.0
 
 - **Leistung im Verhältnis zur Tagesform** (neues Modul `tagesform.py`, Konzept und Quellen in `claude/konzept-tagesform-leistung.md`). Jede Einheit der letzten 28 Tage wird auf drei getrennten Achsen eingeordnet, ohne Gesamtnote:
