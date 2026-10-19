@@ -4,7 +4,7 @@ Bei jedem Sync legt das Add-on die Schwimmeinheiten der laufenden und der
 nächsten Woche in den Garmin-Connect-Kalender (Dienstag; ist der in der
 laufenden Woche schon vorbei: Donnerstag). Von dort landen sie
 beim nächsten Uhren-Sync auf der Uhr - mit Einzelstrecken, Pausen und Ziel-Pace
-(manuelle Pace aus der Dashboard-CSS, zusätzlich als Notiz je Abschnitt).
+(echtes Schritt-Ziel: Pace aus der Dashboard-CSS + CSS-Offset, nicht als Notiz).
 
 Bewusst nur ein rollierendes 2-Wochen-Fenster statt der ganzen Saison: die
 Ziel-Paces hängen an der CSS. Nach einem neuen CSS-Test werden die schon
@@ -22,7 +22,7 @@ Strecken-Ende conditionTypeId 3 "distance" mit preferredEndConditionUnit
 meter, Pause stepType 5 "rest" mit conditionTypeId 8 "fixed.rest",
 Kraulen strokeTypeId 6 "free", Pull-Buoy equipmentTypeId 4.
 """
-import os, re, json, datetime, hashlib
+import os, re, json, math, datetime, hashlib
 
 import requests
 
@@ -53,6 +53,7 @@ COND_ITER = {"conditionTypeId": 7, "conditionTypeKey": "iterations", "displayOrd
 COND_REST = {"conditionTypeId": 8, "conditionTypeKey": "fixed.rest", "displayOrder": 8, "displayable": True}
 NO_TARGET = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1}
 PACE_TARGET = {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 6}
+CSS_OFFSET_TARGET = {"workoutTargetTypeId": 17, "workoutTargetTypeKey": "swim.css.offset", "displayOrder": 17}
 FREE = {"strokeTypeId": 6, "strokeTypeKey": "free", "displayOrder": 6}
 NO_EQUIP = {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0}
 EQUIP = {"pull_buoy": {"equipmentTypeId": 4, "equipmentTypeKey": "pull_buoy", "displayOrder": 4}}
@@ -80,54 +81,134 @@ def current_css() -> int:
 
 
 def _pace_note(step: dict, css: int) -> str:
-    lo, hi = step.get("lo"), step.get("hi")
-    if lo is None:
-        return step.get("note", "")
-    pace = _mmss(css + lo) if lo == hi else f"{_mmss(css + lo)}-{_mmss(css + hi)}"
-    note = step.get("note", "")
-    return f"@ {pace} /100 m" + (f" - {note}" if note else "")
+    """Notiz je Schritt. Die Pace selbst steht als echtes Ziel im Schritt
+    (siehe _pace_target) und nur noch im Rückfall zusätzlich in der Notiz."""
+    return step.get("note", "")
 
 
-def _pace_target(fast_s: int, slow_s: int) -> dict:
-    """Manuelle Ziel-Pace (Garmin "pace.zone", Werte in m/s, langsam = Wert 1).
+def garmin_css(client, today: datetime.date = None):
+    """CSS, die Garmin für die Uhr hinterlegt hat (s/100 m) - Bezugswert des
+    CSS-Offset-Ziels. GraphQL criticalSwimSpeedScalar liefert mm/s
+    (Alex 19.10.2026: 741 -> 2:15). None, wenn nicht lesbar."""
+    today = today or datetime.date.today()
+    q = (f'query{{criticalSwimSpeedScalar(startDate:"{today - datetime.timedelta(days=365)}", '
+         f'endDate:"{today}")}}')
+    try:
+        data = client.query_garmin_graphql({"query": q})
+        lst = (data.get("data") or {}).get("criticalSwimSpeedScalar") or {}
+        lst = lst.get("criticalSwimSpeedDTOList") or []
+        last = max(lst, key=lambda d: d.get("measurementTimestampGMT") or "")
+        css = round(100 / (float(last["criticalSwimSpeed"]) / 1000))
+        return css if 60 <= css <= 300 else None
+    except Exception as e:
+        print(f"[garmin_swim] Garmin-CSS nicht lesbar ({e}) - CSS-Offset bezieht sich auf die Dashboard-CSS")
+        return None
 
-    Bewusst NICHT Garmins "CSS-basierte Zielpace": die rechnet mit der von
-    Garmin geschätzten CSS (bei Alex 2:15), nicht mit der getesteten aus dem
-    Dashboard (2:10). Eine einzelne Ziel-Pace bekommt ±2 s Spielraum, damit die
-    Uhr nicht bei jeder Bahn piept."""
+
+def _pace_target(css: int, lo: int, hi: int, gcss: int = None) -> dict:
+    """Ziel-Pace als echte Schritt-Ziele auf der Uhr (keine Notiz).
+
+    Garmin-Connect-Editor bei Schwimm-Schritten (gegengeprüft am
+    gespeicherten Workout-JSON, 19.10.2026):
+      * "Primäres Ziel" = targetType "pace.zone" (Werte in m/s, langsam =
+        Wert 1) - absolute Pace aus der getesteten Dashboard-CSS.
+      * "Intensitätsziel" = secondaryTargetType "swim.css.offset" (id 17,
+        Wert 1 = Sekunden-Offset zur CSS, Wert 2 leer) - genau so legt der
+        Editor "CSS-basierte Zielpace" an (eigenes Workout "CSS 100er").
+    Der CSS-Offset bezieht sich auf die CSS, die Garmin hinterlegt hat
+    (gcss, bei Alex 2:15 statt getestet 2:10). Darum wird er wie im Garmin-
+    Editor auf die absolute Ziel-Pace umgerechnet (2:12 bei Garmin-CSS 2:15
+    -> "CSS -3 s"), sonst zeigte die Uhr zwei verschiedene Paces. Ohne
+    Garmin-CSS: Offset zur Dashboard-CSS. Eine einzelne Ziel-Pace bekommt im primären Ziel
+    ±2 s Spielraum, damit die Uhr nicht bei jeder Bahn piept."""
+    fast_s, slow_s = css + lo, css + hi
+    offset = math.floor((fast_s + slow_s) / 2 - gcss + 0.5) if gcss else (lo + hi) // 2
     if fast_s == slow_s:
         fast_s, slow_s = fast_s - 2, slow_s + 2
     return {"targetType": PACE_TARGET,
             "targetValueOne": round(100 / slow_s, 4),
-            "targetValueTwo": round(100 / fast_s, 4)}
+            "targetValueTwo": round(100 / fast_s, 4),
+            "secondaryTargetType": CSS_OFFSET_TARGET,
+            "secondaryTargetValueOne": float(offset)}
 
 
-def _strip_targets(steps: list) -> list:
-    """Rückfall: dieselben Schritte ohne Pace-Ziel (nur Notiz)."""
+def _pace_text(v_slow: float, v_fast: float) -> str:
+    slow, fast = round(100 / v_slow), round(100 / v_fast)
+    return f"{_mmss(fast)}-{_mmss(slow)} /100 m"
+
+
+def _strip_targets(steps: list, keep_primary: bool) -> list:
+    """Rückfall, falls Garmin den Upload ablehnt: erst nur ohne CSS-Offset,
+    dann ganz ohne Pace-Ziel - dann steht die Pace wenigstens in der Notiz."""
     out = []
     for st in steps:
         st = dict(st)
         if st.get("workoutSteps"):
-            st["workoutSteps"] = _strip_targets(st["workoutSteps"])
-        if st.get("targetType") == PACE_TARGET:
+            st["workoutSteps"] = _strip_targets(st["workoutSteps"], keep_primary)
+        if st.get("secondaryTargetType") == CSS_OFFSET_TARGET:
+            st.pop("secondaryTargetType")
+            st.pop("secondaryTargetValueOne", None)
+        if not keep_primary and st.get("targetType") == PACE_TARGET:
+            pace = _pace_text(st.pop("targetValueOne"), st.pop("targetValueTwo"))
             st["targetType"] = NO_TARGET
-            st.pop("targetValueOne", None)
-            st.pop("targetValueTwo", None)
+            st["description"] = (f"@ {pace} - " + st.get("description", "")).rstrip(" -")[:250]
         out.append(st)
     return out
+
+
+def _key(t) -> str:
+    return (t or {}).get("workoutTargetTypeKey") or ""
+
+
+def _pace_steps(steps: list) -> list:
+    """Alle Schritte (auch in Wiederholungen) mit Pace- oder CSS-Ziel."""
+    out = []
+    for st in steps or []:
+        if st.get("workoutSteps"):
+            out += _pace_steps(st["workoutSteps"])
+        elif _key(st.get("targetType")) == "pace.zone" or _key(st.get("secondaryTargetType")) == "swim.css.offset":
+            out.append(st)
+    return out
+
+
+def verify_targets(client, workout_id, payload: dict) -> str:
+    """Liest das gespeicherte Workout zurück und prüft, ob Garmin die Ziele
+    behalten hat (Garmin verwirft unbekannte Felder still)."""
+    sent = _pace_steps(payload["workoutSegments"][0]["workoutSteps"])
+    if not sent:
+        return "ohne Pace-Ziel"
+    try:
+        stored = client.get_workout_by_id(workout_id)
+        stored = _pace_steps((stored.get("workoutSegments") or [{}])[0].get("workoutSteps"))
+    except Exception as e:
+        return f"Prüfung nicht möglich ({e})"
+    pace = [st for st in stored if _key(st.get("targetType")) == "pace.zone" and st.get("targetValueOne")]
+    css = [st for st in stored if _key(st.get("secondaryTargetType")) == "swim.css.offset"]
+    if not pace:
+        return f"Pace-Ziel NICHT übernommen (0/{len(sent)} Schritte)"
+    st = pace[0]
+    msg = f"Pace-Ziel ok ({len(pace)}/{len(sent)}, {_pace_text(st['targetValueOne'], st['targetValueTwo'])}"
+    if css:
+        msg += f", CSS {css[0].get('secondaryTargetValueOne', 0):+.0f} s"
+    return msg + ")"
 
 
 def _upload(client, payload: dict) -> dict:
     try:
         return client.upload_workout(payload)
     except Exception as e:
-        print(f"[garmin_swim] Upload mit Pace-Ziel abgelehnt ({e}) - versuche es ohne Pace-Ziel")
-        seg = dict(payload["workoutSegments"][0])
-        seg["workoutSteps"] = _strip_targets(seg["workoutSteps"])
-        return client.upload_workout(dict(payload, workoutSegments=[seg]))
+        print(f"[garmin_swim] Upload mit CSS-Ziel abgelehnt ({e}) - versuche es nur mit Pace-Ziel")
+    seg = dict(payload["workoutSegments"][0])
+    try:
+        return client.upload_workout(dict(payload, workoutSegments=[
+            dict(seg, workoutSteps=_strip_targets(seg["workoutSteps"], keep_primary=True))]))
+    except Exception as e:
+        print(f"[garmin_swim] Upload mit Pace-Ziel abgelehnt ({e}) - Pace nur als Notiz")
+    return client.upload_workout(dict(payload, workoutSegments=[
+        dict(seg, workoutSteps=_strip_targets(seg["workoutSteps"], keep_primary=False))]))
 
 
-def _steps(steps: list, css: int, order: list, groups: list, child=None) -> list:
+def _steps(steps: list, css: int, order: list, groups: list, child=None, gcss: int = None) -> list:
     """order/groups sind Zähler (Listen, damit rekursiv veränderbar). Wie im
     Garmin-Editor bekommt jede Wiederholungsgruppe eine eigene childStepId,
     die auch ihre Unterschritte tragen."""
@@ -144,7 +225,7 @@ def _steps(steps: list, css: int, order: list, groups: list, child=None) -> list
                 "numberOfIterations": st["n"], "endCondition": COND_ITER,
                 "endConditionValue": float(st["n"]), "smartRepeat": False,
                 "skipLastRestStep": True,
-                "workoutSteps": _steps(st["steps"], css, order, groups, gid),
+                "workoutSteps": _steps(st["steps"], css, order, groups, gid, gcss),
             })
         elif st["t"] == "rest":
             out.append({
@@ -168,7 +249,7 @@ def _steps(steps: list, css: int, order: list, groups: list, child=None) -> list
                 "description": _pace_note(st, css)[:250],
             }
             if st.get("lo") is not None:
-                step.update(_pace_target(css + st["lo"], css + st["hi"]))
+                step.update(_pace_target(css, st["lo"], st["hi"], gcss))
             out.append(step)
     return out
 
@@ -193,7 +274,7 @@ def _fill(text: str, css: int) -> str:
     return re.sub(r"§S([+-]?\d+)§", lambda m: _mmss(css + int(m.group(1))), text)
 
 
-def build_workout(week: dict, css: int, day: datetime.date) -> dict:
+def build_workout(week: dict, css: int, day: datetime.date, gcss: int = None) -> dict:
     return {
         "workoutName": f"{NAME_PREFIX} {day.strftime('%d.%m.')} {week['name']}",
         "description": (f"{_fill(week['text'], css)} | CSS {_mmss(css)} /100 m | {week['m']} m | "
@@ -206,7 +287,7 @@ def build_workout(week: dict, css: int, day: datetime.date) -> dict:
         "workoutSegments": [{
             "segmentOrder": 1, "sportType": SPORT,
             "poolLength": float(POOL_LENGTH_M), "poolLengthUnit": METER,
-            "workoutSteps": _steps(week["steps"], css, [0], [0]),
+            "workoutSteps": _steps(week["steps"], css, [0], [0], gcss=gcss),
         }],
     }
 
@@ -236,6 +317,10 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
     weeks = {w["w"]: w for w in _load(PLAN_FILE, [])}
     state = _load(STATE_FILE, {})
     css = current_css()
+    gcss = garmin_css(client, today)
+    if gcss and gcss != css:
+        print(f"[garmin_swim] Garmin-CSS {_mmss(gcss)} weicht von der Dashboard-CSS {_mmss(css)} ab - "
+              "CSS-Offsets werden auf die Dashboard-Paces umgerechnet")
     monday = today - datetime.timedelta(days=today.weekday())
     targets = [monday + datetime.timedelta(days=7)]
     if today.weekday() <= 3 and not swim_done_this_week:
@@ -254,7 +339,7 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
             day = mon + datetime.timedelta(days=WEEKDAY)
             if day < today:
                 day = mon + datetime.timedelta(days=3)
-        payload = build_workout(week, css, day)
+        payload = build_workout(week, css, day, gcss)
         sig = hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
         action = "unverändert"
         if entry.get("workout_id") and entry.get("sig") == sig:
@@ -268,6 +353,8 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
                 if hasattr(client, "update_workout"):
                     client.update_workout(entry["workout_id"], payload)
                     action = "aktualisiert"
+                    entry["target_check"] = verify_targets(client, entry["workout_id"], payload)
+                    print(f"[garmin_swim] {day.isoformat()} {week['name']}: {entry['target_check']}")
                 else:
                     client.delete_workout(entry["workout_id"])
                     entry = {}
@@ -280,7 +367,9 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
             if not wid:
                 raise RuntimeError(f"Garmin hat keine workoutId geliefert: {str(resp)[:200]}")
             sched = client.schedule_workout(wid, day.isoformat())
-            entry = {"workout_id": wid,
+            check = verify_targets(client, wid, payload)
+            print(f"[garmin_swim] {day.isoformat()} {week['name']}: {check}")
+            entry = {"workout_id": wid, "target_check": check,
                      "schedule_id": _id(sched, "workoutScheduleId", "scheduleId", "id"),
                      "date": day.isoformat()}
             action = "aktualisiert" if week["w"] in state else "neu im Kalender"
@@ -288,11 +377,12 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
         state[week["w"]] = entry
         result.append({"date": entry.get("date", day.isoformat()), "name": week["name"],
                        "distance_m": week["m"], "action": action,
-                       "workout_id": entry["workout_id"]})
+                       "workout_id": entry["workout_id"],
+                       "target_check": entry.get("target_check", "")})
         print(f"[garmin_swim] {day.isoformat()} {week['name']}: {action}")
 
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=1, ensure_ascii=False)
-    return {"css": _mmss(css), "pool_m": POOL_LENGTH_M, "workouts": result,
+    return {"css": _mmss(css), "garmin_css": _mmss(gcss) if gcss else None, "pool_m": POOL_LENGTH_M, "workouts": result,
             "updated": datetime.datetime.now().isoformat(timespec="minutes")}

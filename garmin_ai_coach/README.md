@@ -28,6 +28,15 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.23.1
+
+- **Schwimm-Workouts: Ziel-Pace als echtes Ziel auf der Uhr statt als Notiz** (`garmin_swim.py`). Jede Strecke mit Plan-Pace bekommt jetzt beide Ziele, die auch der Garmin-Connect-Editor für Schwimmschritte kennt (gegengeprüft am gespeicherten Workout-JSON):
+  - **Primäres Ziel:** `pace.zone` mit der absoluten Pace aus der Dashboard-CSS (z. B. 2:11–2:12 /100 m).
+  - **Intensitätsziel:** `swim.css.offset` („CSS ±x s“), umgerechnet auf Garmins hinterlegte CSS, damit beide Ziele dieselbe Pace zeigen. Garmins CSS liest das Add-on per GraphQL `criticalSwimSpeedScalar` (bei Alex 2:15 statt getestet 2:10 → 200er = „CSS −3 s“).
+  - Die Pace steht nicht mehr in der Schritt-Notiz; dort bleibt nur der Technik-/Tempo-Hinweis. Nur wenn Garmin die Ziele ablehnt, fällt der Export stufenweise zurück (erst ohne CSS-Offset, dann Pace als Notiz).
+  - Nach jedem Upload/Update liest das Add-on das Workout zurück und loggt, ob Garmin die Ziele behalten hat („Pace-Ziel ok (…)“); der Sensor „Garmin Export Schwimmen“ zeigt das je Workout (`target_check`) plus `garmin_css`.
+  - Bereits eingeplante Workouts werden beim nächsten Sync automatisch ersetzt.
+
 ### 0.23.0
 
 - **Coach-Vorschläge für alle Disziplinen statt nur fürs Gym:** Der Wochenreport (montags bzw. beim „Jetzt synchronisieren“) liefert jetzt zusätzlich bis zu 4 Einzelvorschläge – je Disziplin höchstens einer (Schwimmen, Rad, Laufen, Gym, Erholung). Jeder Vorschlag trägt eine Disziplin; das Dashboard sortiert danach.
