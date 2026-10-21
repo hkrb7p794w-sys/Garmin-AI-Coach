@@ -106,7 +106,7 @@ def _backfill(client, days: int, pause: float):
     try:
         today = datetime.date.today()
         with _lock:
-            have = set(_load())
+            have = {k for k, v in _load().items() if "hr_avg" in v}  # ältere Einträge (0.25.0) neu laden
         todo = [(today - datetime.timedelta(days=i)).isoformat() for i in range(days)]
         todo = [d for d in todo if d not in have]
         _job.update(todo=len(todo), done=0, error=None)
