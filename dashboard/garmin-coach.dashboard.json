@@ -495,33 +495,6 @@
           "type": "grid",
           "cards": [
             {
-              "type": "custom:coach-lifts",
-              "days": 180,
-              "items": [
-                {
-                  "entity": "sensor.coach_e1rm_bankdrucken",
-                  "name": "Bankdrücken"
-                },
-                {
-                  "entity": "sensor.coach_e1rm_latziehen",
-                  "name": "Latziehen"
-                },
-                {
-                  "entity": "sensor.coach_e1rm_rudern",
-                  "name": "Rudern"
-                },
-                {
-                  "entity": "sensor.coach_e1rm_beinpresse",
-                  "name": "Beinpresse"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "grid",
-          "cards": [
-            {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
