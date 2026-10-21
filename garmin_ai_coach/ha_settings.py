@@ -100,6 +100,17 @@ def swim_export(default: bool) -> bool:
     return bool(default)
 
 
+def ftp_watt(default: float) -> float:
+    """FTP aus dem Dashboard-Feld input_number.ftp_zwift_w (Testwert), sonst plan.FTP_ZWIFT_W."""
+    try:
+        v = float(_state("input_number.ftp_zwift_w") or 0)
+        if 80 <= v <= 500:
+            return v
+    except ValueError:
+        pass
+    return float(default)
+
+
 def effective(default_hours: list, default_privacy: str, default_swim: bool) -> dict:
     """Aktuell wirksame Einstellungen - wird im Coach-Status-Sensor veröffentlicht,
     damit das Dashboard anzeigen kann, was tatsächlich gilt."""

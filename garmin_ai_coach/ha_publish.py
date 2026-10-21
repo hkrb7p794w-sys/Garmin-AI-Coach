@@ -400,6 +400,22 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:scale-balance",
     },
+    # 0.25.0
+    "schwimm_ausruestung": {
+        "name": "Garmin Schwimm Equipment",
+        "unit": None,
+        "icon": "mdi:bag-personal-outline",
+    },
+    "export_gym": {
+        "name": "Garmin Export Gym",
+        "unit": None,
+        "icon": "mdi:weight-lifter",
+    },
+    "schlaf": {
+        "name": "Garmin Schlaf 28 Tage",
+        "unit": None,
+        "icon": "mdi:sleep",
+    },
 }
 
 # Garmin liefert den Trainingsstatus als Code (z. B. "RECOVERY_2") - bisher
@@ -442,6 +458,7 @@ ATTRIBUTE_SENSORS = {
     "chat_verlauf", "ftp", "hf_pace_kopplung",
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
     "gym_progression", "herzfrequenzzonen", "tagesform_leistung",
+    "schwimm_ausruestung", "export_gym", "schlaf",
 }
 
 
@@ -1010,6 +1027,11 @@ def publish_hr_zones(result: dict, state_text: str):
 def publish_tagesform(result: dict, state_text: str):
     """Leistung im Verhältnis zur Tagesform (v0.24.0, siehe tagesform.py)."""
     _publish_json_sensor("tagesform_leistung", state_text, result)
+
+
+def publish_json(key: str, state, attributes: dict):
+    """Allgemeiner JSON-Sensor (Zustand + Attribute) für Sensoren ohne eigene Logik."""
+    _publish_json_sensor(key, state, attributes or {})
 
 
 def publish_swim_export(result: dict):

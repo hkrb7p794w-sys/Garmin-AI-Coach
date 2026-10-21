@@ -53,6 +53,11 @@ def make_env(today, lvl, done, gym_dates, zones_run):
         'sensor.garmin_ai_coach_garmin_tagesempfehlung': State(lvl, {'level': lvl, 'label': lvl, 'advice': advice[lvl], 'reasons': reasons[lvl]}),
         'sensor.garmin_ai_coach_garmin_plan': State('x', {'targets': targets}),
         'sensor.garmin_ai_coach_garmin_krafttraining_uebungen': State('x', {'sessions': [{'date': d} for d in gym_dates]}),
+        'sensor.garmin_ai_coach_garmin_tagesform_leistung': State('x', {'sessions': [
+            {'date': d, 's': 'strength', 'start': d + ' 07:00:00', 'title': 'Krafttraining', 'name': 'Krafttraining',
+             'feedback': 'FB-' + d} for d in gym_dates] + [
+            {'date': (today - datetime.timedelta(days=1)).isoformat(), 's': 'swim', 'start': 'y 06:30', 'title': 'CSS 200er',
+             'name': 'GAC Schwimmen 20.10. CSS 200er', 'feedback': 'FB-gestern'}]}),
         'sensor.garmin_ai_coach_garmin_herzfrequenzzonen': State('x', {'distribution': {'per_week': (
             [{'week_start': MON.isoformat(), 'run': zones_run}] if zones_run else [])}}),
     }
@@ -139,6 +144,30 @@ for off, lvl, all_done, run_done, zr_name in itertools.product(
     # R12: Sonntag: nach erledigtem Zwift darf nichts mit „Sa oder So“ als offen erscheinen
     if last_day and any(x['s'] == 'bike' and x['t'] == 'Zwift (Sa oder So)' and x['ok'] for x in t['items']):
         fails.append((*ctx, 'R12: Sonntag zeigt erledigtes Zwift als „Sa oder So“'))
+
+    # R13: Rest der Woche nur mit Tagen nach heute, am Sonntag leer, kein Tag doppelt mit gleicher Einheit
+    order = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+    for x in t.get('week', []):
+        first = x['day'].split('/')[0]
+        if order.index(first) <= off:
+            fails.append((*ctx, f'R13: {x["day"]} {x["t"]} liegt nicht nach heute'))
+    if last_day and t.get('week'):
+        fails.append((*ctx, 'R13: Rest der Woche am Sonntag nicht leer'))
+    keys = [(x['day'], x['t']) for x in t.get('week', [])]
+    if len(keys) != len(set(keys)):
+        fails.append((*ctx, 'R13: Einheit doppelt im Rest der Woche'))
+    # R14: Zwift am Wochenende nicht im Rest der Woche, wenn schon erledigt; Sa/So-Einheit nicht doppelt zu „Heute“
+    if done['bike'] >= 1 and any(x['t'] == 'Zwift' for x in t.get('week', [])):
+        fails.append((*ctx, 'R14: erledigtes Zwift im Rest der Woche'))
+    if off >= 5 and any(x['day'] == 'Sa/So' for x in t.get('week', [])):
+        fails.append((*ctx, 'R14: Sa/So-Einheit am Wochenende doppelt'))
+    # R15: Feedback: erledigte Gym-Einheit von heute trägt ihr Feedback; Gestern steht unter „Erledigt“
+    if gym and not any(x.get('fb') == 'FB-' + today.isoformat() for x in t['items']):
+        fails.append((*ctx, 'R15: Feedback fehlt an erledigter Einheit'))
+    if not any(x.get('fb') == 'FB-gestern' and x.get('w') == 'Gestern' for x in t.get('done', [])):
+        fails.append((*ctx, 'R15: Feedback von gestern fehlt'))
+    if any(x.get('fb') and not x.get('ok') for x in t['items']):
+        fails.append((*ctx, 'R15: Feedback an nicht erledigter Einheit'))
 
 print(f'{cases} Fälle geprüft, {len(fails)} Verstöße')
 seen = set()

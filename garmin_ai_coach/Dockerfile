@@ -18,6 +18,10 @@ COPY hr_zones.py /hr_zones.py
 COPY garmin_swim.py /garmin_swim.py
 COPY ha_settings.py /ha_settings.py
 COPY tagesform.py /tagesform.py
+COPY garmin_gym.py /garmin_gym.py
+COPY sleep.py /sleep.py
+COPY gym_plan.json /gym_plan.json
+COPY gym_exercises.json /gym_exercises.json
 COPY swim_plan.json /swim_plan.json
 COPY run.sh /
 RUN chmod a+x /run.sh

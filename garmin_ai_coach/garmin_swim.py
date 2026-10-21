@@ -34,7 +34,8 @@ STATE_FILE = os.path.join("/data", "garmin_swim_export.json")
 
 POOL_LENGTH_M = 25
 WEEKDAY = 1            # Dienstag (Schwimmen wechselt Di/Do - in Garmin per Drag & Drop verschiebbar)
-NAME_PREFIX = "GAC Schwimmen"
+# Workout-Name in Garmin = nur der Einheitenname ("CSS 200er"). Bis 0.24.3 stand
+# "GAC Schwimmen 20.10." davor - Alex 21.10.2026: unnötig, Datum steht im Kalender.
 CSS_ENTITY = "input_text.zielzeit_schwimm_pace_100m"
 
 SPORT = {"sportTypeId": 4, "sportTypeKey": "swimming", "displayOrder": 3}
@@ -276,7 +277,7 @@ def _fill(text: str, css: int) -> str:
 
 def build_workout(week: dict, css: int, day: datetime.date, gcss: int = None) -> dict:
     return {
-        "workoutName": f"{NAME_PREFIX} {day.strftime('%d.%m.')} {week['name']}",
+        "workoutName": week["name"][:80],
         "description": (f"{_fill(week['text'], css)} | CSS {_mmss(css)} /100 m | {week['m']} m | "
                         "Garmin AI Coach")[:1000],
         "sportType": SPORT,
@@ -290,6 +291,68 @@ def build_workout(week: dict, css: int, day: datetime.date, gcss: int = None) ->
             "workoutSteps": _steps(week["steps"], css, [0], [0], gcss=gcss),
         }],
     }
+
+
+EQUIP_DE = {"pull_buoy": "Pull-Buoy", "kickboard": "Schwimmbrett", "fins": "Flossen",
+            "paddles": "Paddles", "snorkel": "Schnorchel"}
+# Ausrüstung, die nur im Plantext steht (z. B. Freiwasser mit Neo im 70.3-Block)
+EQUIP_WORDS = (("neo", "Neoprenanzug"), ("pull-buoy", "Pull-Buoy"), ("flossen", "Flossen"),
+               ("paddle", "Paddles"), ("schnorchel", "Schnorchel"), ("brett", "Schwimmbrett"))
+
+
+def week_equipment(week: dict) -> list:
+    """Ausrüstung, die die Einheit braucht - aus den Schritten (eq) und dem Plantext."""
+    found = []
+
+    def walk(steps):
+        for st in steps or []:
+            if st.get("steps"):
+                walk(st["steps"])
+            name = EQUIP_DE.get(st.get("eq"))
+            if name and name not in found:
+                found.append(name)
+    walk(week.get("steps"))
+    text = (week.get("text") or "").lower()
+    for word, name in EQUIP_WORDS:
+        if word in text and name not in found:
+            found.append(name)
+    return found
+
+
+def planned_metres_by_week() -> dict:
+    """Montag (ISO) -> geplante Meter - für das Feedback je Einheit (tagesform.py)."""
+    return {w["w"]: w.get("m") for w in _load(PLAN_FILE, []) if w.get("w")}
+
+
+def equipment_reminder(today: datetime.date = None, swim_done_this_week: bool = False) -> dict:
+    """Erinnerung am Vorabend (Alex 21.10.2026): Braucht die Schwimmeinheit
+    morgen Ausrüstung, steht sie hier. Schwimmtage sind Di oder Do (Reihenfolge
+    mit Beine flexibel) bzw. der Tag, auf den das Workout im Garmin-Kalender
+    gelegt wurde. Ist diese Woche schon geschwommen, gibt es keine Erinnerung.
+    Die Automation in Home Assistant prüft zusätzlich for_date == morgen, damit
+    ein veralteter Stand (Sync ausgefallen) keine falsche Nachricht auslöst."""
+    today = today or datetime.date.today()
+    tomorrow = today + datetime.timedelta(days=1)
+    monday = tomorrow - datetime.timedelta(days=tomorrow.weekday())
+    week = {w["w"]: w for w in _load(PLAN_FILE, [])}.get(monday.isoformat())
+    empty = {"for_date": tomorrow.isoformat(), "name": None, "equipment": [], "text": ""}
+    # Montag -> Dienstag gehört zur selben Woche; Sonntag -> Montag zur neuen (noch nichts geschwommen)
+    done = swim_done_this_week and monday <= today
+    if not week or done:
+        return empty
+    entry = (_load(STATE_FILE, {}) or {}).get(week["w"]) or {}
+    days = {monday + datetime.timedelta(days=1), monday + datetime.timedelta(days=3)}
+    if entry.get("date"):
+        try:
+            days.add(datetime.date.fromisoformat(entry["date"]))
+        except ValueError:
+            pass
+    eq = week_equipment(week)
+    if tomorrow not in days or not eq:
+        return empty
+    alt = " (falls du morgen schwimmst und nicht Beine machst)" if tomorrow.weekday() == 1 else ""
+    return {"for_date": tomorrow.isoformat(), "name": week["name"], "equipment": eq,
+            "text": f"Morgen {week['name']}{alt}: {', '.join(eq)} einpacken."}
 
 
 def _load(path, default):
@@ -376,7 +439,7 @@ def export_upcoming(client, today: datetime.date = None, swim_done_this_week: bo
         entry.update({"sig": sig, "css": css, "name": week["name"], "m": week["m"]})
         state[week["w"]] = entry
         result.append({"date": entry.get("date", day.isoformat()), "name": week["name"],
-                       "distance_m": week["m"], "action": action,
+                       "distance_m": week["m"], "action": action, "equipment": week_equipment(week),
                        "workout_id": entry["workout_id"],
                        "target_check": entry.get("target_check", "")})
         print(f"[garmin_swim] {day.isoformat()} {week['name']}: {action}")

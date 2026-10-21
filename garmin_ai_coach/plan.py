@@ -141,7 +141,9 @@ Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026
   welche Einheit an welchem der beiden Tage liegt, wechselt von Woche zu Woche.
 - Wochenende: Zwift-Einheit (Sa oder So).
 - Unter der Woche zusätzlich ohne festen Tag: 1x lockerer Zone-2-Lauf (gemeinsam mit der
-  Partnerin) und 1x Qualitätslauf (Schwelle oder Intervall, wöchentlich im Wechsel).
+  Partnerin) und 1x Qualitätslauf, wöchentlich im Wechsel: Schwellenlauf oder 4x4-min-Intervall
+  (4x4 min bei 90-95 % HFmax, 3 min Trab). Andere Intervallformen (z. B. 1000er) macht der
+  Athlet bewusst nicht - nie vorschlagen.
 - Marathonblock (04.01.-11.04.2027): am Wochenende zusätzlich ein Longrun (bis 32 km),
   Zwift und Longrun auf Sa/So verteilt.
 - 70.3-Block (ab 17.05.2027): am Wochenende lange Radeinheit mit Koppellauf, Zwift-Intervall
@@ -208,7 +210,7 @@ PHASE_FOCUS = {
 # Kurzpläne je Phase und Disziplin (die Woche-für-Woche-Details stehen im Dashboard).
 PHASE_PLAN = {
     "Grundlage": {
-        "lauf": f"Z2-Lauf mit Partnerin 50 → 90 min (HF Zone 2) · Qualitätslauf im Wechsel: Schwelle (z. B. 3×2 km @ {_run()} /km) und Intervall (z. B. 5×1000 m @ {_run(-23)}–{_run(-18)} /km) · 30-min-Lauftest diese Woche (KW 42) und Mitte Dezember",
+        "lauf": f"Z2-Lauf mit Partnerin 50 → 90 min (HF Zone 2) · Qualitätslauf im Wechsel: Schwelle (z. B. 3×2 km @ {_run()} /km) und 4×4-min-Intervall (90–95 % HFmax, Richtwert {_run(-23)}–{_run(-18)} /km, 3 min Trab) · 30-min-Lauftest Mitte Dezember",
         "schwimmen": f"CSS-Serien im 4-Wochen-Wechsel: 100er @ {_swim()}, 200er–400er @ {_swim(1)}–{_swim(4)}, Technik + Ausdauer, Tempo-50er @ {_swim(-4)}–{_swim(-2)} /100 m · CSS-Test 30.11.",
         "rad": f"1x Zwift: Sweet Spot 3×10 → 2×20 min @ {_w(88)}–{_w(94)} W, dann Schwelle {_w(98)} W und Over-Under · FTP-Test 07.12. · optional 1x Z2 {_w(65)}–{_w(70)} W",
         "kraft": "Mo Push · Mi Pull · Fr Push+Pull · Beine Di oder Do",

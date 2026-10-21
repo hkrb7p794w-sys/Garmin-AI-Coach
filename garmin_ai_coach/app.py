@@ -1,5 +1,5 @@
 import os, json, datetime, threading, time
-from flask import Flask, request, redirect
+from flask import Flask, request, redirect, jsonify
 from ha_publish import (
     publish_discovery,
     publish_state,
@@ -20,6 +20,7 @@ from ha_publish import (
     publish_gym_progression,
     publish_hr_zones,
     publish_tagesform,
+    publish_json,
     set_sync_button_callback,
     set_vorschlag_callbacks,
     set_chat_callback,
@@ -44,6 +45,8 @@ import suggestions
 import chat
 import decoupling
 import garmin_swim
+import garmin_gym
+import sleep
 import ha_settings
 import tagesform
 
@@ -997,7 +1000,9 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         try:
             tf_cache = tagesform.update_sessions(client, recent_activities)
             tagesform_result = tagesform.evaluate(
-                tf_cache, _update_history(wellness), _strength_history()[1], today_date)
+                tf_cache, _update_history(wellness), _strength_history()[1], today_date,
+                ftp=ha_settings.ftp_watt(plan.FTP_ZWIFT_W),
+                swim_m_by_week=garmin_swim.planned_metres_by_week())
             wellness["tagesform_text"] = tagesform.prompt_block(tagesform_result)
             wellness["tagesform_summary"] = tagesform_result.get("summary")
         except Exception as e:
@@ -1042,6 +1047,15 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         publish_decoupling(wellness["decoupling_sessions"], skipped=_decoupling_skipped())
         if tagesform_result:
             publish_tagesform(tagesform_result, tagesform.state_text(tagesform_result))
+
+        # Schlaf-Verlauf (0.25.0, siehe sleep.py): die Nacht aus dem ohnehin geladenen
+        # get_sleep_data merken, 28-Tage-Kennzahlen publizieren. Kein Garmin-Abruf extra.
+        try:
+            nights = sleep.record(wellness.get("sleep"))
+            sl = sleep.summary(nights)
+            publish_json("schlaf", f"{sl.get('sleep_h') or '–'} h Ø 28 Tage", sl)
+        except Exception as e:
+            print(f"[sleep] fehlgeschlagen: {e}")
 
         # Herzfrequenzzonen (v0.21.0, siehe hr_zones.py): Zonen der Uhr aus Garmin,
         # schwellenbasierte Coach-Zonen, Zeit-in-Zone-Verteilung. Eigener try-Block:
@@ -1135,6 +1149,27 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             except Exception as e:
                 print(f"[garmin_swim] Export fehlgeschlagen: {e}")
                 publish_swim_export({"error": str(e)[:200]})
+
+        # Ausrüstung fürs Schwimmen morgen (0.25.0): Erinnerung am Vorabend über die
+        # HA-Automation "Garmin Coach: Schwimm-Ausrüstung" (prüft for_date == morgen).
+        try:
+            swim_done = any(t.get("key") == "swim" and (t.get("done") or 0) >= 1
+                            for t in plan_state.get("targets") or [])
+            rem = garmin_swim.equipment_reminder(today_date, swim_done_this_week=swim_done)
+            publish_json("schwimm_ausruestung", ", ".join(rem["equipment"]) or "nichts", rem)
+        except Exception as e:
+            print(f"[garmin_swim] Ausrüstungs-Erinnerung fehlgeschlagen: {e}")
+
+        # Gym-Einheiten als Kraft-Workouts in den Garmin-Kalender (0.25.0, siehe
+        # garmin_gym.py) - nur, wenn gym_plan.json Einheiten enthält.
+        try:
+            gym_res = garmin_gym.export_upcoming(
+                client, today_date, done_dates={s.get("date") for s in wellness["strength_exercises"] or []})
+            publish_json("export_gym", (f"{len(gym_res['workouts'])} im Garmin-Kalender"
+                                        if gym_res.get("workouts") else gym_res.get("status", "–")), gym_res)
+        except Exception as e:
+            print(f"[garmin_gym] Export fehlgeschlagen: {e}")
+            publish_json("export_gym", "Fehler", {"error": str(e)[:200]})
 
         # Tagesnotiz: KI formuliert, Regeln entscheiden. Fällt Gemini aus, steht die
         # regelbasierte Notiz im Dashboard - plus die letzte erfolgreiche KI-Notiz.
@@ -1401,6 +1436,58 @@ def weekly():
         return redirect(".")
     do_weekly_report()
     return redirect(".")
+
+
+@app.route("/sleep_export")
+def sleep_export():
+    """Schlafverlauf für die Analyse (0.25.0). ?days=90 lädt fehlende Nächte im
+    Hintergrund nach (1 Abruf pro Nacht, 1,5 s Pause); erneut aufrufen, bis
+    job.running false ist. ?raw=JJJJ-MM-TT liefert die Garmin-Antwort einer
+    Nacht unverändert (Feldnamen prüfen). Gibt JSON zurück."""
+    if not is_logged_in():
+        return jsonify({"error": "nicht eingeloggt"}), 401
+    client = get_client()
+    if request.args.get("raw"):
+        raw = client.get_sleep_data(request.args["raw"])
+        return jsonify({"top_keys": sorted((raw or {}).keys()),
+                        "dto_keys": sorted(((raw or {}).get("dailySleepDTO") or {}).keys()),
+                        "extract": sleep.extract(raw),
+                        "scalars": {k: v for k, v in (raw or {}).items() if not isinstance(v, (dict, list))},
+                        "dto": {k: v for k, v in ((raw or {}).get("dailySleepDTO") or {}).items()
+                                if not isinstance(v, list)}})
+    days = max(1, min(int(request.args.get("days", 0) or 0), 365))
+    job = sleep.start_backfill(client, days) if days > 1 else sleep.job_status()
+    out = {"job": job, "summary_28": sleep.summary(days=28), "summary_90": sleep.summary(days=90),
+           "nights": sleep._load()}
+    if request.args.get("devices"):
+        try:
+            devs = client.get_devices() or []
+            out["devices"] = [{k: d.get(k) for k in ("productDisplayName", "deviceId", "partNumber",
+                                                       "currentFirmwareVersion", "batteryStatus")}
+                              for d in devs]
+            for d in devs[:2]:
+                try:
+                    st = client.get_device_settings(d.get("deviceId")) or {}
+                    out.setdefault("settings", {})[str(d.get("deviceId"))] = {
+                        k: v for k, v in st.items()
+                        if any(w in k.lower() for w in ("spo2", "pulse", "ox", "sleep", "battery"))}
+                except Exception as e:
+                    out.setdefault("settings", {})[str(d.get("deviceId"))] = str(e)
+        except Exception as e:
+            out["devices"] = str(e)
+    return jsonify(out)
+
+
+@app.route("/gym_selftest")
+def gym_selftest():
+    """Prüft einmal live, ob Garmin ein Kraft-Workout mit Übung, Wiederholungen und
+    Gewicht annimmt (Workout wird angelegt, zurückgelesen und gelöscht)."""
+    if not is_logged_in():
+        return jsonify({"error": "nicht eingeloggt"}), 401
+    try:
+        return jsonify(garmin_gym.selftest(get_client()))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 def _next_run_at(hours: list, now: datetime.datetime) -> datetime.datetime:

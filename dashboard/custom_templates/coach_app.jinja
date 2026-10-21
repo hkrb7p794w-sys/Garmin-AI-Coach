@@ -1,5 +1,6 @@
 {#- Garmin AI Coach – Datenbausteine für die Dashboard-Karten (coach-cards.js) und Push-Nachrichten.
-    coach_today()  -> JSON: Tagesampel, heutige Einheiten, diese Woche noch offen, Phase, Countdown
+    coach_today()  -> JSON: Tagesampel, heutige Einheiten (mit Feedback), Rest der Woche (week), Einheiten ohne
+                      festen Tag (open), Erledigt mit Feedback (done), Phase, Countdown
     coach_week()   -> JSON: Einheiten der laufenden Woche je Sportart, Musterwoche, Prioritäten, nächste Woche
     coach_today_text() -> Klartext für die Morgen-Push-Nachricht
     Planinhalte aus coach_plan.jinja, Wochenrahmen aus coach_days.jinja, Ist-Werte aus sensor.garmin_ai_coach_garmin_plan.
@@ -125,6 +126,58 @@
 {%- set r.hint = 'Qualitätslauf nicht am Tag nach Beine und nicht direkt vor dem Longrun.' -%}
 {%- endif -%}
 {%- endif -%}
+{#- Feedback je Einheit (seit 21.10.2026): kommt fertig aus dem Add-on (tagesform.py, Attribut feedback).
+    Erledigte Einheiten von heute bekommen ihr Feedback direkt am Eintrag; Einheiten von gestern und
+    zusätzliche Einheiten von heute stehen unter „Erledigt“. -#}
+{%- set tf = state_attr('sensor.garmin_ai_coach_garmin_tagesform_leistung', 'sessions') or [] -%}
+{%- set yday = (today - timedelta(days=1)).isoformat() -%}
+{%- set fbn = namespace(items=[], used=[], done=[]) -%}
+{%- for x in r.items -%}
+{%- set hit = namespace(v=none) -%}
+{%- if x.ok -%}{%- for z in tf if hit.v is none and z.date == today.isoformat() and z.s == x.s and z.start not in fbn.used -%}{%- set hit.v = z -%}{%- endfor -%}{%- endif -%}
+{%- if hit.v is not none -%}{%- set fbn.used = fbn.used + [hit.v.start] -%}{%- set fbn.items = fbn.items + [dict(x, fb=hit.v.feedback | default(''))] -%}{%- else -%}{%- set fbn.items = fbn.items + [x] -%}{%- endif -%}
+{%- endfor -%}
+{%- for z in tf | sort(attribute='start') if z.date in [today.isoformat(), yday] and z.start not in fbn.used and z.feedback is defined -%}
+{%- set fbn.done = fbn.done + [{'s': z.s, 't': z.title | default(z.name), 'w': 'Heute' if z.date == today.isoformat() else 'Gestern', 'fb': z.feedback}] -%}
+{%- endfor -%}
+{%- set r.items = fbn.items -%}
+{#- Rest der Woche (seit 21.10.2026): alle noch kommenden Einheiten mit festem Tag, damit „offen“ nicht nur die
+    Läufe ohne festen Tag zeigt (Frage Alex 21.10.: „warum werden da nur ein paar Einheiten angezeigt?“). -#}
+{%- set wk_n = namespace(l=[], we=false, lr=false, zl=false) -%}
+{%- if mon in ws -%}
+{%- set dshort = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] -%}
+{%- set legs_tue = (sess | selectattr('date', 'eq', (today - timedelta(days=wd - 1)).isoformat()) | list | count) > 0 if wd >= 1 else false -%}
+{%- for d in range(wd + 1, 7) -%}
+{%- for k in fr.fixed[d | string] -%}
+{%- if k in ['push', 'pull', 'pp'] -%}
+{%- set wk_n.l = wk_n.l + [{'day': dshort[d], 's': 'strength', 't': {'push': 'Push', 'pull': 'Pull', 'pp': 'Push + Pull'}[k], 'c': 'Home-Gym', 'd': ''}] -%}
+{%- elif k == 'swimlegs' and d == 1 -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Di', 's': 'swim', 't': 'Schwimmen oder Beine', 'c': wk.sc ~ ' · das andere am Donnerstag', 'd': wk.s}] -%}
+{%- elif k == 'swimlegs' and d == 3 -%}
+{%- set swim_left = dn.swim < 1 -%}
+{%- set legs_left = not (legs_tue or (wd == 1 and gym_today)) -%}
+{%- if wd < 1 -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Do', 's': 'strength', 't': 'Beine oder Schwimmen', 'c': 'was am Dienstag nicht dran war', 'd': ''}] -%}
+{%- elif swim_left and legs_left -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Do', 's': 'swim', 't': 'Schwimmen oder Beine', 'c': wk.sc ~ ' · Schwimmen hat Vorrang', 'd': wk.s}] -%}
+{%- elif swim_left -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Do', 's': 'swim', 't': 'Schwimmen', 'c': wk.sc, 'd': wk.s}] -%}
+{%- elif legs_left -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Do', 's': 'strength', 't': 'Beine', 'c': 'vor der Arbeit', 'd': ''}] -%}
+{%- endif -%}
+{%- elif k == 'z' and wd < 5 and not wk_n.we and dn.bike < 1 -%}
+{%- set wk_n.we = true -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Sa/So', 's': 'bike', 't': 'Zwift', 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z}] -%}
+{%- elif k == 'l' and wd < 5 and not wk_n.lr and dn.run < 3 -%}
+{%- set wk_n.lr = true -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Sa/So', 's': 'run', 't': 'Longrun', 'c': ((wk.lr | string).replace('.', ',') ~ ' km') if wk.lr else '', 'd': wk.l}] -%}
+{%- elif k == 'zlong' and wd < 5 and not wk_n.zl and wk.z2 and dn.bike < 2 -%}
+{%- set wk_n.zl = true -%}
+{%- set wk_n.l = wk_n.l + [{'day': 'Sa/So', 's': 'bike', 't': 'Lange Radeinheit', 'c': '', 'd': wk.z2}] -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endfor -%}
+{%- endif -%}
 {%- set out = namespace(items=[], open=[], skip=[]) -%}
 {%- for x in r.items -%}{%- set out.items = out.items + [dict(x, a=(_chip(lvl, x, false, dl) | trim))] -%}{%- endfor -%}
 {%- for x in r.open -%}
@@ -145,6 +198,7 @@
   'advice': advice,
   'reasons': (e.attributes.reasons if ok_e else []) or [],
   'items': out.items, 'open': out.open, 'skip': out.skip, 'hint': r.hint,
+  'week': wk_n.l, 'done': fbn.done,
   'ph': r.ph, 'f': r.f, 'wi': r.wi, 'wn': r.wn, 'dl': dl,
   'dm': (strptime(plan.marathon, '%Y-%m-%d').date() - today).days,
   'dr': (strptime(plan.race, '%Y-%m-%d').date() - today).days,
@@ -191,6 +245,7 @@
 {%- set lines = namespace(l=[], miss=[]) -%}
 {%- for x in t['items'] -%}{%- set lines.l = lines.l + [ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' · ' ~ x.c) if x.c else '') ~ (' ✓' if x.ok else '') ~ ((' → ' ~ x.a) if x.a else '')] -%}{%- endfor -%}
 {%- for x in t.open -%}{%- set lines.l = lines.l + ['Offen: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '') ~ ((' → ' ~ x.a) if x.a else '')] -%}{%- endfor -%}
+{%- for x in t.done if x.w == 'Gestern' -%}{%- set lines.l = lines.l + ['Gestern ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ': ' ~ x.fb] -%}{%- endfor -%}
 {%- for x in t.skip -%}{%- set lines.l = lines.l + ['Entfällt diese Woche: ' ~ ic.get(x.s, '•') ~ ' ' ~ x.t ~ ((' (' ~ x.c ~ ')') if x.c else '')] -%}{%- endfor -%}
 {%- for x in tg -%}{%- if (x.done | int(0)) < (x.min | int(0)) -%}{%- set lines.miss = lines.miss + [names.get(x.key, x.key) ~ ' ' ~ x.done ~ '/' ~ x.min] -%}{%- endif -%}{%- endfor -%}
 {%- set q = quote(tg) | int -%}

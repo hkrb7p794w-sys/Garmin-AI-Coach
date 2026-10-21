@@ -13,8 +13,11 @@
  *   „Fällt diese Woche aus“; Überschrift „Heute noch möglich“ statt „Diese Woche noch offen“.
  * 1.2.0 (18.10.2026): Gamification entfernt (Level/XP, Serie, Joker, Abzeichen, Meilensteine, Wochenziel).
  *   coach-week zeigt nur noch die erledigten Pflichteinheiten der Woche.
+ * 1.3.0 (21.10.2026): Feedback je Einheit (x.fb aus dem Add-on, tagesform.py) direkt am erledigten Eintrag,
+ *   Abschnitt „Erledigt“ (gestern + zusätzliche Einheiten von heute), „Rest der Woche“ mit allen kommenden
+ *   Einheiten mit festem Tag; die Läufe ohne festen Tag stehen getrennt unter „Ohne festen Tag“.
  */
-const CC_VERSION = '1.2.0';
+const CC_VERSION = '1.3.0';
 const ICONS = {};
 
 const E = {
@@ -203,7 +206,13 @@ class CoachHero extends CoachBase {
     .note{display:flex;gap:10px;align-items:flex-start;font-size:13px}
     .note .ic{width:18px;height:18px;color:var(--secondary-text-color);margin-top:1px}
     .warnline{margin-top:8px;font-size:12px;color:#d03b3b}
-    .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}`;
+    .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .fb{margin-top:4px;font-size:13px;line-height:1.35;color:var(--primary-text-color);display:flex;gap:6px;align-items:flex-start}
+    .fb .ic{width:14px;height:14px;margin-top:2px;color:var(--secondary-text-color)}
+    .day{display:inline-block;min-width:34px;font-size:11px;font-weight:600;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.04em}
+    .item.compact{padding:7px 0}
+    .item.compact .sport-ic{width:26px!important;height:26px!important;border-radius:8px}
+    .item.compact .t{font-size:14px}`;
   }
   _render() {
     const t = this._tpl.today || {};
@@ -234,6 +243,8 @@ class CoachHero extends CoachBase {
     this._lvl = lvl;
     const items = (t.items || []).map((x, i) => this._item(x, `i${i}`)).join('');
     const open = (t.open || []).map((x, i) => this._item(x, `o${i}`, true)).join('');
+    const week = (t.week || []).map((x, i) => this._item(x, `w${i}`, true, true)).join('');
+    const done = (t.done || []).map((x, i) => this._item({ ...x, ok: true, c: x.w }, `d${i}`, false, true)).join('');
     const skip = (t.skip || []).map((x, i) => this._item(x, `s${i}`, true)).join('');
 
     const noteSt = this._st(E.note);
@@ -268,7 +279,9 @@ class CoachHero extends CoachBase {
       <div class="hr"></div>
       <div class="eyebrow">Heute</div>
       ${items || `<div class="small muted" style="padding:8px 0">Kein fester Termin – Zeit für eine offene Einheit oder Erholung.</div>`}
-      ${open ? `<div class="eyebrow" style="margin-top:10px">${t.dl > 0 ? 'Diese Woche noch offen' : 'Heute noch möglich'}</div>${open}` : ''}
+      ${done ? `<div class="eyebrow" style="margin-top:10px">Erledigt</div>${done}` : ''}
+      ${week ? `<div class="eyebrow" style="margin-top:10px">Rest der Woche</div>${week}` : ''}
+      ${open ? `<div class="eyebrow" style="margin-top:10px">${t.dl > 0 ? 'Noch offen · ohne festen Tag' : 'Heute noch möglich'}</div>${open}` : ''}
       ${skip ? `<div class="eyebrow" style="margin-top:10px">Fällt diese Woche aus</div>${skip}` : ''}
       ${t.hint ? `<div class="small muted">${icon('informationOutline', 14, 'inl')} ${esc(t.hint)}</div>` : ''}
       ${noteLines.length ? `<div class="hr"></div><div class="note tap" data-toggle="note">${icon('robotOutline')}<div style="flex:1"><div class="${this._open.has('note') ? '' : 'clamp'}">${esc(noteLines[0])}</div>${this._open.has('note') && noteLines.length > 1 ? noteLines.slice(1).map((l) => `<div style="margin-top:6px">${esc(l)}</div>`).join('') : ''}${noteLines.length > 1 ? `<div><button class="link">${this._open.has('note') ? 'weniger' : 'mehr'}</button></div>` : ''}</div></div>` : ''}
@@ -277,18 +290,19 @@ class CoachHero extends CoachBase {
       ${nt && ntDays != null && ntDays <= 21 ? `<div class="small muted" style="margin-top:10px">${icon('target', 14, 'inl')} Nächster Test: ${esc(nt.f)} (ab ${ddmm(new Date(nt.w))})</div>` : ''}
     </div>`;
   }
-  _item(x, key, open = false) {
+  _item(x, key, open = false, compact = false) {
     const isOpen = this._open.has(key);
     const has = !!x.d;
     const c = this._c();
     // Hinweis-Chip kommt fertig aus coach_today() (x.a) – Wochentag, Ampel und Art der Einheit sind dort berücksichtigt
     const adapt = x.a
       ? `<span class="chip" style="margin-left:6px;background:${this._lvl === 'pause' ? c.critical : c.warn}26;font-size:11px;padding:1px 7px">${esc(x.a)}</span>` : '';
-    return `<div class="item ${has ? 'tap' : ''}" ${has ? `data-toggle="${key}"` : ''}>
-      ${this._sportIc(x.s)}
+    return `<div class="item ${has ? 'tap' : ''} ${compact ? 'compact' : ''}" ${has ? `data-toggle="${key}"` : ''}>
+      ${this._sportIc(x.s, compact ? 26 : 32)}
       <div style="flex:1;min-width:0">
-        <div class="t">${esc(x.t)}${adapt}</div>
+        <div class="t">${x.day ? `<span class="day">${esc(x.day)}</span>` : ''}${esc(x.t)}${adapt}</div>
         ${x.c ? `<div class="c">${esc(x.c)}</div>` : ''}
+        ${x.fb ? `<div class="fb">${icon('commentTextOutline', 14)}<span>${esc(x.fb)}</span></div>` : ''}
         ${isOpen && has ? `<div class="details">${esc(x.d).replace(/ · /g, '<br>')}</div>` : ''}
       </div>
       ${open ? (has ? `<span class="muted" style="margin-left:auto">${icon(isOpen ? 'chevronDown' : 'chevronRight', 18)}</span>` : '') : `<span class="state ${x.ok ? 'done' : ''}">${x.ok ? icon('check', 14) : ''}</span>`}

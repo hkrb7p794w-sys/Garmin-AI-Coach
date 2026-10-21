@@ -362,10 +362,15 @@ def update_sessions(client, activities: list) -> dict:
                     "high_zone_share": (round(decoupling.high_zone_share(act) * 100, 1)
                                         if decoupling.high_zone_share(act) is not None else None),
                     "companion_id": companion.get("activityId") if companion else None,
+                    "distance_m": round(act.get("distance") or 0) or None,
                     **metrics,
                     "rpe": None, "feel": None, "rpe_checked": None,
                 }
                 cache[key] = entry
+                changed = True
+            elif "distance_m" not in entry:
+                # Feld seit 0.25.0 (Feedback je Einheit) - Altbestand ohne neuen Garmin-Abruf ergänzen
+                entry["distance_m"] = round(act.get("distance") or 0) or None
                 changed = True
 
             age = (now - start).days
@@ -491,8 +496,109 @@ def _verdict_hard(form, perf, rpe):
             "ueber": "Form genutzt"}[perf]
 
 
-def evaluate(cache: dict, history: list, strength_sessions: list, today: datetime.date = None) -> dict:
-    """Bewertet alle Einheiten der letzten EVAL_DAYS Tage."""
+
+# ---------------------------------------------------------------------------
+# Kurzes Feedback je Einheit (seit 0.25.0, Dashboard-Reiter "Heute")
+# ---------------------------------------------------------------------------
+
+SPORT_KEY = {"run": "run", "ride": "bike", "swim": "swim", "strength": "strength"}
+KIND_DE = {"vo2": "Intervallläufe", "schwelle": "Schwellen-/Tempoeinheiten", "test": "Tests",
+           "hart": "harte Einheiten", "locker": "lockere Einheiten", "gym": "Gym-Einheiten"}
+# Urteile, die im Feedback nichts Neues sagen (die Zahlen stehen schon davor)
+_QUIET_VERDICTS = ("zu wenig Vergleichseinheiten", "Normalfall",
+                   "locker gehalten – Zurückhaltung ist hier richtig", "als locker gedacht")
+
+
+def _mmss(sec: float) -> str:
+    sec = int(round(sec))
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def _de_int(n) -> str:
+    return f"{int(round(n)):,}".replace(",", ".")
+
+
+def _title(name, sport) -> str:
+    """Anzeigename ohne Technik-Präfixe ("GAC Schwimmen 20.10. CSS 200er" -> "CSS 200er",
+    "Zwift - GAC Z01 Sweet Spot 3x10" -> "Zwift Z01 Sweet Spot 3x10")."""
+    import re
+    t = re.sub(r"^GAC Schwimmen \d{1,2}\.\d{1,2}\.\s*", "", name or "")
+    t = re.sub(r"\bGAC\s+", "", t).replace("Zwift - ", "Zwift ").strip()
+    if t in ("Krafttraining", "Strength", ""):
+        t = {"strength": "Krafttraining", "run": "Lauf", "ride": "Rad", "swim": "Schwimmen"}.get(sport, t)
+    return t
+
+
+def feedback(entry: dict, ev: dict, ftp: float = None, planned_swim_m: int = None) -> str:
+    """Ein bis zwei kurze Sätze zu einer Einheit: was gemacht wurde (Zahlen),
+    wie es zur Absicht passt, Anstrengung. Regelbasiert und ohne KI, damit es
+    auch bei Gemini-Ausfall steht. ev = Bewertung aus evaluate()."""
+    sport = entry.get("sport")
+    speed = _num(entry.get("output")) if entry.get("output_unit") == "m/s" else None
+    facts, judge = [], ""
+    pct, kind = ev.get("perf_pct"), ev.get("kind")
+
+    def vs_same():
+        if pct is None:
+            return ""
+        if abs(pct) <= (ev.get("perf_band_pct") or PERF_BAND_MIN_PCT):
+            return f"auf dem Niveau deiner letzten {KIND_DE.get(kind, 'Einheiten')}"
+        return f"{pct:+.1f} % ggü. deinen letzten {KIND_DE.get(kind, 'Einheiten')}".replace(".", ",", 1)
+
+    if sport == "run":
+        if speed:
+            facts.append(f"Ø {_mmss(1000 / speed)} /km")
+        share = entry.get("high_zone_share")
+        if not entry.get("hard"):
+            if share is not None and share > EASY_MAX_HIGH_ZONE_SHARE * 100:
+                judge = f"{share:.0f} % in Zone 4–5 – für einen Z2-Lauf zu hart, nächstes Mal Tempo raus"
+            elif share is not None:
+                judge = f"{share:.0f} % in Zone 4–5 – sauber locker"
+            ef = ev.get("ef_pct")
+            if ef is not None and abs(ef) >= PERF_BAND_MIN_PCT:
+                judge += (f", Effizienz {ef:+.1f} %".replace(".", ",", 1)
+                          + (" (mehr Tempo pro Herzschlag)" if ef > 0 else " (weniger Tempo pro Herzschlag)"))
+        else:
+            judge = vs_same()
+    elif sport == "swim":
+        dist = entry.get("distance_m")
+        if dist:
+            facts.append(f"{_de_int(dist)} m")
+        if speed:
+            facts.append(f"Ø {_mmss(100 / speed)} /100 m")
+        if planned_swim_m and dist:
+            judge = ("Plan komplett geschwommen" if dist >= 0.95 * planned_swim_m
+                     else f"{_de_int(dist)} von {_de_int(planned_swim_m)} m geplant")
+        if entry.get("hard") and pct is not None:
+            judge = ", Tempo ".join(p for p in (judge, vs_same()) if p)
+    elif sport == "ride":
+        w = _num(entry.get("output")) if entry.get("output_unit") == "W" else None
+        if w:
+            facts.append(f"{round(w)} W" + (f" = {round(w / ftp * 100)} % FTP" if ftp else ""))
+        judge = vs_same() if entry.get("hard") else ""
+    elif sport == "strength" and pct is not None:
+        if abs(pct) <= (ev.get("perf_band_pct") or PERF_BAND_MIN_PCT):
+            judge = "Kraftwerte (e1RM) auf dem Niveau der letzten Einheiten"
+        else:
+            judge = f"Kraftwerte (e1RM) {pct:+.1f} % ggü. den letzten Einheiten".replace(".", ",", 1)
+    if ev.get("duration_min"):
+        facts.insert(0, f"{ev['duration_min']} min")
+
+    rpe = ev.get("rpe")
+    effort = (f"RPE {rpe:g}".replace(".", ",") + (f", Gefühl {ev['feel']}" if ev.get("feel") else "")
+              if rpe is not None else "ohne RPE – auf der Uhr nachtragen")
+    verdict = ev.get("verdict") or ""
+    show_verdict = verdict and not verdict.startswith(_QUIET_VERDICTS) and not verdict.startswith("Tagesform noch")
+    if rpe is None and show_verdict and "RPE" in verdict:
+        effort = ""   # Urteil sagt das Fehlen der RPE schon
+    parts = [" · ".join(facts)] + [p for p in (judge, effort, verdict if show_verdict else "") if p]
+    text = ". ".join(p[0].upper() + p[1:] for p in parts if p)
+    return text.replace(" -", " −").rstrip(" .") + "."
+
+def evaluate(cache: dict, history: list, strength_sessions: list, today: datetime.date = None,
+             ftp: float = None, swim_m_by_week: dict = None) -> dict:
+    """Bewertet alle Einheiten der letzten EVAL_DAYS Tage. ftp und
+    swim_m_by_week (Montag ISO -> geplante Meter) nur fürs Feedback."""
     today = today or datetime.date.today()
     cutoff = (today - datetime.timedelta(days=EVAL_DAYS)).isoformat()
     entries = sorted(cache.values(), key=lambda e: e.get("start") or e.get("date") or "")
@@ -521,8 +627,10 @@ def evaluate(cache: dict, history: list, strength_sessions: list, today: datetim
                 verdict = f"als locker gedacht, aber {share:.0f} % in Zone 4–5"
             else:
                 verdict = "locker gehalten – Zurückhaltung ist hier richtig"
-        sessions.append({
-            "date": e["date"], "name": e.get("name"), "sport": SPORT_DE.get(sport, sport),
+        ev = {
+            "date": e["date"], "start": e.get("start"), "name": e.get("name"),
+            "title": _title(e.get("name"), sport),
+            "sport": SPORT_DE.get(sport, sport), "s": SPORT_KEY.get(sport, sport),
             "intent": "hart" if hard else "locker", "kind": kind, "duration_min": e.get("duration_min"),
             "form": FORM_DE.get(form["level"]) if form["level"] else "ohne Baseline",
             "form_level": form["level"], "form_reasons": form["reasons"],
@@ -530,7 +638,14 @@ def evaluate(cache: dict, history: list, strength_sessions: list, today: datetim
             "ef_pct": ef_pct, "n_compare": n_cmp,
             "rpe": rpe, "feel": FEEL_DE.get(e.get("feel")) if e.get("feel") is not None else None,
             "verdict": verdict,
-        })
+        }
+        try:
+            d = datetime.date.fromisoformat(e["date"])
+            mon = (d - datetime.timedelta(days=d.weekday())).isoformat()
+            ev["feedback"] = feedback(e, ev, ftp=ftp, planned_swim_m=(swim_m_by_week or {}).get(mon))
+        except Exception as ex:
+            print(f"[tagesform] Feedback für {e.get('name')} nicht möglich: {ex}")
+        sessions.append(ev)
 
     hard = [s for s in sessions if s["intent"] == "hart"]
     last14 = (today - datetime.timedelta(days=14)).isoformat()
