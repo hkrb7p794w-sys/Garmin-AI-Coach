@@ -152,7 +152,15 @@ def _signature(sets_payload) -> list:
 
 def unconfirmed_ids() -> set:
     """Aktivitäten, die mit Planwerten vorbefüllt wurden und noch nicht bearbeitet sind."""
-    return {k for k, v in _load().items() if v.get("unconfirmed")}
+    return {k for k, v in _load().items() if v.get("unconfirmed") and not v.get("edited")}
+
+
+def pending(today: datetime.date = None, state: dict = None) -> list:
+    """Heute vorbefüllte Einheiten, an denen noch nichts geändert wurde (Erinnerung um 20:30)."""
+    today = (today or datetime.date.today()).isoformat()
+    state = state if state is not None else _load()
+    return [{"activity_id": k, "workout": v.get("workout")} for k, v in state.items()
+            if v.get("date") == today and v.get("action") == "vorbefüllt" and not v.get("edited")]
 
 
 def run(client, activities: list, progression: list = None, today: datetime.date = None) -> dict:
@@ -178,13 +186,15 @@ def run(client, activities: list, progression: list = None, today: datetime.date
             continue
         key = str(aid)
         entry = state.get(key)
-        if entry and entry.get("unconfirmed"):
-            # Noch mit Planwerten? Sobald Alex etwas ändert, zählt die Einheit normal.
+        if entry and entry.get("action") == "vorbefüllt" and not entry.get("edited"):
+            # Schon bearbeitet? Sobald Alex etwas ändert, zählt die Einheit normal (und die
+            # Erinnerung am Abend entfällt).
             try:
                 cur = client.get_activity_exercise_sets(aid)
-                if _signature(cur) != entry.get("sig"):
+                if entry.get("sig") is not None and _signature(cur) != entry.get("sig"):
+                    entry["edited"] = True
                     entry["unconfirmed"] = False
-                    print(f"[gym_prefill] {start} {entry.get('workout')}: bearbeitet - zählt jetzt für die Progression")
+                    print(f"[gym_prefill] {start} {entry.get('workout')}: bearbeitet")
             except Exception:
                 pass
             continue
@@ -241,5 +251,5 @@ def run(client, activities: list, progression: list = None, today: datetime.date
     state = {k: v for k, v in state.items() if (v.get("date") or "") >= cutoff}
     _save(state)
     recent = sorted(({"activity_id": k, **v} for k, v in state.items()), key=lambda x: x.get("date") or "")[-5:]
-    return {"status": "ok", "activities": done, "recent": recent,
+    return {"status": "ok", "activities": done, "recent": recent, "pending_today": pending(today, state),
             "updated": datetime.datetime.now().isoformat(timespec="minutes")}

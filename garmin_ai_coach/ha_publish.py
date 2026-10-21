@@ -421,6 +421,17 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:sleep",
     },
+    # 0.28.x
+    "gym_vorbefuellt": {
+        "name": "Garmin Gym vorbefüllt",
+        "unit": None,
+        "icon": "mdi:clipboard-check-outline",
+    },
+    "gym_nachtragen": {
+        "name": "Garmin Gym nachtragen",
+        "unit": None,
+        "icon": "mdi:clipboard-alert-outline",
+    },
 }
 
 # Garmin liefert den Trainingsstatus als Code (z. B. "RECOVERY_2") - bisher
@@ -464,6 +475,7 @@ ATTRIBUTE_SENSORS = {
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
     "gym_progression", "herzfrequenzzonen", "tagesform_leistung",
     "schwimm_ausruestung", "export_gym", "schlaf", "lauf_pace",
+    "gym_vorbefuellt", "gym_nachtragen",
 }
 
 

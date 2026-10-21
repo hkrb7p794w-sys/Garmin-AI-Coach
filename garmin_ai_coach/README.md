@@ -28,6 +28,11 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.28.2
+
+- Erinnerung: Sensor „Gym nachtragen“ (Anzahl heute vorbefüllter, noch nicht bearbeiteter Kraft-Aktivitäten). HA-Automation „Garmin Coach: Gym-Wiederholungen nachtragen“ schickt um 20:30 (nach dem 20-Uhr-Sync) eine Push-Nachricht.
+- Sensoren „Gym vorbefüllt“ und „Gym nachtragen“ per MQTT-Discovery angelegt (fehlten in 0.28.0).
+
 ### 0.28.0
 
 - Vorbefüllen statt Kalender (`gym_prefill.py`): Die Garmin CIRQA führt Kalender-Workouts nur mit Connect+ aus. Stattdessen schreibt das Add-on nach dem Training Übungen, Sätze und Gewicht des Tagesplans in die aufgezeichnete Kraft-Aktivität (nur wenn sie noch keine benannte Übung hat, nur Einheiten ab 22.10.2026) und benennt sie nach der Einheit. Die Wiederholungen bleiben leer und werden in der Connect-App eingetragen. Gewicht: Empfehlung bei „erhöhen“, sonst zuletzt gelogtes Gewicht, sonst Planwert.

@@ -1188,6 +1188,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             last = (pre.get("recent") or [{}])[-1]
             publish_json("gym_vorbefuellt", (f"{last.get('date')} {last.get('workout') or ''} – {last.get('action')}"
                                              if last else pre.get("status", "–"))[:250], pre)
+            # Erinnerung (Automation 20:30): heute vorbefüllt, aber noch nicht nachgetragen
+            pend = pre.get("pending_today") or []
+            names = ", ".join(p["workout"] or "Krafteinheit" for p in pend)
+            publish_json("gym_nachtragen", len(pend), {
+                "for_date": today_date.isoformat(), "items": pend,
+                "text": (f"{names}: Übungen sind vorausgefüllt – bitte in Garmin Connect noch die Wiederholungen "
+                         f"eintragen (Aktivität öffnen › Sätze bearbeiten).") if pend else ""})
         except Exception as e:
             print(f"[gym_prefill] fehlgeschlagen: {e}")
 
