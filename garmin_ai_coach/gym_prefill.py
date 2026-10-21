@@ -116,10 +116,23 @@ def _put(client, activity_id, payload):
     fn = getattr(client, "set_activity_exercise_sets", None)
     if callable(fn):
         return fn(activity_id, payload)
-    garth = getattr(client, "garth", None)
-    if garth is not None:
-        return garth.put("connectapi", URL.format(activity_id), json=payload, api=True)
-    raise RuntimeError("garminconnect-Version kann keine Sätze schreiben")
+    path = URL.format(activity_id)
+    # Ältere garminconnect-Versionen: dieselbe Anfrage über den internen HTTP-Client
+    for attr in ("client", "garth"):
+        inner = getattr(client, attr, None)
+        if inner is None:
+            continue
+        if callable(getattr(inner, "put", None)):
+            return inner.put("connectapi", path, json=payload, api=True)
+        if callable(getattr(inner, "request", None)):
+            return inner.request("PUT", "connectapi", path, json=payload, api=True)
+    try:
+        import importlib.metadata as md
+        ver = md.version("garminconnect")
+    except Exception:
+        ver = "?"
+    raise RuntimeError(f"garminconnect {ver} kann keine Sätze schreiben (Attribute: "
+                       f"{[a for a in dir(client) if not a.startswith('_')][:40]})")
 
 
 def _rename(client, activity_id, name):
