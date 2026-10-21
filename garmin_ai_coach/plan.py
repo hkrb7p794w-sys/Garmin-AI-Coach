@@ -133,7 +133,7 @@ WEEK_TEMPLATE_BY_PHASE["Regeneration"] = {d: [{"type": "optional", "text": "Rege
 WEEK_TEMPLATE = WEEK_TEMPLATE_BY_PHASE["Grundlage"]
 WEEKDAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
-ATHLETE_PROFILE = f"""Ziele: erster Marathon am 02.05.2027 (Zwischenziel), Hauptziel Challenge Almere-Amsterdam, Mitteldistanz (1,9 km Schwimmen, 90 km Rad, 21,1 km Laufen) am Sa 11.09.2027.
+ATHLETE_PROFILE = f"""Ziele: erster Marathon am 02.05.2027 (Zwischenziel), Hauptziel Challenge Almere-Amsterdam, Mitteldistanz (1,9 km Schwimmen, 94 km Rad, 21,1 km Laufen; flach, windexponiert über den Polder, Schwimmen im Weerwater) am Sa 11.09.2027.
 
 Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026):
 - Montag Push, Mittwoch Pull, Freitag Push und Pull kombiniert (Home-Gym, Homeoffice-Tage).
@@ -191,7 +191,7 @@ DEFAULT_RACE_DATE = datetime.date(2027, 9, 11)
 # Hauptrennen (Alex 21.10.2026: nicht Ironman 70.3 Duisburg, sondern Challenge Almere-Amsterdam,
 # Mitteldistanz, Sa 11.09.2027 - flach, windanfällig, Schwimmen im See mit Neo)
 RACE_NAME = "Challenge Almere"
-RACE_NAME_LONG = "Challenge Almere-Amsterdam, Mitteldistanz (1,9 km / 90 km / 21,1 km)"
+RACE_NAME_LONG = "Challenge Almere-Amsterdam, Mitteldistanz (1,9 km / 94 km / 21,1 km)"
 MARATHON_DATE = datetime.date(2027, 5, 2)
 GRUNDLAGE_START = datetime.date(2026, 9, 1)
 MARATHON_BLOCK_START = datetime.date(2027, 1, 4)
@@ -211,7 +211,7 @@ PHASE_FOCUS = {
     "Marathon-Taper": "Umfang -25/-40/-60 %, Tempo halten, Rennverpflegung festlegen",
     "Regeneration": "2 Wochen ohne Lauftempo, lockere Bewegung, Erholung vom Marathon",
     "Almere-Aufbau": "Rad wird Priorität (Almere: flach und windig - Aeroposition, gleichmäßige Watt): lange Ausfahrten mit Renntempo und Koppellauf, Freiwasser",
-    "Almere-Peak": "Rennsimulation 90 km, Formtest, höchste spezifische Belastung",
+    "Almere-Peak": "Rennsimulation 94 km, Formtest, höchste spezifische Belastung",
     "Almere-Taper": "Volumen -40 bis -60 %, Intensität und Häufigkeit halten, Rennwoche",
 }
 
@@ -250,7 +250,7 @@ PHASE_PLAN = {
     "Almere-Peak": {
         "lauf": "Renn-Laufpace 2×5 km / 3×3 km, Koppelläufe 20-30 min",
         "schwimmen": "Freiwasser 1500-2000 m am Stück mit Neo",
-        "rad": f"Rennsimulation 90 km @ {_w(75)}–{_w(78)} W + 30 min Koppellauf · Formtest (z. B. Olympische Distanz)",
+        "rad": f"Rennsimulation 94 km @ {_w(75)}–{_w(78)} W + 30 min Koppellauf · Formtest (z. B. Olympische Distanz)",
         "kraft": "Erhalt: 1-2 Sätze pro Übung, keine neuen Reize",
     },
     "Almere-Taper": {
@@ -275,7 +275,7 @@ MILESTONES = [
     {"id": "marathon_verpflegung_getestet", "title": "Marathon-Verpflegung im Longrun getestet", "due_phase": "Marathon-Aufbau"},
     {"id": "marathon_finish", "title": "Marathon gefinisht", "due_phase": "Marathon-Taper"},
     {"id": "erster_koppellauf", "title": "Erster Koppellauf (Rad → Lauf)", "due_phase": "Almere-Aufbau"},
-    {"id": "rad_90km", "title": "Erste 90 km am Stück", "due_phase": "Almere-Aufbau"},
+    {"id": "rad_90km", "title": "Erste 94 km (Renndistanz) am Stück", "due_phase": "Almere-Aufbau"},
     {"id": "freiwasser_neo", "title": "Freiwasser mit Neopren", "due_phase": "Almere-Aufbau"},
     {"id": "verpflegung_renntempo", "title": "Rennverpflegung im Renntempo getestet", "due_phase": "Almere-Aufbau"},
     {"id": "formtest", "title": "Formtest (z. B. Olympische Distanz)", "due_phase": "Almere-Peak"},

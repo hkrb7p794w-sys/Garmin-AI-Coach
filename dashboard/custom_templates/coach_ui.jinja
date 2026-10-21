@@ -186,7 +186,11 @@ Nach dem Test beide Zeiten eintragen, die CSS rechnet sich automatisch: (400er �
 | Marathon | {{ d.paces.MP }} | Marathontempo-Abschnitte |
 | Renn-Lauf | {{ d.paces.R }} | Lauf nach dem Rad |
 | Schwelle | **{{ d.paces.T }}** | 2–4 km-Intervalle, Tempodauerlauf |
-| Intervall | {{ d.paces.I }} | 1000er, 4-min-Intervalle |
+| Intervall | {{ d.paces.I }} | 4×4 min – Richtwert, 90–95 % HFmax hat Vorrang |
+{%- set pc = 'sensor.garmin_ai_coach_garmin_lauf_pace_check' %}
+{%- set st = states(pc) %}
+
+**Pace-Check aus deinen Läufen:** {% if st in ['schneller', 'langsamer'] %}Schwelle **{{ st }}** stellen → **{{ state_attr(pc, 'suggested') }} /km**, 4×4 dann {{ state_attr(pc, 'suggested_interval_band') }} /km. {{ state_attr(pc, 'reason') }} Annehmen im Reiter Chat.{% elif st == 'passt' %}Schwellen- und Intervallpace passen zu deinen letzten harten Läufen.{% elif st == 'zu wenig Daten' %}noch zu wenig auswertbare Schwellen- oder 4×4-Läufe (mind. 2 in 6 Wochen).{% else %}–{% endif %}
 
 **30-min-Test:** 15 min einlaufen · 30 min so schnell wie gleichmäßig möglich · die Ø-Pace der **letzten 20 min** ist deine neue Schwelle → unten eintragen.
 {%- endmacro -%}

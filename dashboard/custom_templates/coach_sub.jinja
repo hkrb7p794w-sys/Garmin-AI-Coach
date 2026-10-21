@@ -27,5 +27,6 @@
 {%- set t = mp * 42.195 -%}
 {%- set nt = plan.weeks | selectattr('w', 'ge', mon) | selectattr('qc', 'search', 'Lauftest') | list -%}
 {%- set dc = states('sensor.garmin_ai_coach_garmin_hf_pace_kopplung') -%}
-{{- 'Marathon-Ziel ' ~ _mmss(mp) ~ ' /km ≈ ' ~ '%d:%02d' | format((t // 3600) | int, ((t % 3600) // 60) | int) ~ ' h' ~ ((' · HF-Kopplung ' ~ (dc | replace('.', ',')) ~ ' %') if dc not in ['unknown', 'unavailable'] else '') ~ ((' · Lauftest ' ~ ('diese Woche' if nt[0].w == mon else 'ab ' ~ strptime(nt[0].w, '%Y-%m-%d').strftime('%d.%m.'))) if nt else '') -}}
+{%- set pc = 'sensor.garmin_ai_coach_garmin_lauf_pace_check' -%}
+{{- (('Pace-Check: Schwelle ' ~ states(pc) ~ ' → ' ~ state_attr(pc, 'suggested') ~ ' /km (im Reiter Chat annehmen) · ') if states(pc) in ['schneller', 'langsamer'] and state_attr(pc, 'suggested') else '') ~ 'Marathon-Ziel ' ~ _mmss(mp) ~ ' /km ≈ ' ~ '%d:%02d' | format((t // 3600) | int, ((t % 3600) // 60) | int) ~ ' h' ~ ((' · HF-Kopplung ' ~ (dc | replace('.', ',')) ~ ' %') if dc not in ['unknown', 'unavailable'] else '') ~ ((' · Lauftest ' ~ ('diese Woche' if nt[0].w == mon else 'ab ' ~ strptime(nt[0].w, '%Y-%m-%d').strftime('%d.%m.'))) if nt else '') -}}
 {%- endmacro -%}

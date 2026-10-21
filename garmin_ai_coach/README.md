@@ -1,8 +1,8 @@
 # Garmin AI Coach
 
 Home Assistant Add-on: synct Garmin-Trainings-/Recovery-Daten per MQTT nach Home Assistant und
-erzeugt eine KI-Coaching-Notiz (Google Gemini) zur Vorbereitung auf einen
-Ironman 70.3.
+erzeugt eine KI-Coaching-Notiz (Google Gemini) zur Vorbereitung auf Marathon (02.05.2027) und
+Challenge Almere-Amsterdam Mitteldistanz (11.09.2027).
 
 ## Coaching-Notiz einrichten (kostenlos)
 
@@ -27,6 +27,16 @@ Ohne gesetzten Key läuft der Sync trotzdem normal durch (alle Garmin-Sensoren w
 aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
+
+### 0.26.0
+
+- Hauptrennen: Challenge Almere-Amsterdam Mitteldistanz am Sa 11.09.2027 statt Ironman 70.3 (29.08.). Phasen Almere-Aufbau 17.05.–08.08., Almere-Peak 09.08.–29.08., Almere-Taper 30.08.–11.09.; zwei zusätzliche Aufbauwochen (längste Radeinheit in Aeroposition, Entlastung).
+- Wettkampfspezifische Läufe (Marathontempo, Renntempo, Taper-/Rennwoche, Longrun-Abschnitte im Marathontempo) sind mit 🏁 markiert und erscheinen 3 Wochen im Voraus als Vorschlag im Reiter Chat (`competition.py`, Quelle `wettkampf`). Ablehnen setzt die Alternative (Schwelle oder 4×4, Longrun komplett locker) in den Plan.
+- Pace-Check (`pace_check.py`, Sensor „Lauf Pace-Check“): wertet die Arbeitsrunden harter Läufe der letzten 6 Wochen aus (Schwelle: Tempo bei LTHR über die HF-Reserve, 4×4: Spitzen-HF gegen 90–95 % HFmax). Ab 2 Einheiten in dieselbe Richtung kommt ein Vorschlag „Schwellenpace schneller/langsamer“ (max. 10 s pro Schritt); Annehmen trägt den Wert in `input_text.lauf_schwellenpace` ein.
+
+### 0.25.0
+
+- Feedback je Einheit im Reiter Heute (`tagesform.py`), Schwimm-Equipment-Erinnerung am Vorabend, Gym-Einheiten als Garmin-Kalender-Workouts (`garmin_gym.py`), Schlafverlauf und -analyse (`sleep.py`, `/sleep_export`).
 
 ### 0.24.3
 

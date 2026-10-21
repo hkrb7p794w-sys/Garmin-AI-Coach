@@ -16,8 +16,9 @@
  * 1.3.0 (21.10.2026): Feedback je Einheit (x.fb aus dem Add-on, tagesform.py) direkt am erledigten Eintrag,
  *   Abschnitt „Erledigt“ (gestern + zusätzliche Einheiten von heute), „Rest der Woche“ mit allen kommenden
  *   Einheiten mit festem Tag; die Läufe ohne festen Tag stehen getrennt unter „Ohne festen Tag“.
+ * 1.3.1 (21.10.2026): Challenge Almere (11.09.2027) statt Ironman 70.3 – Countdown, Phasenfarben Almere-*.
  */
-const CC_VERSION = '1.3.0';
+const CC_VERSION = '1.3.1';
 const ICONS = {};
 
 const E = {
