@@ -578,15 +578,15 @@ def feedback(entry: dict, ev: dict, ftp: float = None, planned_swim_m: int = Non
         judge = vs_same() if entry.get("hard") else ""
     elif sport == "strength" and pct is not None:
         if abs(pct) <= (ev.get("perf_band_pct") or PERF_BAND_MIN_PCT):
-            judge = "Kraftwerte (e1RM) auf dem Niveau der letzten Einheiten"
+            judge = "Kraft auf dem Niveau der letzten Einheiten"
         else:
-            judge = f"Kraftwerte (e1RM) {pct:+.1f} % ggü. den letzten Einheiten".replace(".", ",", 1)
+            judge = f"Kraft {pct:+.1f} % ggü. den letzten Einheiten (Gewicht × Wdh.)".replace(".", ",", 1)
     if ev.get("duration_min"):
         facts.insert(0, f"{ev['duration_min']} min")
 
     rpe = ev.get("rpe")
     effort = (f"RPE {rpe:g}".replace(".", ",") + (f", Gefühl {ev['feel']}" if ev.get("feel") else "")
-              if rpe is not None else "ohne RPE – auf der Uhr nachtragen")
+              if rpe is not None else "ohne RPE – in Garmin Connect nachtragen")
     verdict = ev.get("verdict") or ""
     show_verdict = verdict and not verdict.startswith(_QUIET_VERDICTS) and not verdict.startswith("Tagesform noch")
     if rpe is None and show_verdict and "RPE" in verdict:
