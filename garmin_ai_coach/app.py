@@ -1503,6 +1503,37 @@ def pace_check_route():
     return jsonify(res)
 
 
+@app.route("/strength_raw")
+def strength_raw():
+    """Rohdaten der letzten Kraft-Aktivitäten (Diagnose für das Vorbefüllen, 0.27.1):
+    Aktivitätsdaten (Gerät, Typ) und die exerciseSets-Antwort von Garmin."""
+    if not is_logged_in():
+        return jsonify({"error": "nicht eingeloggt"}), 401
+    client = get_client()
+    n = int(request.args.get("n", 3))
+    out = []
+    try:
+        acts = client.get_activities(0, 40) or []
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    for a in acts:
+        tk = ((a.get("activityType") or {}).get("typeKey", "") or "").lower()
+        if "strength" not in tk:
+            continue
+        item = {k: a.get(k) for k in ("activityId", "activityName", "startTimeLocal", "duration",
+                                       "deviceId", "manufacturer", "totalSets", "totalReps",
+                                       "activeSets", "summarizedExerciseSets")}
+        item["typeKey"] = tk
+        try:
+            item["exerciseSets"] = client.get_activity_exercise_sets(a["activityId"])
+        except Exception as e:
+            item["exerciseSets"] = str(e)
+        out.append(item)
+        if len(out) >= n:
+            break
+    return jsonify(out)
+
+
 @app.route("/sleep_export")
 def sleep_export():
     """Schlafverlauf für die Analyse (0.25.0). ?days=90 lädt fehlende Nächte im
