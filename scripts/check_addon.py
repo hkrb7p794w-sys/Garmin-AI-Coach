@@ -24,11 +24,11 @@ check(not ps2['today_fixed'][0].get('done') and 'schon erledigt' not in ps2['tod
 check(state(datetime.date(2026, 10, 17))['today_fixed'][0].get('done') is True, 'Sa + Rad 1/1 -> erledigt')
 for d in range(12, 17):
     check(not any(i.get('done') for i in state(datetime.date(2026, 10, d))['today_fixed']), f'{d}.10. (Mo-Fr): nichts als erledigt markiert')
-# 70.3-Aufbau: Rad-Soll 2 -> eine Einheit unter der Woche reicht am Samstag nicht
+# Almere-Aufbau: Rad-Soll 2 -> eine Einheit unter der Woche reicht am Samstag nicht
 sat703 = datetime.date(2027, 6, 19)
-check(plan.current_phase(sat703, race) == '70.3-Aufbau', 'Testdatum liegt im 70.3-Aufbau')
-check(not any(i.get('done') for i in state(sat703, bike=1)['today_fixed']), '70.3-Aufbau Sa + Rad 1/2 -> nicht erledigt')
-check(any(i.get('done') for i in state(sat703, bike=2)['today_fixed']), '70.3-Aufbau Sa + Rad 2/2 -> erledigt')
+check(plan.current_phase(sat703, race) == 'Almere-Aufbau', 'Testdatum liegt im Almere-Aufbau')
+check(not any(i.get('done') for i in state(sat703, bike=1)['today_fixed']), 'Almere-Aufbau Sa + Rad 1/2 -> nicht erledigt')
+check(any(i.get('done') for i in state(sat703, bike=2)['today_fixed']), 'Almere-Aufbau Sa + Rad 2/2 -> erledigt')
 
 note(ps); pr = cap['p']
 check('LETZTE Tag der Woche' in pr, 'Prompt So: letzter Tag benannt')

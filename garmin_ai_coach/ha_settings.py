@@ -111,6 +111,35 @@ def ftp_watt(default: float) -> float:
     return float(default)
 
 
+def threshold_pace(default_s: int) -> int:
+    """Lauf-Schwellenpace in s/km aus input_text.lauf_schwellenpace (M:SS), sonst plan-Wert."""
+    raw = _state("input_text.lauf_schwellenpace") or ""
+    try:
+        m, sec = raw.split(":")
+        v = int(m) * 60 + int(sec)
+        if 150 <= v <= 600:
+            return v
+    except ValueError:
+        pass
+    return int(default_s)
+
+
+def set_input_text(entity: str, value: str) -> bool:
+    """Schreibt einen input_text-Helfer (z. B. nach „Annehmen“ eines Pace-Vorschlags)."""
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return False
+    try:
+        r = requests.post("http://supervisor/core/api/services/input_text/set_value",
+                          headers={"Authorization": f"Bearer {token}"},
+                          json={"entity_id": entity, "value": value}, timeout=8)
+        _cache.pop(entity, None)
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[settings] {entity} konnte nicht gesetzt werden: {e}")
+        return False
+
+
 def effective(default_hours: list, default_privacy: str, default_swim: bool) -> dict:
     """Aktuell wirksame Einstellungen - wird im Coach-Status-Sensor veröffentlicht,
     damit das Dashboard anzeigen kann, was tatsächlich gilt."""

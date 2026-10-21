@@ -47,7 +47,7 @@ def _run(offset_s: int = 0) -> str:
 TEST_VALUES_TEXT = (
     f"Testwerte: FTP {FTP_ZWIFT_W} W (Zwift), CSS {_swim()} /100 m, Lauf-Schwellenpace {_run()} /km, "
     f"lockere Läufe {_run(65)}–{_run(100)} /km bzw. HF Zone 2, Marathon-Zielpace {_mmss(MARATHON_PACE_S_PER_KM)} /km, "
-    f"70.3-Renn-Zielwatt {_w(75)}–{_w(78)} W"
+    f"Renn-Zielwatt Almere {_w(75)}–{_w(78)} W"
 )
 
 # ---------------------------------------------------------------------------
@@ -83,19 +83,19 @@ WEEKLY_TARGETS_BY_PHASE = {
         "strength": {"min": 0, "max": 3, "label": "Kraft", "detail": "leicht"},
         "bike": {"min": 0, "max": 2, "label": "Rad", "detail": "locker"},
     },
-    "70.3-Aufbau": {
+    "Almere-Aufbau": {
         "swim": _SWIM,
         "run": {"min": 2, "max": 2, "label": "Laufen", "detail": "1x Qualität, 1x Zone 2 (+ Koppellauf)"},
         "strength": _STRENGTH,
         "bike": {"min": 2, "max": 2, "label": "Rad", "detail": "Zwift-Intervall + lange Ausfahrt"},
     },
-    "70.3-Peak": {
+    "Almere-Peak": {
         "swim": _SWIM,
         "run": {"min": 2, "max": 2, "label": "Laufen", "detail": "1x Qualität, 1x Zone 2 (+ Koppellauf)"},
         "strength": {"min": 2, "max": 4, "label": "Kraft", "detail": "Erhalt, 1-2 Sätze pro Übung"},
         "bike": {"min": 2, "max": 2, "label": "Rad", "detail": "Renntempo + Rennsimulation"},
     },
-    "70.3-Taper": {
+    "Almere-Taper": {
         "swim": _SWIM,
         "run": {"min": 2, "max": 2, "label": "Laufen", "detail": "kurz mit Renntempo"},
         "strength": {"min": 0, "max": 2, "label": "Kraft", "detail": "letzte Einheit ca. 5 Tage vor dem Rennen"},
@@ -122,18 +122,18 @@ WEEK_TEMPLATE_BY_PHASE = {
     "Marathon-Aufbau": {**_GYM,
         5: [{"type": "bike", "text": "Zwift oder Longrun (auf Sa/So verteilen)"}],
         6: [{"type": "run", "text": "Longrun oder Zwift (was Samstag nicht dran war)"}]},
-    "70.3-Aufbau": {**_GYM,
+    "Almere-Aufbau": {**_GYM,
         5: [{"type": "bike", "text": "Lange Radeinheit + Koppellauf (Sa oder So)"}],
         6: [{"type": "bike", "text": "Lange Radeinheit, falls Samstag nicht geklappt hat"}]},
 }
 WEEK_TEMPLATE_BY_PHASE["Marathon-Taper"] = WEEK_TEMPLATE_BY_PHASE["Marathon-Aufbau"]
-WEEK_TEMPLATE_BY_PHASE["70.3-Peak"] = WEEK_TEMPLATE_BY_PHASE["70.3-Aufbau"]
-WEEK_TEMPLATE_BY_PHASE["70.3-Taper"] = WEEK_TEMPLATE_BY_PHASE["70.3-Aufbau"]
+WEEK_TEMPLATE_BY_PHASE["Almere-Peak"] = WEEK_TEMPLATE_BY_PHASE["Almere-Aufbau"]
+WEEK_TEMPLATE_BY_PHASE["Almere-Taper"] = WEEK_TEMPLATE_BY_PHASE["Almere-Aufbau"]
 WEEK_TEMPLATE_BY_PHASE["Regeneration"] = {d: [{"type": "optional", "text": "Regeneration: nur locker, nach Gefühl"}] for d in range(7)}
 WEEK_TEMPLATE = WEEK_TEMPLATE_BY_PHASE["Grundlage"]
 WEEKDAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
-ATHLETE_PROFILE = f"""Ziele: erster Marathon am 02.05.2027 (Zwischenziel), Hauptziel Ironman 70.3 am 29.08.2027.
+ATHLETE_PROFILE = f"""Ziele: erster Marathon am 02.05.2027 (Zwischenziel), Hauptziel Challenge Almere-Amsterdam, Mitteldistanz (1,9 km Schwimmen, 90 km Rad, 21,1 km Laufen) am Sa 11.09.2027.
 
 Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026):
 - Montag Push, Mittwoch Pull, Freitag Push und Pull kombiniert (Home-Gym, Homeoffice-Tage).
@@ -143,10 +143,14 @@ Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026
 - Unter der Woche zusätzlich ohne festen Tag: 1x lockerer Zone-2-Lauf (gemeinsam mit der
   Partnerin) und 1x Qualitätslauf, wöchentlich im Wechsel: Schwellenlauf oder 4x4-min-Intervall
   (4x4 min bei 90-95 % HFmax, 3 min Trab). Andere Intervallformen (z. B. 1000er) macht der
-  Athlet bewusst nicht - nie vorschlagen.
+  Athlet bewusst nicht - nie vorschlagen. Wettkampfspezifische Läufe (Marathontempo,
+  Renntempo Almere, Taper-Tempo) sind im Plan mit 🏁 markiert; der Athlet nimmt sie einzeln an
+  oder lehnt sie ab (dann gilt Schwelle/4x4 bzw. locker) - abgelehnte nicht wieder vorschlagen.
+- Hauptrennen Challenge Almere: Strecke flach und windanfällig (Aeroposition, gleichmäßige Watt),
+  Schwimmen im See mit Neoprenanzug.
 - Marathonblock (04.01.-11.04.2027): am Wochenende zusätzlich ein Longrun (bis 32 km),
   Zwift und Longrun auf Sa/So verteilt.
-- 70.3-Block (ab 17.05.2027): am Wochenende lange Radeinheit mit Koppellauf, Zwift-Intervall
+- Almere-Block (ab 17.05.2027): am Wochenende lange Radeinheit mit Koppellauf, Zwift-Intervall
   zusätzlich unter der Woche.
 - Der Athlet will bewusst nicht mehr Zeit investieren. Diese Struktur ist der Idealfall
   und lässt sich in der Realität oft nicht vollständig umsetzen - fehlende Einheiten
@@ -156,7 +160,7 @@ Wochenstruktur des Athleten (fester Rahmen, nicht verhandelbar, Stand 14.10.2026
 Coaching-Regeln daraus:
 - Niemals mehr Gesamtzeit oder zusätzliche Einheiten fordern. Wenn etwas fehlt, sage
   was innerhalb des bestehenden Rahmens umgeschichtet werden sollte (Prioritäten setzen):
-  im Marathonblock Longrun vor Qualitätslauf vor Zwift, im 70.3-Block lange Radeinheit vor
+  im Marathonblock Longrun vor Qualitätslauf vor Zwift, im Almere-Block lange Radeinheit vor
   Zwift-Intervall vor Qualitätslauf; Home-Gym hat in beiden Blöcken die niedrigste Priorität.
 - Berücksichtige den Wochentag: Schwimmen und Beine an den Bürotagen (Di/Do, Reihenfolge
   flexibel), Push/Pull an Homeoffice-Tagen, Zwift und lange Einheiten am Wochenende.
@@ -168,9 +172,9 @@ SOLL_TEXT_BY_PHASE = {
     "Marathon-Aufbau": "1x Schwimmen, 3x Laufen (Qualität, locker, Longrun), 4x Kraft (1x Beine + 3x Home-Gym), 1x Zwift",
     "Marathon-Taper": "1x Schwimmen, 3x Laufen kürzer bei gleichem Tempo, Kraft reduziert, Zwift kurz",
     "Regeneration": "nur lockere Bewegung, kein Lauftempo",
-    "70.3-Aufbau": "1x Schwimmen, 2x Laufen (+ Koppellauf), 4x Kraft (1x Beine + 3x Home-Gym), 2x Rad (Zwift-Intervall + lange Ausfahrt)",
-    "70.3-Peak": "1x Schwimmen (Freiwasser), 2x Laufen (+ Koppellauf), Kraft auf Erhalt, 2x Rad inkl. Rennsimulation",
-    "70.3-Taper": "Umfang -40 bis -60 %, Intensität kurz halten",
+    "Almere-Aufbau": "1x Schwimmen, 2x Laufen (+ Koppellauf), 4x Kraft (1x Beine + 3x Home-Gym), 2x Rad (Zwift-Intervall + lange Ausfahrt)",
+    "Almere-Peak": "1x Schwimmen (Freiwasser), 2x Laufen (+ Koppellauf), Kraft auf Erhalt, 2x Rad inkl. Rennsimulation",
+    "Almere-Taper": "Umfang -40 bis -60 %, Intensität kurz halten",
 }
 SOLL_TEXT = SOLL_TEXT_BY_PHASE["Grundlage"]
 
@@ -183,11 +187,15 @@ def soll_text(phase: str) -> str:
 # Periodisierung (Saisonplan 2026/27, siehe Dashboard custom_templates/coach_plan.jinja)
 # ---------------------------------------------------------------------------
 
-DEFAULT_RACE_DATE = datetime.date(2027, 8, 29)
+DEFAULT_RACE_DATE = datetime.date(2027, 9, 11)
+# Hauptrennen (Alex 21.10.2026: nicht Ironman 70.3 Duisburg, sondern Challenge Almere-Amsterdam,
+# Mitteldistanz, Sa 11.09.2027 - flach, windanfällig, Schwimmen im See mit Neo)
+RACE_NAME = "Challenge Almere"
+RACE_NAME_LONG = "Challenge Almere-Amsterdam, Mitteldistanz (1,9 km / 90 km / 21,1 km)"
 MARATHON_DATE = datetime.date(2027, 5, 2)
 GRUNDLAGE_START = datetime.date(2026, 9, 1)
 MARATHON_BLOCK_START = datetime.date(2027, 1, 4)
-# Taper 70.3: 14 Tage. Belegt ist eine Volumenreduktion um 41-60 % bei gleicher
+# Taper Almere: 14 Tage. Belegt ist eine Volumenreduktion um 41-60 % bei gleicher
 # Intensität/Frequenz über höchstens 21 Tage, am häufigsten 8-14 Tage (Bosquet
 # et al. 2007; Wang et al. 2023, PLOS One, doi:10.1371/journal.pone.0282838).
 TAPER_DAYS = 14
@@ -195,16 +203,16 @@ MARATHON_TAPER_DAYS = 21   # 3 Wochen, übliche Marathon-Praxis
 REGENERATION_DAYS = 14     # 2 Wochen ohne Lauftempo nach dem Marathon
 PEAK_DAYS = 21
 
-PHASE_ORDER = ["Grundlage", "Marathon-Aufbau", "Marathon-Taper", "Regeneration", "70.3-Aufbau", "70.3-Peak", "70.3-Taper"]
+PHASE_ORDER = ["Grundlage", "Marathon-Aufbau", "Marathon-Taper", "Regeneration", "Almere-Aufbau", "Almere-Peak", "Almere-Taper"]
 
 PHASE_FOCUS = {
     "Grundlage": "aerobe Basis, Sweet-Spot-Progression auf Zwift, CSS-Schwimmen, Z2-Lauf bis 90 min verlängern",
     "Marathon-Aufbau": "Longrun von 16 auf 32 km, Schwelle und Marathontempo im Wechsel, Rad und Schwimmen halten",
     "Marathon-Taper": "Umfang -25/-40/-60 %, Tempo halten, Rennverpflegung festlegen",
     "Regeneration": "2 Wochen ohne Lauftempo, lockere Bewegung, Erholung vom Marathon",
-    "70.3-Aufbau": "Rad wird Priorität: lange Ausfahrten mit Renntempo und Koppellauf, Freiwasser",
-    "70.3-Peak": "Rennsimulation 90 km, Formtest, höchste spezifische Belastung",
-    "70.3-Taper": "Volumen -40 bis -60 %, Intensität und Häufigkeit halten, Rennwoche",
+    "Almere-Aufbau": "Rad wird Priorität (Almere: flach und windig - Aeroposition, gleichmäßige Watt): lange Ausfahrten mit Renntempo und Koppellauf, Freiwasser",
+    "Almere-Peak": "Rennsimulation 90 km, Formtest, höchste spezifische Belastung",
+    "Almere-Taper": "Volumen -40 bis -60 %, Intensität und Häufigkeit halten, Rennwoche",
 }
 
 # Kurzpläne je Phase und Disziplin (die Woche-für-Woche-Details stehen im Dashboard).
@@ -233,19 +241,19 @@ PHASE_PLAN = {
         "rad": f"Zwift locker Z2 ({_w(65)}–{_w(70)} W)",
         "kraft": "Oberkörper leicht, Beine erst in Woche 2 leicht",
     },
-    "70.3-Aufbau": {
-        "lauf": f"Qualitätslauf im Wechsel Schwelle @ {_run()} /km und 70.3-Laufpace · So Z2 mit Partnerin · Koppellauf nach jeder langen Radeinheit",
+    "Almere-Aufbau": {
+        "lauf": f"Qualitätslauf im Wechsel Schwelle @ {_run()} /km und Renn-Laufpace · So Z2 mit Partnerin · Koppellauf nach jeder langen Radeinheit",
         "schwimmen": f"CSS-Serien und Renn-Simulation 1200 → 1900 m @ {_swim(1)}–{_swim(3)} /100 m (1,9 km ≈ CSS bis +3 s), Sighting, ab Juni Freiwasser mit Neo",
-        "rad": f"Zwift-Intervall unter der Woche (Sweet Spot, 70.3-Renntempo 2×30 / 3×20 min @ {_w(77)}–{_w(78)} W) · Wochenende lange Ausfahrt 2:00 → 3:00 h mit Renntempo-Blöcken + Koppellauf",
+        "rad": f"Zwift-Intervall unter der Woche (Sweet Spot, Renntempo 2×30 / 3×20 min @ {_w(77)}–{_w(78)} W) · Wochenende lange Ausfahrt 2:00 → 3:00 h mit Renntempo-Blöcken + Koppellauf",
         "kraft": "Home-Gym wie gewohnt, Beine 1x",
     },
-    "70.3-Peak": {
-        "lauf": "70.3-Laufpace 2×5 km / 3×3 km, Koppelläufe 20-30 min",
+    "Almere-Peak": {
+        "lauf": "Renn-Laufpace 2×5 km / 3×3 km, Koppelläufe 20-30 min",
         "schwimmen": "Freiwasser 1500-2000 m am Stück mit Neo",
         "rad": f"Rennsimulation 90 km @ {_w(75)}–{_w(78)} W + 30 min Koppellauf · Formtest (z. B. Olympische Distanz)",
         "kraft": "Erhalt: 1-2 Sätze pro Übung, keine neuen Reize",
     },
-    "70.3-Taper": {
+    "Almere-Taper": {
         "lauf": "kürzer (30-40 min) mit kurzen Renntempo-Abschnitten, kein Longrun",
         "schwimmen": "8×50 m zügig, viel Pause",
         "rad": f"Aktivierung 35 min (3×3 min @ {_w(80)} W) · Rennen: {_w(75)}–{_w(78)} W",
@@ -266,11 +274,11 @@ MILESTONES = [
     {"id": "longrun_30_km", "title": "Erster Longrun 30 km", "due_phase": "Marathon-Aufbau"},
     {"id": "marathon_verpflegung_getestet", "title": "Marathon-Verpflegung im Longrun getestet", "due_phase": "Marathon-Aufbau"},
     {"id": "marathon_finish", "title": "Marathon gefinisht", "due_phase": "Marathon-Taper"},
-    {"id": "erster_koppellauf", "title": "Erster Koppellauf (Rad → Lauf)", "due_phase": "70.3-Aufbau"},
-    {"id": "rad_90km", "title": "Erste 90 km am Stück", "due_phase": "70.3-Aufbau"},
-    {"id": "freiwasser_neo", "title": "Freiwasser mit Neopren", "due_phase": "70.3-Aufbau"},
-    {"id": "verpflegung_renntempo", "title": "Rennverpflegung im Renntempo getestet", "due_phase": "70.3-Aufbau"},
-    {"id": "formtest", "title": "Formtest (z. B. Olympische Distanz)", "due_phase": "70.3-Peak"},
+    {"id": "erster_koppellauf", "title": "Erster Koppellauf (Rad → Lauf)", "due_phase": "Almere-Aufbau"},
+    {"id": "rad_90km", "title": "Erste 90 km am Stück", "due_phase": "Almere-Aufbau"},
+    {"id": "freiwasser_neo", "title": "Freiwasser mit Neopren", "due_phase": "Almere-Aufbau"},
+    {"id": "verpflegung_renntempo", "title": "Rennverpflegung im Renntempo getestet", "due_phase": "Almere-Aufbau"},
+    {"id": "formtest", "title": "Formtest (z. B. Olympische Distanz)", "due_phase": "Almere-Peak"},
 ]
 
 # Benchmark-Werte der Zielzeit-Schätzung gelten nach dieser Zeit als veraltet
@@ -288,20 +296,23 @@ def parse_race_date(raw: str) -> datetime.date:
 def phase_bounds(race_date: datetime.date) -> list:
     """Liefert [(start, end, name)] für die Saison 2026/27 mit Marathon als
     Zwischenziel. Marathon-Taper 3 Wochen, danach 2 Wochen Regeneration;
-    70.3-Peak 3 Wochen, 70.3-Taper 14 Tage."""
+    Almere-Peak 3 Wochen, Almere-Taper 14 Tage."""
     d = datetime.timedelta
     m_taper = MARATHON_DATE - d(days=MARATHON_TAPER_DAYS - 1)
     regen_end = MARATHON_DATE + d(days=REGENERATION_DAYS)
-    taper_start = race_date - d(days=TAPER_DAYS - 1)
+    # Taper beginnt am Montag der vorletzten Rennwoche (Wochenplan im Dashboard ist
+    # montagsbasiert; Rennen Sa 11.09. -> Taper ab Mo 30.08., 13 Tage).
+    race_monday = race_date - d(days=race_date.weekday())
+    taper_start = race_monday - d(days=TAPER_DAYS - 7)
     peak_start = taper_start - d(days=PEAK_DAYS)
     return [
         (GRUNDLAGE_START, MARATHON_BLOCK_START - d(days=1), "Grundlage"),
         (MARATHON_BLOCK_START, m_taper - d(days=1), "Marathon-Aufbau"),
         (m_taper, MARATHON_DATE, "Marathon-Taper"),
         (MARATHON_DATE + d(days=1), regen_end, "Regeneration"),
-        (regen_end + d(days=1), peak_start - d(days=1), "70.3-Aufbau"),
-        (peak_start, taper_start - d(days=1), "70.3-Peak"),
-        (taper_start, race_date, "70.3-Taper"),
+        (regen_end + d(days=1), peak_start - d(days=1), "Almere-Aufbau"),
+        (peak_start, taper_start - d(days=1), "Almere-Peak"),
+        (taper_start, race_date, "Almere-Taper"),
     ]
 
 
@@ -310,7 +321,7 @@ def current_phase(today: datetime.date, race_date: datetime.date) -> str:
         if start <= today <= end:
             return name
     if today > race_date:
-        return "70.3-Taper"
+        return "Almere-Taper"
     return "Grundlage"
 
 
@@ -369,6 +380,7 @@ def build_plan_state(today: datetime.date, race_date: datetime.date, weekly_volu
         "phase_end": phase_end.isoformat(),
         "next_phase": next_phase,
         "race_date": race_date.isoformat(),
+        "race_name": RACE_NAME,
         "days_to_race": (race_date - today).days,
         "marathon_date": MARATHON_DATE.isoformat(),
         "days_to_marathon": (MARATHON_DATE - today).days,

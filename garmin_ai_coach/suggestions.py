@@ -46,7 +46,11 @@ STATUS_REJECTED = "rejected"
 STATUS_SUPERSEDED = "superseded"   # überholt/zusammengeführt - unsichtbar
 VISIBLE_STATUSES = (STATUS_PENDING, STATUS_ACCEPTED, STATUS_REJECTED)
 
-STATIC_SOURCES = {"gym_kritik"}
+STATIC_SOURCES = {"gym_kritik", "wettkampf", "pace"}
+# Quellen mit Zeitfenster (sync_window): nicht mehr gelieferte offene Einträge gelten als überholt.
+# "wettkampf": wettkampfspezifische Laufeinheiten der nächsten Wochen (competition.py),
+# "pace": Vorschlag, die Schwellenpace anzupassen (pace_check.py).
+WINDOW_SOURCES = {"wettkampf", "pace"}
 MAX_PENDING_AGE_DAYS = 10
 
 DISCIPLINES = {
@@ -309,6 +313,29 @@ def sync_dynamic(source: str, items) -> dict:
     return state
 
 
+def sync_window(source: str, items: list) -> dict:
+    """Wie sync_static, aber offene Einträge dieser Quelle, die nicht mehr geliefert
+    werden (Woche vorbei, Pace-Hinweis erledigt), gelten als überholt. Entschiedene
+    Einträge (angenommen/abgelehnt) bleiben unverändert erhalten."""
+    state = sync_static(source, items or [])
+    now = _now()
+    ids = {i.get("id") for i in items or []}
+    changed = False
+    for sid, rec in state.items():
+        if rec.get("source") == source and rec.get("status") == STATUS_PENDING and sid not in ids:
+            _supersede(rec, now, reason="außerhalb des Zeitfensters")
+            changed = True
+    if changed:
+        _save(state)
+    return state
+
+
+def decisions(source: str) -> dict:
+    """{id: status} aller nicht überholten Einträge einer Quelle (fürs Dashboard)."""
+    return {k: v.get("status") for k, v in _load().items()
+            if v.get("source") == source and v.get("status") in VISIBLE_STATUSES}
+
+
 def sync_suggestions(source: str, items) -> dict:
     """Kompatibler Einstieg: statische Quelle -> sync_static, sonst sync_dynamic."""
     if source in STATIC_SOURCES:
@@ -392,7 +419,11 @@ def context_for_prompt(source: str = None, max_items: int = 30) -> str:
         ("Feste Gym-Anpassungen (vom Athleten selbst zu entscheiden; NICHT als neuen "
          "Vorschlag wiederholen, höchstens im Text darauf verweisen)",
          [(k, v) for k, v in state.items()
-          if v.get("source") in STATIC_SOURCES and v["status"] == STATUS_PENDING], True),
+          if v.get("source") == "gym_kritik" and v["status"] == STATUS_PENDING], True),
+        ("Wettkampfspezifische Laufeinheiten und Pace-Anpassungen, über die der Athlet noch "
+         "entscheidet (NICHT als neuen Vorschlag wiederholen)",
+         [(k, v) for k, v in state.items()
+          if v.get("source") in WINDOW_SOURCES and v["status"] == STATUS_PENDING], True),
         ("Offene KI-Vorschläge (noch unentschieden)",
          [(k, v) for k, v in state.items()
           if v.get("source") not in STATIC_SOURCES and v["status"] == STATUS_PENDING], True),

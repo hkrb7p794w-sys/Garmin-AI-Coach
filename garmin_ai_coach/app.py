@@ -47,6 +47,8 @@ import decoupling
 import garmin_swim
 import garmin_gym
 import sleep
+import competition
+import pace_check
 import ha_settings
 import tagesform
 
@@ -136,7 +138,7 @@ def current_settings() -> dict:
     return ha_settings.effective(SYNC_HOURS, AI_PRIVACY_DEFAULT, SWIM_EXPORT_DEFAULT)
 
 
-RACE_DATE = os.environ.get("RACE_DATE", "2027-08-29")
+RACE_DATE = os.environ.get("RACE_DATE", "2027-09-11")
 RACE_DATE_OBJ = plan.parse_race_date(RACE_DATE)
 
 # Periodisierung: seit v0.18.0 in plan.py (einzige Quelle, Taper jetzt 14 Tage).
@@ -951,7 +953,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             "spo2": _safe_fetch("spo2", lambda: client.get_spo2_data(today)),
             "sleep": _safe_fetch("sleep", lambda: client.get_sleep_data(today)),
 
-            # Fitness-Fortschritt - für die Ironman-70.3-Vorbereitung
+            # Fitness-Fortschritt - für die Vorbereitung auf die Challenge Almere (Mitteldistanz)
             "max_metrics": _fetch_max_metrics(client, today_date),  # VO2max (14-Tage-Fenster)
             # FTP (Rad) - Garmin.get_cycling_ftp() liefert ohne Parameter die
             # zuletzt von Garmin/Zwift ermittelte FTP, kein Datum nötig (siehe
@@ -1060,11 +1062,23 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         # Herzfrequenzzonen (v0.21.0, siehe hr_zones.py): Zonen der Uhr aus Garmin,
         # schwellenbasierte Coach-Zonen, Zeit-in-Zone-Verteilung. Eigener try-Block:
         # ein unerwartetes Garmin-Format darf den Sync nie abbrechen.
+        hz = {}
         try:
             hz = hr_zones.build(client, recent_activities, today_date)
             publish_hr_zones(hz, hr_zones.state_text(hz))
         except Exception as e:
             print(f"[hr_zones] fehlgeschlagen: {e}")
+
+        # Pace-Check (0.26.0, siehe pace_check.py): Schwellen-/Intervallpace anpassen?
+        try:
+            _run_pace_check(client, hz, extract_metrics(wellness), today_date)
+        except Exception as e:
+            print(f"[pace_check] fehlgeschlagen: {e}")
+        # Wettkampfspezifische Laufeinheiten der nächsten Wochen zum Annehmen/Ablehnen (competition.py)
+        try:
+            suggestions.sync_window(competition.SOURCE, competition.items(today_date))
+        except Exception as e:
+            print(f"[wettkampf] fehlgeschlagen: {e}")
 
         # Gewichts-Progression (v0.21.0): Verlauf aus dem Cache, Übungsnamen
         # vereinheitlicht. Ohne Erholungs-Schranke für den KI-Tipp hier, mit
@@ -1286,6 +1300,12 @@ def _handle_vorschlag_accept(suggestion_id: str):
     try:
         if suggestions.set_status(suggestion_id, suggestions.STATUS_ACCEPTED):
             print(f"[vorschläge] '{suggestion_id}' angenommen")
+            if suggestion_id.startswith("pace-schwelle-"):
+                # Annehmen = neue Schwellenpace direkt ins Dashboard-Feld übernehmen (pace_check.py)
+                raw = suggestion_id.rsplit("-", 1)[1]
+                value = f"{int(raw[:-2])}:{raw[-2:]}"
+                ok = ha_settings.set_input_text("input_text.lauf_schwellenpace", value)
+                print(f"[pace_check] Schwellenpace {value} übernommen: {'ok' if ok else 'FEHLER'}")
         else:
             print(f"[vorschläge] Annehmen fehlgeschlagen: id '{suggestion_id}' unbekannt "
                   "(veraltete Dashboard-Auswahl nach einem zwischenzeitlichen Sync?)")
@@ -1436,6 +1456,46 @@ def weekly():
         return redirect(".")
     do_weekly_report()
     return redirect(".")
+
+
+def _run_pace_check(client, hz: dict, metrics: dict, today_date, fetch: bool = True) -> dict:
+    cutoff = (today_date - datetime.timedelta(days=pace_check.LOOKBACK_DAYS)).isoformat()
+    sessions = []
+    for aid, e in (tagesform._load_cache() or {}).items():
+        if e.get("sport") != "run" or not e.get("hard") or (e.get("date") or "") < cutoff:
+            continue
+        kind = tagesform._kind(e)
+        if kind in ("schwelle", "vo2"):
+            sessions.append({"id": aid, "date": e["date"], "name": e.get("name"), "kind": kind, "rpe": e.get("rpe")})
+    sessions.sort(key=lambda x: x["date"])
+    cache = pace_check.update_cache(client, sessions) if fetch else pace_check._load()
+    run = ((hz or {}).get("coach") or {}).get("run") or {}
+    res = pace_check.evaluate(
+        sessions, cache, ha_settings.threshold_pace(plan.LT_PACE_S_PER_KM), run.get("lthr"),
+        ((hz or {}).get("hrmax") or {}).get("used"), metrics.get("resting_hr") or 50)
+    state = {"passt": "passt", "zu wenig Daten": "zu wenig Daten"}.get(
+        res["status"], f"{res['status']}: {res.get('suggested')} statt {res['current']} /km")
+    publish_json("lauf_pace", state, res)
+    suggestions.sync_window("pace", pace_check.suggestion(res))
+    return res
+
+
+@app.route("/pace_check")
+def pace_check_route():
+    """Pace-Check sofort rechnen (Runden aus dem Cache bzw. nachladen). ?laps=<activityId> zeigt die Runden."""
+    if not is_logged_in():
+        return jsonify({"error": "nicht eingeloggt"}), 401
+    client = get_client()
+    if request.args.get("laps"):
+        return jsonify(pace_check.laps_compact(client.get_activity_splits(request.args["laps"])))
+    hz = {}
+    try:
+        hz = hr_zones.build(client, [], datetime.date.today())
+    except Exception as e:
+        print(f"[pace_check] Zonen nicht ladbar: {e}")
+    res = _run_pace_check(client, hz, {"resting_hr": None}, datetime.date.today())
+    publish_vorschlaege(suggestions.all_suggestions())
+    return jsonify(res)
 
 
 @app.route("/sleep_export")

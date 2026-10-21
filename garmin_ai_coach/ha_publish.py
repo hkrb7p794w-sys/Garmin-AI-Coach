@@ -259,7 +259,7 @@ SENSORS = {
         "icon": "mdi:trending-up",
     },
 
-    # Fitness-Fortschritt für die Ironman-70.3-Vorbereitung
+    # Fitness-Fortschritt für die Vorbereitung auf die Challenge Almere (Mitteldistanz)
     "vo2max": {
         "name": "Garmin VO2max",
         "unit": "ml/kg/min",
@@ -286,7 +286,7 @@ SENSORS = {
         "state_class": "measurement",
     },
 
-    # Rennvorbereitung / Periodisierung (Ironman 70.3, 29.08.2027)
+    # Rennvorbereitung / Periodisierung (Challenge Almere, 11.09.2027)
     "weekly_swim_km": {
         "name": "Garmin Wochenvolumen Schwimmen",
         "unit": "km",
@@ -306,7 +306,7 @@ SENSORS = {
         "state_class": "measurement",
     },
     "days_to_race": {
-        "name": "Garmin Tage bis Ironman 70.3",
+        "name": "Garmin Tage bis Challenge Almere",
         "unit": "d",
         "icon": "mdi:trophy-outline",
         "state_class": "measurement",
@@ -411,6 +411,11 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:weight-lifter",
     },
+    "lauf_pace": {
+        "name": "Garmin Lauf Pace-Check",
+        "unit": None,
+        "icon": "mdi:speedometer",
+    },
     "schlaf": {
         "name": "Garmin Schlaf 28 Tage",
         "unit": None,
@@ -458,7 +463,7 @@ ATTRIBUTE_SENSORS = {
     "chat_verlauf", "ftp", "hf_pace_kopplung",
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
     "gym_progression", "herzfrequenzzonen", "tagesform_leistung",
-    "schwimm_ausruestung", "export_gym", "schlaf",
+    "schwimm_ausruestung", "export_gym", "schlaf", "lauf_pace",
 }
 
 
@@ -646,7 +651,9 @@ def publish_vorschlaege(state: dict):
         "garmin_ai_coach/vorschlaege/attributes",
         json.dumps(
             {"pending": pending, "accepted": accepted[-15:], "rejected": rejected[-15:],
-             "disciplines": suggestions.DISCIPLINES},
+             "disciplines": suggestions.DISCIPLINES,
+             # Entscheidungen zu wettkampfspezifischen Laufeinheiten (coach_plan.jinja liest das)
+             "wettkampf": suggestions.decisions("wettkampf")},
             ensure_ascii=False, default=str,
         ),
         retain=True,

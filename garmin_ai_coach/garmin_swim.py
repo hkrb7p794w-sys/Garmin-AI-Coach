@@ -295,7 +295,7 @@ def build_workout(week: dict, css: int, day: datetime.date, gcss: int = None) ->
 
 EQUIP_DE = {"pull_buoy": "Pull-Buoy", "kickboard": "Schwimmbrett", "fins": "Flossen",
             "paddles": "Paddles", "snorkel": "Schnorchel"}
-# Ausrüstung, die nur im Plantext steht (z. B. Freiwasser mit Neo im 70.3-Block)
+# Ausrüstung, die nur im Plantext steht (z. B. Freiwasser mit Neo im Almere-Block)
 EQUIP_WORDS = (("neo", "Neoprenanzug"), ("pull-buoy", "Pull-Buoy"), ("flossen", "Flossen"),
                ("paddle", "Paddles"), ("schnorchel", "Schnorchel"), ("brett", "Schwimmbrett"))
 

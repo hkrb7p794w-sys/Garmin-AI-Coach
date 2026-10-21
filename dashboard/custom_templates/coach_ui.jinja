@@ -18,7 +18,7 @@
 {%- set age = (now().date() - strptime(td, '%Y-%m-%d').date()).days if td >= '2000' else none -%}
 {%- set tests = d.weeks | selectattr('w', 'ge', d.mon) | selectattr('sc', 'eq', 'CSS-Test') | list -%}
 ### 🏊 CSS **{{ _mmss(css) }}** /100 m
-| 1,9 km im 70.3 | Diese Woche | Letzter Test | Nächster Test |
+| 1,9 km in Almere | Diese Woche | Letzter Test | Nächster Test |
 |:-:|:-:|:-:|:-:|
 | **{{ _mmss(css * 19) }}–{{ _mmss((css + 3) * 19) }}** | {{ states('sensor.garmin_ai_coach_garmin_wochenvolumen_schwimmen') }} km · {{ _done('swim') }}/1 | {{ ('vor ' ~ age ~ ' Tagen') if age is not none else '–' }} | {{ ('Di ' ~ _date(tests[0].w, 1)) if tests else '–' }} |
 
@@ -91,7 +91,7 @@ Nach dem Test beide Zeiten eintragen, die CSS rechnet sich automatisch: (400er �
 {%- set ftp = states('input_number.ftp_zwift_w') | float(0) -%}
 {%- set tests = d.weeks | selectattr('w', 'ge', d.mon) | selectattr('zc', 'eq', 'RAMP') | list -%}
 ### 🚴 FTP **{{ ftp | int }} W**
-| 70.3-Renntempo | Sweet Spot | Diese Woche | Nächster FTP-Test |
+| Renntempo | Sweet Spot | Diese Woche | Nächster FTP-Test |
 |:-:|:-:|:-:|:-:|
 | **{{ (ftp * 0.75) | round(0) | int }}–{{ (ftp * 0.78) | round(0) | int }} W** | {{ (ftp * 0.88) | round(0) | int }}–{{ (ftp * 0.94) | round(0) | int }} W | {{ states('sensor.garmin_ai_coach_garmin_wochenvolumen_rad') }} km · {{ _done('bike') }} Einheit(en) | {{ ('Woche ab ' ~ _date(tests[0].w)) if tests else '–' }} |
 
@@ -122,7 +122,7 @@ Nach dem Test beide Zeiten eintragen, die CSS rechnet sich automatisch: (400er �
 | Zone | % FTP | Watt |
 |---|---|---|
 {% for r in rows %}| {{ r[0] }} | {{ r[1] }}–{{ r[2] }} | {{ (ftp * r[1] / 100) | round(0) | int }}–{{ (ftp * r[2] / 100) | round(0) | int }} |
-{% endfor %}| **70.3-Renntempo** | 75–78 | **{{ (ftp * 0.75) | round(0) | int }}–{{ (ftp * 0.78) | round(0) | int }}** |
+{% endfor %}| **Renntempo** | 75–78 | **{{ (ftp * 0.75) | round(0) | int }}–{{ (ftp * 0.78) | round(0) | int }}** |
 {%- endmacro -%}
 
 {%- macro zwift_library() -%}
@@ -184,7 +184,7 @@ Nach dem Test beide Zeiten eintragen, die CSS rechnet sich automatisch: (400er �
 |---|---|---|
 | Locker (Z2) | {{ d.paces.E }} | Z2-Läufe, Longruns – HF hat Vorrang |
 | Marathon | {{ d.paces.MP }} | Marathontempo-Abschnitte |
-| 70.3-Lauf | {{ d.paces.R }} | Lauf nach dem Rad |
+| Renn-Lauf | {{ d.paces.R }} | Lauf nach dem Rad |
 | Schwelle | **{{ d.paces.T }}** | 2–4 km-Intervalle, Tempodauerlauf |
 | Intervall | {{ d.paces.I }} | 1000er, 4-min-Intervalle |
 

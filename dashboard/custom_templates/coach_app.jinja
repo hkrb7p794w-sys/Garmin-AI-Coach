@@ -93,14 +93,17 @@
 {%- elif k == 'z' -%}
 {%- set r.items = r.items + [{'s': 'bike', 't': ('Zwift – diese Woche schon erledigt' if (wd == 6 and dn.bike >= 1) else 'Zwift (Sa oder So)'), 'c': wk.z.split(':')[0] | replace('RAMP ', ''), 'd': wk.z, 'ok': dn.bike >= 1}] -%}
 {%- elif k == 'l' and dn.run < 3 -%}
-{%- set r.items = r.items + [{'s': 'run', 't': 'Longrun (Sa oder So)', 'c': ((wk.lr | string).replace('.', ',') ~ ' km') if wk.lr else '', 'd': wk.l, 'ok': false}] -%}
+{%- set l_open = wk.ls is defined and wk.ls == 'offen' -%}
+{%- set r.items = r.items + [{'s': 'run', 't': 'Longrun (Sa oder So)', 'c': (((wk.lr | string).replace('.', ',') ~ ' km') if wk.lr else '') ~ (' · 🏁 Wettkampf-Abschnitt offen' if l_open else ''), 'd': wk.l ~ ((' · Bei Ablehnen stattdessen: ' ~ wk.la) if l_open else ''), 'ok': false}] -%}
 {%- elif k == 'zlong' and wk.z2 -%}
 {%- set r.items = r.items + [{'s': 'bike', 't': 'Lange Radeinheit (Sa oder So)' if (wk.z2.startswith('Sa') or wk.z2.startswith('So')) else 'Rad', 'c': '', 'd': wk.z2[4:] if (wk.z2.startswith('Sa') or wk.z2.startswith('So')) else wk.z2, 'ok': dn.bike >= 2}] -%}
 {%- endif -%}
 {%- endfor -%}
 {%- set n_flex = 2 if wk.q != '–' else 1 -%}
 {%- set open_runs = [n_flex - dn.run, 0] | max -%}
-{%- set q_item = {'s': 'run', 't': 'Qualitätslauf', 'c': wk.qc, 'd': wk.q, 'h': 2} -%}
+{#- Wettkampfspezifischer Qualitätslauf (🏁, coach_plan qs): solange offen, Hinweis auf Annehmen/Ablehnen und die Alternative. -#}
+{%- set q_open = wk.qs is defined and wk.qs == 'offen' -%}
+{%- set q_item = {'s': 'run', 't': 'Qualitätslauf', 'c': wk.qc ~ (' · Wettkampf: im Reiter Chat annehmen oder ablehnen' if q_open else ''), 'd': wk.q ~ ((' · Bei Ablehnen stattdessen: ' ~ wk.qa) if q_open else ''), 'h': 2} -%}
 {%- set e_item = {'s': 'run', 't': 'Lockerer Lauf (Z2)', 'c': wk.e.split(' (')[0], 'd': wk.e, 'h': 0} -%}
 {%- if open_runs > 0 and ('q' in fr.flex or 'e' in fr.flex) -%}
 {%- if open_runs >= 2 -%}

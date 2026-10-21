@@ -20,6 +20,9 @@ COPY ha_settings.py /ha_settings.py
 COPY tagesform.py /tagesform.py
 COPY garmin_gym.py /garmin_gym.py
 COPY sleep.py /sleep.py
+COPY competition.py /competition.py
+COPY pace_check.py /pace_check.py
+COPY run_plan.json /run_plan.json
 COPY gym_plan.json /gym_plan.json
 COPY gym_exercises.json /gym_exercises.json
 COPY swim_plan.json /swim_plan.json

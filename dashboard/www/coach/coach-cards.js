@@ -262,7 +262,7 @@ class CoachHero extends CoachBase {
         </div>
         <div class="row" style="gap:6px;flex-wrap:wrap">
           ${t.dm >= 0 ? `<span class="chip tap" title="Tage bis zum Marathon" data-nav="/garmin-coach/marathon">${icon('run', 14)}${t.dm} Tage</span>` : ''}
-          ${t.dr >= 0 ? `<span class="chip tap" title="Tage bis zum Ironman 70.3" data-nav="/garmin-coach/saison">${icon('flagCheckered', 14)}${t.dr} Tage</span>` : ''}
+          ${t.dr >= 0 ? `<span class="chip tap" title="Tage bis zur Challenge Almere" data-nav="/garmin-coach/saison">${icon('flagCheckered', 14)}${t.dr} Tage</span>` : ''}
         </div>
       </div>
       <div style="margin-top:10px"><span class="pill" style="background:${tint}"><span class="dot" style="background:${lvlKind === 'neutral' ? c.neutral : c[lvlKind]}"></span>${esc(label)}</span></div>
@@ -636,7 +636,7 @@ class CoachPhases extends CoachBase {
   _render() {
     const c = this._c(); const ph = this._attr(E.plan, 'phases') || [];
     if (!ph.length) return `<div class="card muted">Keine Phasen verfügbar.</div>`;
-    const cols = { Grundlage: this._dark() ? '#9ec5f4' : '#5598e7', 'Marathon-Aufbau': c.run, 'Marathon-Taper': c.run, Regeneration: c.neutral, '70.3-Aufbau': c.bike, '70.3-Peak': c.bike, '70.3-Taper': c.bike };
+    const cols = { Grundlage: this._dark() ? '#9ec5f4' : '#5598e7', 'Marathon-Aufbau': c.run, 'Marathon-Taper': c.run, Regeneration: c.neutral, 'Almere-Aufbau': c.bike, 'Almere-Peak': c.bike, 'Almere-Taper': c.bike };
     const t0 = new Date(ph[0].start).getTime(); const t1 = new Date(ph[ph.length - 1].end).getTime() + 864e5; const span = t1 - t0;
     const nowPct = clamp(((Date.now() - t0) / span) * 100, 0, 100);
     const cur = ph.find((p) => p.current) || ph[0];
@@ -646,7 +646,7 @@ class CoachPhases extends CoachBase {
       <div class="eyebrow">Saison 2026/27</div>
       <div class="row" style="gap:16px;margin-top:6px;flex-wrap:wrap">
         <div><div class="big">${m ?? '–'}</div><div class="small muted">Tage bis Marathon 02.05.</div></div>
-        <div><div class="big">${r ?? '–'}</div><div class="small muted">Tage bis 70.3 am 29.08.</div></div>
+        <div><div class="big">${r ?? '–'}</div><div class="small muted">Tage bis Almere am 11.09.</div></div>
       </div>
       <div class="tl">${ph.map((p) => { const w = ((new Date(p.end).getTime() + 864e5 - new Date(p.start).getTime()) / span) * 100; return `<i title="${esc(p.name)}" style="width:${w}%;background:${cols[p.name] || c.neutral};${p.current ? '' : 'opacity:.45'}"></i>`; }).join('')}<span class="now" style="left:calc(${nowPct}% - 1px)"></span></div>
       <div style="margin-top:12px;font-weight:600">${esc(cur.name)} · noch ${weeksLeft} ${weeksLeft === 1 ? 'Woche' : 'Wochen'}</div>

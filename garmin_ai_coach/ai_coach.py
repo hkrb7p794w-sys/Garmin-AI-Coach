@@ -397,7 +397,7 @@ def generate_coaching_note(data: dict, rec: dict = None, plan_state: dict = None
 
     prompt = (
         "Du bist ein Ausdauersport-Coach für einen Age-Group-Athleten in der Vorbereitung "
-        f"auf einen Ironman 70.3 am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
+        f"auf die Challenge Almere-Amsterdam (Mitteldistanz 1,9/90/21,1 km) am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
         f"{ATHLETE_PROFILE}\n\n"
         f"Heute ist {ps.get('weekday') or ''}. Trainingsphase: {phase} (Fokus: {focus}). "
         f"Noch {_fmt(metrics['days_to_race'], ' Tage')} bis zum Rennen.\n"
@@ -569,7 +569,7 @@ def generate_gym_coaching_note(sessions: list, interference_note: str = "", prog
 
     prompt = (
         "Du bist ein Kraft-/Fitnesscoach für einen Age-Group-Athleten in der "
-        f"Ironman-70.3-Vorbereitung (Zielzeit {RACE_GOAL}). Krafttraining ist bei ihm "
+        f"Vorbereitung auf die Challenge Almere (Mitteldistanz) (Zielzeit {RACE_GOAL}). Krafttraining ist bei ihm "
         "Nebensache zum Ausdauertraining, nicht das Hauptziel - Kraftaufbau soll die "
         "Ausdauerdisziplinen unterstützen (Verletzungsvorbeugung, Rumpfstabilität, "
         "muskuläre Balance), nicht mit ihnen konkurrieren.\n\n"
@@ -671,7 +671,7 @@ def generate_weekly_report(data: dict, summary: dict, suggestions_context: str =
 
     prompt = (
         "Du bist ein Ausdauersport-Coach und schreibst den wöchentlichen Rückblick für "
-        f"einen Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am {RACE_DATE_TEXT}. "
+        f"einen Age-Group-Athleten in der Vorbereitung auf die Challenge Almere-Amsterdam (Mitteldistanz 1,9/90/21,1 km) am {RACE_DATE_TEXT}. "
         f"Zielzeit: {RACE_GOAL}.\n\n"
         f"{ATHLETE_PROFILE}\n\n"
         f"Trainingsphase: {phase} (Fokus: {focus}). Noch {_fmt(days_left, ' Tage')} bis zum Rennen.\n\n"
@@ -770,7 +770,7 @@ def generate_chat_answer(question: str, data: dict, history: list, chat_context:
 
     prompt = (
         "Du bist ein Ausdauersport-Coach und persönlicher Trainingsassistent für einen "
-        f"Age-Group-Athleten in der Vorbereitung auf einen Ironman 70.3 am {RACE_DATE_TEXT}. "
+        f"Age-Group-Athleten in der Vorbereitung auf die Challenge Almere-Amsterdam (Mitteldistanz 1,9/90/21,1 km) am {RACE_DATE_TEXT}. "
         f"Zielzeit: {RACE_GOAL}. Du beantwortest hier eine gezielte Frage in einem Chat - "
         "KEINE Coaching-Notiz und KEINE erzwungenen Stichpunkte, sondern eine direkte, "
         "natürliche Antwort auf genau diese Frage, so kurz wie möglich, aber vollständig.\n\n"
@@ -876,7 +876,7 @@ def generate_trainingsplan_kommentar(
 
     prompt = (
         "Du bist ein Ausdauersport-Coach für einen Age-Group-Athleten in der Vorbereitung "
-        f"auf einen Ironman 70.3 am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
+        f"auf die Challenge Almere-Amsterdam (Mitteldistanz 1,9/90/21,1 km) am {RACE_DATE_TEXT}. Zielzeit: {RACE_GOAL}.\n\n"
         f"{ATHLETE_PROFILE}\n\n"
         f"Aktuelle Trainingsphase: {phase} (Fokus: {focus}).\n\n"
         "Der Athlet hat bereits konkrete, phasenabhängige Trainingspläne für Laufen, Schwimmen "

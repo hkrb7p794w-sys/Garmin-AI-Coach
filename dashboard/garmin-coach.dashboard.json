@@ -801,7 +801,7 @@
           "cards": [
             {
               "type": "heading",
-              "heading": "70.3-Zielzeit",
+              "heading": "Zielzeit Almere",
               "icon": "mdi:flag-checkered",
               "heading_style": "title"
             },
@@ -929,7 +929,7 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der 70.3-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen.",
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der Almere-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen.",
               "card_mod": {
                 "style": "ha-card { --markdown-list-indent: 1em; }"
               }
@@ -1059,7 +1059,7 @@
           "cards": [
             {
               "type": "heading",
-              "heading": "70.3-Zielzeit",
+              "heading": "Zielzeit Almere",
               "icon": "mdi:flag-checkered",
               "heading_style": "title"
             },
