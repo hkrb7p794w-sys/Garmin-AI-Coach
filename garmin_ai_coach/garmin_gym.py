@@ -231,6 +231,24 @@ def export_upcoming(client, today: datetime.date = None, done_dates: set = None,
     done_dates = done_dates or set()
     monday = today - datetime.timedelta(days=today.weekday())
     state = _load(STATE_FILE, {})
+    if plan.get("calendar_export") is False:
+        # Seit 0.28.0 aus: Die CIRQA führt Kalender-Workouts nur mit Connect+ aus. Stattdessen
+        # befüllt gym_prefill.py die aufgezeichnete Aktivität. Bereits angelegte Workouts entfernen.
+        removed = 0
+        for d, entry in list(state.items()):
+            if d >= today.isoformat() and entry.get("workout_id"):
+                try:
+                    client.delete_workout(entry["workout_id"])
+                    removed += 1
+                except Exception as e:
+                    print(f"[garmin_gym] Löschen von {entry['workout_id']} fehlgeschlagen ({e})")
+            state.pop(d, None)
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f)
+        if removed:
+            print(f"[garmin_gym] Kalender-Export aus - {removed} Workouts entfernt")
+        return {"status": "aus (Vorbefüllen statt Kalender)", "removed": removed, "workouts": []}
     wanted = {}
     for wk in (monday, monday + datetime.timedelta(days=7)):
         wanted.update(planned_days(plan, wk, today, done_dates, swim_today if wk == monday else False))

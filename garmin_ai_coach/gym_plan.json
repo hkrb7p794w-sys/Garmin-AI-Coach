@@ -1,5 +1,5 @@
 {
- "_info": "Trainingspläne Alex (Screenshots 21.10.2026). Garmin-Übung = nächstliegender Katalogeintrag; Zuordnung für die Auswertung siehe exercise_names.py. Gewichte wie in der App (Kabel: Steckgewicht).",
+ "_info": "Trainingspläne Alex (Screenshots 21.10.2026). Garmin-Übung = nächstliegender Katalogeintrag; Zuordnung für die Auswertung siehe exercise_names.py. Gewichte wie in der App (Kabel: Steckgewicht). calendar_export: Workouts in den Garmin-Kalender (nur mit Forerunner oder Connect+ nutzbar, seit 0.28.0 aus). prefill: Kraft-Aktivitäten nach dem Training mit dem Tagesplan vorbefüllen (gym_prefill.py).",
  "workouts": {
   "push": {
    "name": "Push A",
@@ -264,5 +264,7 @@
    1,
    3
   ]
- }
+ },
+ "calendar_export": false,
+ "prefill": true
 }

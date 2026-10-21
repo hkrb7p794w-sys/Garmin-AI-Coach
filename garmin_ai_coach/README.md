@@ -28,6 +28,13 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.28.0
+
+- Vorbefüllen statt Kalender (`gym_prefill.py`): Die Garmin CIRQA führt Kalender-Workouts nur mit Connect+ aus. Stattdessen schreibt das Add-on nach dem Training Übungen, Sätze und Gewicht des Tagesplans in die aufgezeichnete Kraft-Aktivität (nur wenn sie noch keine benannte Übung hat, nur Einheiten ab 22.10.2026) und benennt sie nach der Einheit. Die Wiederholungen bleiben leer und werden in der Connect-App eingetragen. Gewicht: Empfehlung bei „erhöhen“, sonst zuletzt gelogtes Gewicht, sonst Planwert.
+- Kalender-Export der Gym-Workouts aus (`calendar_export: false`), bereits angelegte Workouts werden entfernt.
+- Progression: neue Regel – zwei Einheiten in Folge mit gleichem Gewicht knapp an der Obergrenze (jeder Satz ≥ Ziel − 1, mindestens einer am Ziel) → Gewicht erhöhen.
+- Diagnose: `/strength_raw`, `/gym_prefill_selftest` (schreibt die Sätze der letzten Kraft-Aktivität unverändert zurück).
+
 ### 0.27.0
 
 - Gym-Pläne von Alex als Garmin-Kraft-Workouts (`gym_plan.json`): Mo Push A, Di Lower (Do, wenn am Di geschwommen wird), Mi Pull A, Fr Push & Pull B. Je Übung 2 Sätze mit 12 Wdh. und Gewicht vorbelegt; auf der Uhr nur noch die Wiederholungen anpassen.

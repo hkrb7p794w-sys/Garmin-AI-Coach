@@ -185,16 +185,23 @@ def evaluate_exercise(rule_info, entries, today=None, recovered=None):
     rule_a = last["n_sets"] >= MIN_WORKING_SETS and last["min_reps"] >= hi
     # Regel B (2-für-2): letzte Serie in zwei Einheiten in Folge >= Ziel + 1
     rule_b = (same_weight_prev and last["last_reps"] >= hi + 1 and prev["last_reps"] >= hi + 1)
+    # Regel C (seit 0.28.0, Wunsch Alex: 12 ist keine harte Grenze): zwei Einheiten in Folge
+    # mit demselben Gewicht knapp an der Obergrenze (jeder Satz >= Ziel - 1, mindestens ein Satz
+    # am Ziel) - das Gewicht ist dann erkennbar zu leicht, auch wenn nicht alle Sätze 12 erreichen.
+    rule_c = (same_weight_prev and last["n_sets"] >= MIN_WORKING_SETS
+              and last["min_reps"] >= hi - 1 and prev["min_reps"] >= hi - 1 and last["max_reps"] >= hi)
     # Warnsignal: Gewicht gleich/höher, Wiederholungen zweimal unter der Untergrenze
     # Mindestens 2 Wdh. unter der Untergrenze: die Bereiche sind Planungswerte,
     # eine Wiederholung Abstand soll noch keinen Alarm auslösen.
     drop = (prev is not None and last["min_reps"] <= lo - 2 and prev["min_reps"] <= lo - 2
             and last["weight"] >= prev["weight"] - WEIGHT_TOLERANCE)
 
-    if rule_a or rule_b:
+    if rule_a or rule_b or rule_c:
         why = (f"alle {last['n_sets']} Arbeitssätze bei {_fmt_reps(last['reps'])} Wdh. (Ziel {lo}-{hi})"
                if rule_a else
-               f"letzte Serie in zwei Einheiten in Folge mit {prev['last_reps']} bzw. {last['last_reps']} Wdh. (Ziel {hi})")
+               f"letzte Serie in zwei Einheiten in Folge mit {prev['last_reps']} bzw. {last['last_reps']} Wdh. (Ziel {hi})"
+               if rule_b else
+               f"zwei Einheiten in Folge knapp an der Obergrenze ({_fmt_reps(prev['reps'])} → {_fmt_reps(last['reps'])} Wdh., Ziel {hi})")
         gate = ""
         if recovered is False:
             gate = " Erholung aktuell eingeschränkt: Steigerung erst bei guter Tagesform."

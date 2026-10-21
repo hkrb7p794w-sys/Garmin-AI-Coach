@@ -46,6 +46,7 @@ import chat
 import decoupling
 import garmin_swim
 import garmin_gym
+import gym_prefill
 import sleep
 import competition
 import pace_check
@@ -429,6 +430,9 @@ def _has_unknown_exercise(entry: dict) -> bool:
         label = str((ex or {}).get("exercise", ""))
         if label.lower().startswith(("unknown", "unbekannte")):
             return True
+        # Vorbefüllt (0.28.0), Wiederholungen noch leer: weiter nachladen, bis Alex sie einträgt
+        if "plank" not in label.lower() and any(st.get("reps") is None for st in (ex or {}).get("sets") or []):
+            return True
     return False
 
 
@@ -517,7 +521,9 @@ def _update_strength_exercises(client, activities: list) -> list:
 
 def _strength_history() -> tuple:
     """(roh, vereinheitlicht) - alle gecachten Kraft-Einheiten, alt -> neu."""
-    raw = sorted(_load_strength_cache().values(), key=lambda s: s.get("date") or "")
+    # Mit Planwerten vorbefüllte, noch nicht bearbeitete Einheiten zählen nicht (gym_prefill, 0.28.0)
+    skip = gym_prefill.unconfirmed_ids()
+    raw = sorted((v for k, v in _load_strength_cache().items() if k not in skip), key=lambda s: s.get("date") or "")
     return raw, exercise_names.canonical_sessions(raw)
 
 
@@ -1174,6 +1180,17 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         except Exception as e:
             print(f"[garmin_swim] Ausrüstungs-Erinnerung fehlgeschlagen: {e}")
 
+        # Kraft-Aktivitäten mit dem Tagesplan vorbefüllen (0.28.0, gym_prefill.py): Übungen,
+        # Sätze, Gewicht - Alex trägt nur noch die Wiederholungen ein (CIRQA ohne Connect+).
+        try:
+            prog_now = gym_progress.build_progression(_strength_history()[1], today_date)
+            pre = gym_prefill.run(client, recent_activities, prog_now, today_date)
+            last = (pre.get("recent") or [{}])[-1]
+            publish_json("gym_vorbefuellt", (f"{last.get('date')} {last.get('workout') or ''} – {last.get('action')}"
+                                             if last else pre.get("status", "–"))[:250], pre)
+        except Exception as e:
+            print(f"[gym_prefill] fehlgeschlagen: {e}")
+
         # Gym-Einheiten als Kraft-Workouts in den Garmin-Kalender (0.25.0, siehe
         # garmin_gym.py) - nur, wenn gym_plan.json Einheiten enthält.
         try:
@@ -1532,6 +1549,30 @@ def strength_raw():
         if len(out) >= n:
             break
     return jsonify(out)
+
+
+@app.route("/gym_prefill_selftest")
+def gym_prefill_selftest():
+    """Prüft den Schreibweg für das Vorbefüllen ohne etwas zu ändern: liest die Sätze der
+    letzten Kraft-Aktivität und schreibt sie unverändert zurück (Replace-All, No-op)."""
+    if not is_logged_in():
+        return jsonify({"error": "nicht eingeloggt"}), 401
+    client = get_client()
+    try:
+        acts = [a for a in (client.get_activities(0, 20) or [])
+                if "strength" in ((a.get("activityType") or {}).get("typeKey", "") or "").lower()]
+        if not acts:
+            return jsonify({"error": "keine Kraft-Aktivität gefunden"})
+        aid = acts[0]["activityId"]
+        before = client.get_activity_exercise_sets(aid)
+        gym_prefill._put(client, aid, {"activityId": aid, "exerciseSets": before.get("exerciseSets") or []})
+        after = client.get_activity_exercise_sets(aid)
+        same = gym_prefill._signature(before) == gym_prefill._signature(after)
+        return jsonify({"activity_id": aid, "date": acts[0].get("startTimeLocal"), "written": True,
+                        "unchanged": same, "sets": len(gym_prefill._signature(after)),
+                        "method": "set_activity_exercise_sets" if hasattr(client, "set_activity_exercise_sets") else "garth.put"})
+    except Exception as e:
+        return jsonify({"error": str(e)[:500]}), 500
 
 
 @app.route("/sleep_export")
