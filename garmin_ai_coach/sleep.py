@@ -66,6 +66,11 @@ def extract(raw: dict):
         "rhr": _num((raw or {}).get("restingHeartRate")),
         "bb_change": (raw or {}).get("bodyBatteryChange"),
         "need_min": need.get("actual"),
+        "hr_avg": _num(dto.get("avgHeartRate")),
+        "resp_low": _num(dto.get("lowestRespirationValue")),
+        "skin_temp_dev": _num((raw or {}).get("avgSkinTempDeviationC")),
+        "align": ((dto.get("sleepAlignment") or {}).get("status")),
+        "breathing_data": bool((raw or {}).get("breathingDisruptionData")),
     }
     return out
 
@@ -190,4 +195,5 @@ def summary(nights: dict = None, days: int = 28) -> dict:
         "wake": _fmt(statistics.mean(ends)) if ends else None, "wake_sd_min": sd(ends),
         "midpoint_sd_min": sd(mids),
         "need_min": avg("need_min"),
+        "hr_avg": avg("hr_avg"),
     }
