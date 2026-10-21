@@ -2,7 +2,7 @@
 
 Kopie der Dateien, die in Home Assistant liegen – zur Versionierung und zum Wiederherstellen.
 Das Add-on selbst braucht sie nicht; Home Assistant liest sie aus `/config`.
-Stand: Karten 1.2.0 (ohne Gamification), passend zu Add-on 0.23.0.
+Stand: Karten 1.3.0, passend zu Add-on 0.25.x.
 
 | Datei hier | Liegt in Home Assistant unter | Inhalt |
 |---|---|---|
@@ -29,7 +29,7 @@ Wochentage × Tagesampel × erledigt/offen durch und prüft die Regeln.
 ## Wiederherstellen
 
 1. `coach-cards.js` und die Templates per File Editor oder Samba an die Stellen oben kopieren.
-2. Ressource eintragen: Einstellungen › Dashboards › ⋮ › Ressourcen › `/local/coach/coach-cards.js?v=1.2.0` als **JavaScript-Modul**.
+2. Ressource eintragen: Einstellungen › Dashboards › ⋮ › Ressourcen › `/local/coach/coach-cards.js?v=1.3.0` als **JavaScript-Modul**.
    Bei jeder neuen Version die Zahl hinter `?v=` erhöhen – sonst lädt die Companion-App die alte Datei aus dem Cache.
 3. Nach Änderungen an Templates: Entwicklerwerkzeuge › Aktionen › `homeassistant.reload_custom_templates`.
 4. Dashboard: Dashboard öffnen › ⋮ › Bearbeiten › ⋮ › Raw-Konfigurationseditor › Inhalt der JSON-Datei einfügen (der Editor akzeptiert JSON).
@@ -51,3 +51,16 @@ Der Abschnitt „Coach“ (KI-Gym-Tipp, offene Vorschläge nach Disziplin, Anneh
 Wochenreport (alle Disziplinen), Plan-Kommentar und feste Gym-Punkte – ohne Dubletten, eine neue Einschätzung
 ersetzt ältere offene KI-Vorschläge. Die Karte „Übungsnamen zusammengeführt“ (`gym_mapping_list()` in
 `coach_views.jinja`) ist ausgeblendet; die Zusammenführung der Übungsnamen läuft im Add-on weiter.
+
+## Feedback, Rest der Woche, Listen (21.10.2026, Karten 1.3.0, Add-on 0.25.0)
+
+- **Feedback je Einheit:** Das Add-on schreibt pro Einheit einen kurzen Text in `sensor.garmin_ai_coach_garmin_tagesform_leistung`
+  (Attribut `sessions[].feedback`, gebaut in `tagesform.feedback()`). `coach_today()` hängt ihn an erledigte Einheiten von heute
+  (`items[].fb`); Einheiten von gestern und zusätzliche von heute stehen unter `done` („Erledigt“). Die Morgen-Push enthält „Gestern …“.
+- **Rest der Woche:** `coach_today().week` listet alle noch kommenden Einheiten mit festem Tag (Do Beine/Schwimmen, Fr Push+Pull,
+  Sa/So Zwift). Die Läufe ohne festen Tag stehen getrennt unter „Noch offen · ohne festen Tag“ (früher „Diese Woche noch offen“).
+- **Listen in Markdown-Karten:** jede Markdown-Karte hat `card_mod: style: "ha-card { --markdown-list-indent: 1em; }"`
+  (HA-Variable `--markdown-list-indent` aus `ha-markdown.ts`, Standard = Browser-Einzug 40 px).
+- **Qualitätslauf:** nur noch Schwelle und 4×4 min (90–95 % HFmax) – keine 1000er-Intervalle mehr (`coach_plan.jinja`).
+- **Automation „Garmin Coach: Schwimm-Ausrüstung am Vorabend“** (20:30): Push, wenn die Schwimmeinheit morgen Ausrüstung braucht
+  (Sensor `sensor.garmin_ai_coach_garmin_schwimm_equipment`).

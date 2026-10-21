@@ -88,7 +88,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% macro n(x) %}{{ x | string | replace('.', ',') }}{% endmacro %}{% set r = states.sensor.garmin_ai_coach_garmin_wochenreport %}{% if r is none or r.state in ['unknown','unavailable'] %}Noch kein Wochenreport – er entsteht montags beim ersten Sync.{% else %}{% set a = r.attributes %}{% set mon = (now().date() - timedelta(days=now().weekday())).strftime('%d.%m.') %}{% set live = (a.period_label or '').startswith(mon) %}<details><summary><b>🤖 KI-Wochenreport {{ a.period_label }}</b>{{ ' · Zwischenstand' if live else '' }}</summary>\n\n{% if live %}<small>Die Woche läuft noch – „weniger als Vorwoche“ heißt hier nur: noch nicht nachgeholt.</small>\n\n{% endif %}{{ a.full_text or r.state }}\n</details>\n\n**Umfang {{ a.period_label }}** <small>(Vorwoche)</small>\n- 🏊 {{ a.swim_sessions }}× · {{ n(a.swim_km) }} km <small>({{ a.swim_sessions_prev }}× · {{ n(a.swim_km_prev) }} km)</small>\n- 🚴 {{ a.bike_sessions }}× · {{ n(a.bike_km) }} km <small>({{ a.bike_sessions_prev }}× · {{ n(a.bike_km_prev) }} km)</small>\n- 🏃 {{ a.run_sessions }}× · {{ n(a.run_km) }} km <small>({{ a.run_sessions_prev }}× · {{ n(a.run_km_prev) }} km)</small>\n- 🏋️ {{ a.strength_sessions }}× <small>({{ a.strength_sessions_prev }}×)</small>\n- ⏱️ **{{ a.total_min }} min** <small>({{ a.total_min_prev }} min)</small>\n\n{% if a.history_days is not none and a.history_days >= 10 %}<small>Erholung im Wochenmittel: Ruhepuls {{ n(a.resting_hr_avg) }} bpm ({{ n(a.resting_hr_avg_prev) }}) · HRV {{ n(a.hrv_avg) }} ms ({{ n(a.hrv_avg_prev) }}) · Schlaf {{ n(a.sleep_hours_avg) }} h ({{ n(a.sleep_hours_avg_prev) }})</small>{% endif %}{% endif %}"
+              "content": "{% macro n(x) %}{{ x | string | replace('.', ',') }}{% endmacro %}{% set r = states.sensor.garmin_ai_coach_garmin_wochenreport %}{% if r is none or r.state in ['unknown','unavailable'] %}Noch kein Wochenreport – er entsteht montags beim ersten Sync.{% else %}{% set a = r.attributes %}{% set mon = (now().date() - timedelta(days=now().weekday())).strftime('%d.%m.') %}{% set live = (a.period_label or '').startswith(mon) %}<details><summary><b>🤖 KI-Wochenreport {{ a.period_label }}</b>{{ ' · Zwischenstand' if live else '' }}</summary>\n\n{% if live %}<small>Die Woche läuft noch – „weniger als Vorwoche“ heißt hier nur: noch nicht nachgeholt.</small>\n\n{% endif %}{{ a.full_text or r.state }}\n</details>\n\n**Umfang {{ a.period_label }}** <small>(Vorwoche)</small>\n- 🏊 {{ a.swim_sessions }}× · {{ n(a.swim_km) }} km <small>({{ a.swim_sessions_prev }}× · {{ n(a.swim_km_prev) }} km)</small>\n- 🚴 {{ a.bike_sessions }}× · {{ n(a.bike_km) }} km <small>({{ a.bike_sessions_prev }}× · {{ n(a.bike_km_prev) }} km)</small>\n- 🏃 {{ a.run_sessions }}× · {{ n(a.run_km) }} km <small>({{ a.run_sessions_prev }}× · {{ n(a.run_km_prev) }} km)</small>\n- 🏋️ {{ a.strength_sessions }}× <small>({{ a.strength_sessions_prev }}×)</small>\n- ⏱️ **{{ a.total_min }} min** <small>({{ a.total_min_prev }} min)</small>\n\n{% if a.history_days is not none and a.history_days >= 10 %}<small>Erholung im Wochenmittel: Ruhepuls {{ n(a.resting_hr_avg) }} bpm ({{ n(a.resting_hr_avg_prev) }}) · HRV {{ n(a.hrv_avg) }} ms ({{ n(a.hrv_avg_prev) }}) · Schlaf {{ n(a.sleep_hours_avg) }} h ({{ n(a.sleep_hours_avg_prev) }})</small>{% endif %}{% endif %}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         }
@@ -145,21 +148,30 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import swim_week %}{{ swim_week() }}"
+              "content": "{% from 'coach_ui.jinja' import swim_week %}{{ swim_week() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set x = states.sensor.garmin_ai_coach_garmin_export_schwimmen %}{% if x is none %}⌚ <small>Ab Add-on 0.20.0 landen die nächsten Schwimmeinheiten automatisch im Garmin-Kalender und auf der Uhr.</small>{% elif x.attributes.error is defined %}⚠️ **Garmin-Export fehlgeschlagen:** <small>{{ x.attributes.error }}</small>{% else %}⌚ **Auf deiner Uhr** <small>(CSS {{ x.attributes.css }}, {{ x.attributes.pool_m }}-m-Becken)</small>{% for w in x.attributes.workouts or [] %}\n- {{ ['Mo','Di','Mi','Do','Fr','Sa','So'][strptime(w.date, '%Y-%m-%d').weekday()] }} {{ strptime(w.date, '%Y-%m-%d').strftime('%d.%m.') }} · {{ w.name }} · {{ w.distance_m }} m{% endfor %}\n\n<small>In der Garmin-App unter Training › Workouts bzw. im Kalender – per Drag & Drop auf einen anderen Tag verschiebbar.</small>{% endif %}"
+              "content": "{% set x = states.sensor.garmin_ai_coach_garmin_export_schwimmen %}{% if x is none %}⌚ <small>Ab Add-on 0.20.0 landen die nächsten Schwimmeinheiten automatisch im Garmin-Kalender und auf der Uhr.</small>{% elif x.attributes.error is defined %}⚠️ **Garmin-Export fehlgeschlagen:** <small>{{ x.attributes.error }}</small>{% else %}⌚ **Auf deiner Uhr** <small>(CSS {{ x.attributes.css }}, {{ x.attributes.pool_m }}-m-Becken)</small>{% for w in x.attributes.workouts or [] %}\n- {{ ['Mo','Di','Mi','Do','Fr','Sa','So'][strptime(w.date, '%Y-%m-%d').weekday()] }} {{ strptime(w.date, '%Y-%m-%d').strftime('%d.%m.') }} · {{ w.name }} · {{ w.distance_m }} m{% endfor %}\n\n<small>In der Garmin-App unter Training › Workouts bzw. im Kalender – per Drag & Drop auf einen anderen Tag verschiebbar.</small>{% endif %}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('swim') }}"
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('swim') }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         },
@@ -177,7 +189,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import swim_paces %}{{ swim_paces() }}"
+              "content": "{% from 'coach_ui.jinja' import swim_paces %}{{ swim_paces() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -242,14 +257,20 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import bike_week %}{{ bike_week() }}"
+              "content": "{% from 'coach_ui.jinja' import bike_week %}{{ bike_week() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('bike') }}"
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('bike') }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         },
@@ -267,7 +288,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import bike_zones %}{{ bike_zones() }}"
+              "content": "{% from 'coach_ui.jinja' import bike_zones %}{{ bike_zones() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -280,7 +304,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_views.jinja' import zwift_list %}{{ zwift_list() }}"
+              "content": "{% from 'coach_views.jinja' import zwift_list %}{{ zwift_list() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -358,14 +385,20 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import run_week %}{{ run_week() }}"
+              "content": "{% from 'coach_ui.jinja' import run_week %}{{ run_week() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('run') }}"
+              "content": "{% from 'coach_list.jinja' import plan_list %}{{ plan_list('run') }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "custom:coach-nav",
@@ -398,7 +431,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import run_paces %}{{ run_paces() }}"
+              "content": "{% from 'coach_ui.jinja' import run_paces %}{{ run_paces() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -411,7 +447,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set s = (state_attr('sensor.garmin_ai_coach_garmin_hf_pace_kopplung', 'sessions') or []) | reverse | list %}{% if s %}{% for x in s[:5] %}{% set d = x.decoupling_pct | float(0) %}- {{ '🟢' if d < 5 else ('🟡' if d <= 10 else '🟠') }} **{{ x.decoupling_pct | string | replace('-', '−') | replace('.', ',') }} %** · {{ '🚴' if x.sport == 'ride' else '🏃' }} {{ x.activity_name }} · {{ as_timestamp(x.date) | timestamp_custom('%d.%m.') }}  \n  <small>HF {{ x.avg_hr_first_half | round(0) | int }} → {{ x.avg_hr_second_half | round(0) | int }} · {% if x.sport == 'ride' %}{{ x.avg_power_first_half_w }} → {{ x.avg_power_second_half_w }} W{% else %}{{ x.avg_pace_first_half }} → {{ x.avg_pace_second_half }} /km{% endif %}</small>\n{% endfor %}\n<small>🟢 unter 5 % = solide aerobe Basis für diese Dauer · 🟡 5–10 % · 🟠 über 10 % = meist zu intensiv. Nur lockere, gleichmäßige Einheiten (ab 35 min Lauf / 45 min Rad, erste 10 min ignoriert).</small>{% else %}Noch keine passende lockere Einheit erfasst.{% endif %}"
+              "content": "{% set s = (state_attr('sensor.garmin_ai_coach_garmin_hf_pace_kopplung', 'sessions') or []) | reverse | list %}{% if s %}{% for x in s[:5] %}{% set d = x.decoupling_pct | float(0) %}- {{ '🟢' if d < 5 else ('🟡' if d <= 10 else '🟠') }} **{{ x.decoupling_pct | string | replace('-', '−') | replace('.', ',') }} %** · {{ '🚴' if x.sport == 'ride' else '🏃' }} {{ x.activity_name }} · {{ as_timestamp(x.date) | timestamp_custom('%d.%m.') }}  \n  <small>HF {{ x.avg_hr_first_half | round(0) | int }} → {{ x.avg_hr_second_half | round(0) | int }} · {% if x.sport == 'ride' %}{{ x.avg_power_first_half_w }} → {{ x.avg_power_second_half_w }} W{% else %}{{ x.avg_pace_first_half }} → {{ x.avg_pace_second_half }} /km{% endif %}</small>\n{% endfor %}\n<small>🟢 unter 5 % = solide aerobe Basis für diese Dauer · 🟡 5–10 % · 🟠 über 10 % = meist zu intensiv. Nur lockere, gleichmäßige Einheiten (ab 35 min Lauf / 45 min Rad, erste 10 min ignoriert).</small>{% else %}Noch keine passende lockere Einheit erfasst.{% endif %}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -487,7 +526,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}<details><summary><b>Einheiten der letzten 7 Tage</b> ({{ sessions | count }})</summary>\n\n{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}{% if not sessions %}Keine Kraft-Einheiten in den letzten 7 Tagen.{% else %}{% for s in sessions | sort(attribute='date', reverse=true) %}**{{ as_timestamp(s.date) | timestamp_custom('%d.%m.') }}**\n{% for ex in (s.exercises or []) %}- *{{ ex.exercise }}*: {% for st in (ex.sets or []) %}{{ st.reps if st.reps is not none else '?' }}×{{ (st.weight_kg ~ ' kg') if st.weight_kg is not none else 'ohne Gewicht' }}{{ ', ' if not loop.last else '' }}{% endfor %}\n{% endfor %}\n{% endfor %}{% endif %}\n</details>"
+              "content": "{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}<details><summary><b>Einheiten der letzten 7 Tage</b> ({{ sessions | count }})</summary>\n\n{% set sessions = state_attr('sensor.garmin_ai_coach_garmin_krafttraining_uebungen', 'sessions') or [] %}{% if not sessions %}Keine Kraft-Einheiten in den letzten 7 Tagen.{% else %}{% for s in sessions | sort(attribute='date', reverse=true) %}**{{ as_timestamp(s.date) | timestamp_custom('%d.%m.') }}**\n{% for ex in (s.exercises or []) %}- *{{ ex.exercise }}*: {% for st in (ex.sets or []) %}{{ st.reps if st.reps is not none else '?' }}×{{ (st.weight_kg ~ ' kg') if st.weight_kg is not none else 'ohne Gewicht' }}{{ ', ' if not loop.last else '' }}{% endfor %}\n{% endfor %}\n{% endfor %}{% endif %}\n</details>",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         }
@@ -512,14 +554,20 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set t = state_attr('sensor.garmin_ai_coach_garmin_gym_coaching_tipp', 'full_text') %}{% if t %}<details><summary><b>🤖 KI-Gym-Tipp</b></summary>\n\n{{ t }}\n</details>{% else %}<small>Noch kein Gym-Tipp.</small>{% endif %}"
+              "content": "{% set t = state_attr('sensor.garmin_ai_coach_garmin_gym_coaching_tipp', 'full_text') %}{% if t %}<details><summary><b>🤖 KI-Gym-Tipp</b></summary>\n\n{{ t }}\n</details>{% else %}<small>Noch kein Gym-Tipp.</small>{% endif %}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "markdown",
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set v = states.sensor.garmin_ai_coach_garmin_vorschlaege %}{% set a = v.attributes if v is not none else {} %}{% set pend = a.pending or [] %}{% set acc = a.accepted or [] %}{% set disc = [('schwimmen','🏊 Schwimmen'),('rad','🚴 Rad'),('laufen','🏃 Laufen'),('gym','🏋️ Gym'),('erholung','😴 Erholung'),('allgemein','🎯 Allgemein')] %}{% if pend %}<details><summary><b>💡 {{ pend | count }} {{ 'offener Vorschlag' if pend | count == 1 else 'offene Vorschläge' }}</b> · annehmen oder ablehnen</summary>\n\n{% for key, label in disc %}{% set items = pend | selectattr('discipline', 'defined') | selectattr('discipline', 'eq', key) | list %}{% if items %}**{{ label }}**\n{% for i in items %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}{% endfor %}{% set rest = pend | rejectattr('discipline', 'defined') | list %}{% if rest %}**Sonstige**\n{% for i in rest %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}<small>Quellen: Wochenreport (alle Disziplinen, montags), Plan-Kommentar (bei Phasenwechsel oder auffälligen Werten) und feste Gym-Punkte. Ein neuer Vorschlag ersetzt ältere zum selben Thema; offene KI-Vorschläge verfallen nach 10 Tagen.</small>\n</details>{% else %}<small>Keine offenen Vorschläge.</small>{% endif %}{% if acc %}\n\n<small>✅ Umgesetzt: {{ acc | map(attribute='title') | join(' · ') }}</small>{% endif %}"
+              "content": "{% set v = states.sensor.garmin_ai_coach_garmin_vorschlaege %}{% set a = v.attributes if v is not none else {} %}{% set pend = a.pending or [] %}{% set acc = a.accepted or [] %}{% set disc = [('schwimmen','🏊 Schwimmen'),('rad','🚴 Rad'),('laufen','🏃 Laufen'),('gym','🏋️ Gym'),('erholung','😴 Erholung'),('allgemein','🎯 Allgemein')] %}{% if pend %}<details><summary><b>💡 {{ pend | count }} {{ 'offener Vorschlag' if pend | count == 1 else 'offene Vorschläge' }}</b> · annehmen oder ablehnen</summary>\n\n{% for key, label in disc %}{% set items = pend | selectattr('discipline', 'defined') | selectattr('discipline', 'eq', key) | list %}{% if items %}**{{ label }}**\n{% for i in items %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}{% endfor %}{% set rest = pend | rejectattr('discipline', 'defined') | list %}{% if rest %}**Sonstige**\n{% for i in rest %}- **{{ i.title }}** – {{ i.text }}\n{% endfor %}\n{% endif %}<small>Quellen: Wochenreport (alle Disziplinen, montags), Plan-Kommentar (bei Phasenwechsel oder auffälligen Werten) und feste Gym-Punkte. Ein neuer Vorschlag ersetzt ältere zum selben Thema; offene KI-Vorschläge verfallen nach 10 Tagen.</small>\n</details>{% else %}<small>Keine offenen Vorschläge.</small>{% endif %}{% if acc %}\n\n<small>✅ Umgesetzt: {{ acc | map(attribute='title') | join(' · ') }}</small>{% endif %}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "entities": [
@@ -567,7 +615,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "type": "markdown"
+              "type": "markdown",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "entities": [
@@ -597,7 +648,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "type": "markdown"
+              "type": "markdown",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ],
           "type": "grid"
@@ -756,7 +810,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "type": "markdown"
+              "type": "markdown",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -778,14 +835,20 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "<details><summary><b>🤖 KI-Kommentar zum Plan</b></summary>\n\n{% if state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') %}{{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') }}\n\n<small>Auslöser: {{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'trigger_detail') }}</small>{% else %}Noch kein Kommentar – Gemini kommentiert nur bei Phasenwechsel, länger niedriger Readiness, stagnierender VO2max oder FTP-Sprung.{% endif %}\n</details>"
+              "content": "<details><summary><b>🤖 KI-Kommentar zum Plan</b></summary>\n\n{% if state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') %}{{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'full_text') }}\n\n<small>Auslöser: {{ state_attr('sensor.garmin_ai_coach_garmin_trainingsplan_kommentar', 'trigger_detail') }}</small>{% else %}Noch kein Kommentar – Gemini kommentiert nur bei Phasenwechsel, länger niedriger Readiness, stagnierender VO2max oder FTP-Sprung.{% endif %}\n</details>",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "content": "<small>Ersetzt keine sportmedizinische Untersuchung – vor deutlich mehr Umfang empfiehlt sich ein Check.</small>",
               "grid_options": {
                 "columns": "full"
               },
-              "type": "markdown"
+              "type": "markdown",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         }
@@ -814,7 +877,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set days = (strptime(plan.marathon, '%Y-%m-%d').date() - now().date()).days %}{% set p = states('input_text.marathon_zielpace').split(':') %}{% set mp = ((p[0] | int(0)) * 60 + (p[1] | int(0))) if p | count == 2 else 0 %}{% set h = states('input_text.halbmarathon_testzeit').split(':') %}{% set hm = ((h[0] | int(0)) * 3600 + (h[1] | int(0)) * 60 + (h[2] | int(0))) if h | count == 3 else 0 %}{% macro hms(s) %}{{ '%d:%02d' | format((s // 3600) | int, ((s % 3600) // 60) | int) }}{% endmacro %}{% macro pace(s) %}{{ '%d:%02d' | format((s // 60) | int, (s % 60) | int) }}{% endmacro %}{% if days >= 0 %}### 🏃 Noch **{{ days }} Tage** · Sonntag 02.05.2027{% else %}### 🏅 Marathon geschafft (02.05.2027){% endif %}\n\n{% if mp > 0 %}**Zielpace {{ pace(mp) }} /km → Zielzeit ca. {{ hms(mp * 42.195) }} h**{% endif %}\n\n{% if hm > 0 %}{% set lo = hm * 2.15 %}{% set hi = hm * 2.2 %}Halbmarathon-Test **{{ states('input_text.halbmarathon_testzeit') }}** → realistisch **{{ hms(lo) }}–{{ hms(hi) }} h** (Pace {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} /km).{% if mp > 0 and mp < (lo / 42.195) | int %} ⚠️ Deine Zielpace ist schneller als der Test hergibt – trag {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} ein.{% endif %}{% else %}<small>Die Zielpace ist vorläufig: abgeleitet aus deiner Schwellenpace mit einem bewusst vorsichtigen Debüt-Aufschlag. Der Halbmarathon-Test am 14.03. bestätigt oder korrigiert sie (Marathonzeit ≈ HM-Zeit × 2,15–2,2; die übliche Riegel-Formel mit ×2,09 ist für Debütanten meist zu optimistisch).</small>{% endif %}\n\n| Tempo | Pace /km | Wofür |\n|---|---|---|\n| Locker | {{ plan.paces.E }} | Z2-Läufe, Longruns – im Zweifel nach Herzfrequenz |\n| Marathon | {{ plan.paces.MP }} | Marathontempo-Läufe, Rennen |\n| Schwelle | {{ plan.paces.T }} | Schwellenläufe |\n| Intervall | {{ plan.paces.I }} | 1000er, 4-min-Intervalle |"
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set days = (strptime(plan.marathon, '%Y-%m-%d').date() - now().date()).days %}{% set p = states('input_text.marathon_zielpace').split(':') %}{% set mp = ((p[0] | int(0)) * 60 + (p[1] | int(0))) if p | count == 2 else 0 %}{% set h = states('input_text.halbmarathon_testzeit').split(':') %}{% set hm = ((h[0] | int(0)) * 3600 + (h[1] | int(0)) * 60 + (h[2] | int(0))) if h | count == 3 else 0 %}{% macro hms(s) %}{{ '%d:%02d' | format((s // 3600) | int, ((s % 3600) // 60) | int) }}{% endmacro %}{% macro pace(s) %}{{ '%d:%02d' | format((s // 60) | int, (s % 60) | int) }}{% endmacro %}{% if days >= 0 %}### 🏃 Noch **{{ days }} Tage** · Sonntag 02.05.2027{% else %}### 🏅 Marathon geschafft (02.05.2027){% endif %}\n\n{% if mp > 0 %}**Zielpace {{ pace(mp) }} /km → Zielzeit ca. {{ hms(mp * 42.195) }} h**{% endif %}\n\n{% if hm > 0 %}{% set lo = hm * 2.15 %}{% set hi = hm * 2.2 %}Halbmarathon-Test **{{ states('input_text.halbmarathon_testzeit') }}** → realistisch **{{ hms(lo) }}–{{ hms(hi) }} h** (Pace {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} /km).{% if mp > 0 and mp < (lo / 42.195) | int %} ⚠️ Deine Zielpace ist schneller als der Test hergibt – trag {{ pace(lo / 42.195) }}–{{ pace(hi / 42.195) }} ein.{% endif %}{% else %}<small>Die Zielpace ist vorläufig: abgeleitet aus deiner Schwellenpace mit einem bewusst vorsichtigen Debüt-Aufschlag. Der Halbmarathon-Test am 14.03. bestätigt oder korrigiert sie (Marathonzeit ≈ HM-Zeit × 2,15–2,2; die übliche Riegel-Formel mit ×2,09 ist für Debütanten meist zu optimistisch).</small>{% endif %}\n\n| Tempo | Pace /km | Wofür |\n|---|---|---|\n| Locker | {{ plan.paces.E }} | Z2-Läufe, Longruns – im Zweifel nach Herzfrequenz |\n| Marathon | {{ plan.paces.MP }} | Marathontempo-Läufe, Rennen |\n| Schwelle | {{ plan.paces.T }} | Schwellenläufe |\n| Intervall | {{ plan.paces.I }} | 1000er, 4-min-Intervalle |",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -842,7 +908,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set mon = (now().date() - timedelta(days=now().weekday())).isoformat() %}{% set mw = plan.weeks | selectattr('ph', 'in', ['Marathon-Aufbau', 'Marathon-Taper']) | list %}{% if mon < mw[0].w %}{% set cur = plan.weeks | selectattr('w', 'eq', mon) | list %}*Der Longrun-Aufbau startet am 04.01.2027. Bis dahin wächst dein Z2-Lauf Woche für Woche bis auf 90 min – das ist die Brücke zu den ersten 16 km.*{% if cur %} Diese Woche: {{ cur[0].e.split(' (')[0] }}.{% endif %}\n\n{% endif %}| Wochenende bis | Longrun (Sa/So) | Qualitätslauf (unter der Woche) |\n|---|---|---|\n{% for x in mw %}{% set sun = strptime(x.w, '%Y-%m-%d') + timedelta(days=6) %}{% set km = '🏁 **Marathon**' if x.key == 'marathon' else ('**HM-Test**' if x.lr == 21.1 else ((('**' ~ x.lr ~ ' km**') if x.lr >= 25 else (x.lr ~ ' km')))) %}| {{ '▶ ' if x.w == mon else ('✓ ' if sun.date() < now().date() else '') }}{{ sun.strftime('%d.%m.') }} | {{ km }} | {{ x.qc }} |\n{% endfor %}\n<small>Longrun höchstens 2–3 km pro Woche steigern, jede 4. Woche Entlastung. Spitze 32 km drei Wochen vor dem Rennen, dann 3 Wochen Taper mit weniger Umfang bei gleichem Tempo.</small>"
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}{% set mon = (now().date() - timedelta(days=now().weekday())).isoformat() %}{% set mw = plan.weeks | selectattr('ph', 'in', ['Marathon-Aufbau', 'Marathon-Taper']) | list %}{% if mon < mw[0].w %}{% set cur = plan.weeks | selectattr('w', 'eq', mon) | list %}*Der Longrun-Aufbau startet am 04.01.2027. Bis dahin wächst dein Z2-Lauf Woche für Woche bis auf 90 min – das ist die Brücke zu den ersten 16 km.*{% if cur %} Diese Woche: {{ cur[0].e.split(' (')[0] }}.{% endif %}\n\n{% endif %}| Wochenende bis | Longrun (Sa/So) | Qualitätslauf (unter der Woche) |\n|---|---|---|\n{% for x in mw %}{% set sun = strptime(x.w, '%Y-%m-%d') + timedelta(days=6) %}{% set km = '🏁 **Marathon**' if x.key == 'marathon' else ('**HM-Test**' if x.lr == 21.1 else ((('**' ~ x.lr ~ ' km**') if x.lr >= 25 else (x.lr ~ ' km')))) %}| {{ '▶ ' if x.w == mon else ('✓ ' if sun.date() < now().date() else '') }}{{ sun.strftime('%d.%m.') }} | {{ km }} | {{ x.qc }} |\n{% endfor %}\n<small>Longrun höchstens 2–3 km pro Woche steigern, jede 4. Woche Entlastung. Spitze 32 km drei Wochen vor dem Rennen, dann 3 Wochen Taper mit weniger Umfang bei gleichem Tempo.</small>",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         },
@@ -860,7 +929,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der 70.3-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen."
+              "content": "{% from 'coach_plan.jinja' import coach_plan %}{% set plan = coach_plan() | from_json %}**Pacing:** erste 5 km bewusst 5–10 s/km langsamer als {{ plan.paces.MP }} /km, bis km 30 gleichmäßig, erst danach zulegen, wenn es geht.\n\n**Verpflegung:** 60–90 g Kohlenhydrate pro Stunde aus Gel und Getränk, alle 15–20 min eine Portion. Jeder Longrun ab 25 km ist Generalprobe – am Renntag nichts Neues.\n\n**Taper:** 3 Wochen, Umfang −25 / −40 / −60 %, das Tempo bleibt. Letzte schwere Beine-Einheit ca. 10 Tage vorher.\n\n**Kraft im Marathonblock:** Beine schwer und kurz (2–3 Sätze à 4–6 Wdh.), mindestens 48 h Abstand zu Longrun und Qualitätslauf. Home-Gym läuft weiter wie gewohnt.\n\n**Danach:** 2 Wochen Regeneration ohne Lauftempo, dann startet der 70.3-Block.\n\n**Stoppsignal:** Schmerz, der beim Laufen zunimmt oder dich humpeln lässt → Einheit abbrechen, 2–3 Tage Pause, nicht durchziehen.",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             }
           ]
         }
@@ -911,7 +983,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set z = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} %}{% set zu = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated') %}{% set g = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] %}{% set up = g | selectattr('status', 'eq', 'erhöhen') | list | count %}{% set chk = g | selectattr('status', 'eq', 'prüfen') | list | count %}**Läuft automatisch – hier musst du nichts tun**\n- ❤️ HF-Zonen: Schwelle Laufen {{ z.run.lthr if z.run else '–' }} bpm, zuletzt berechnet {{ strptime(zu, '%Y-%m-%d').strftime('%d.%m.') if zu else '–' }}\n- 🏋️ Gewichte: {{ up }} {{ 'Steigerung' if up == 1 else 'Steigerungen' }} empfohlen{{ (', ' ~ chk ~ ' zu prüfen') if chk else '' }}\n- 📐 Paces, Watt und Schwimmzeiten rechnen sich aus deinen Testwerten unten\n\n<small>Du stellst nur ein, was sich nicht messen lässt: Testergebnisse, Ziele und wie der Coach dich erreichen soll.</small>"
+              "content": "{% set z = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'coach') or {} %}{% set zu = state_attr('sensor.garmin_ai_coach_garmin_herzfrequenzzonen', 'updated') %}{% set g = state_attr('sensor.garmin_ai_coach_garmin_gym_progression', 'exercises') or [] %}{% set up = g | selectattr('status', 'eq', 'erhöhen') | list | count %}{% set chk = g | selectattr('status', 'eq', 'prüfen') | list | count %}**Läuft automatisch – hier musst du nichts tun**\n- ❤️ HF-Zonen: Schwelle Laufen {{ z.run.lthr if z.run else '–' }} bpm, zuletzt berechnet {{ strptime(zu, '%Y-%m-%d').strftime('%d.%m.') if zu else '–' }}\n- 🏋️ Gewichte: {{ up }} {{ 'Steigerung' if up == 1 else 'Steigerungen' }} empfohlen{{ (', ' ~ chk ~ ' zu prüfen') if chk else '' }}\n- 📐 Paces, Watt und Schwimmzeiten rechnen sich aus deinen Testwerten unten\n\n<small>Du stellst nur ein, was sich nicht messen lässt: Testergebnisse, Ziele und wie der Coach dich erreichen soll.</small>",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
@@ -946,7 +1021,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% from 'coach_ui.jinja' import css_calc %}{{ css_calc() }}"
+              "content": "{% from 'coach_ui.jinja' import css_calc %}{{ css_calc() }}",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "entities",
@@ -1078,7 +1156,10 @@
               "grid_options": {
                 "columns": "full"
               },
-              "content": "{% set s = state_attr('sensor.garmin_ai_coach_garmin_coach_status', 'settings') %}{% if s %}<small>Aktiv laut Add-on: Sync {{ s.sync_hours | join(', ') }} Uhr{{ ' (Eingabe oben ungültig, es gilt die Add-on-Option)' if s.sync_source == 'option' else '' }} · KI-Daten {{ s.privacy_mode }} · Schwimmeinheiten auf die Uhr {{ 'an' if s.swim_export else 'aus' }}. Änderungen greifen innerhalb von 5 Minuten.</small>{% else %}<small>Sync-Zeiten, KI-Datenschutz und Uhr-Export wirken ab Add-on 0.22. Bis zum Update gelten die Add-on-Optionen (Sync 6, 12 und 20 Uhr).</small>{% endif %}\n\n<small>„Reduziert“ schickt Gemini nur Einordnungen (z. B. „Erholung eingeschränkt“) statt Rohwerten wie HRV oder Ruhepuls – Google darf Anfragen im kostenlosen Kontingent zur Produktverbesserung nutzen.</small>"
+              "content": "{% set s = state_attr('sensor.garmin_ai_coach_garmin_coach_status', 'settings') %}{% if s %}<small>Aktiv laut Add-on: Sync {{ s.sync_hours | join(', ') }} Uhr{{ ' (Eingabe oben ungültig, es gilt die Add-on-Option)' if s.sync_source == 'option' else '' }} · KI-Daten {{ s.privacy_mode }} · Schwimmeinheiten auf die Uhr {{ 'an' if s.swim_export else 'aus' }}. Änderungen greifen innerhalb von 5 Minuten.</small>{% else %}<small>Sync-Zeiten, KI-Datenschutz und Uhr-Export wirken ab Add-on 0.22. Bis zum Update gelten die Add-on-Optionen (Sync 6, 12 und 20 Uhr).</small>{% endif %}\n\n<small>„Reduziert“ schickt Gemini nur Einordnungen (z. B. „Erholung eingeschränkt“) statt Rohwerten wie HRV oder Ruhepuls – Google darf Anfragen im kostenlosen Kontingent zur Produktverbesserung nutzen.</small>",
+              "card_mod": {
+                "style": "ha-card { --markdown-list-indent: 1em; }"
+              }
             },
             {
               "type": "heading",
