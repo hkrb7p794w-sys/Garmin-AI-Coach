@@ -76,6 +76,9 @@ _rule("plank", "Plank", "Rumpf", r"PLANK", (1, 1), False, 2.5, 0.0, bodyweight_r
 _rule("pallof", "Pallof Press", "Rumpf", r"PALLOF", (10, 15), False, 2.5, 2.5)
 _rule("rotation", "Rumpfrotation", "Rumpf", r"RUSSIAN_TWIST|WOOD_?CHOP|ROTATION", (10, 15), False, 2.5, 2.5)
 _rule("beinheben", "Beinheben", "Rumpf", r"LEG_RAISE|KNEE_RAISE|HANGING", (10, 15), False, 2.5, 2.5)
+# Crunch am Gerät (Lower, ~90 kg) getrennt vom Kabel-Crunch (Pull A, ~65 kg) - Gewichte nicht
+# vergleichbar. Garmin hat keinen Maschinen-Crunch; gym_plan.json nutzt dafür WEIGHTED_CRUNCH.
+_rule("crunch_geraet", "Crunch am Gerät", "Rumpf", r"(^|_)WEIGHTED_CRUNCH$", (10, 15), False, 2.5, 2.5)
 _rule("crunch", "Crunch", "Rumpf", r"CRUNCH|SIT_UP", (10, 15), False, 2.5, 2.5)
 
 # --- Schultern / Rücken-Spezialfälle (vor den allgemeinen Rücken-Regeln) ---
@@ -116,6 +119,11 @@ _rule("fliegende", "Fliegende (Brust)", "Brust", r"(^|_)FLY(E|ES)?($|_)|PEC_DECK
 
 # --- Rücken -------------------------------------------------------------------
 _rule("kabel_pullover", "Kabel-Pullover", "Rücken", r"PULLOVER", (10, 15), False, 2.5, 2.5)
+# Einarmiges Lat-Ziehen (Pull A, ~52,5 kg je Seite) getrennt vom Latziehen breit (Push & Pull B,
+# ~85 kg). Garmin kennt kein einarmiges Latziehen; Alex hat dafür bisher _30_DEGREE_ bzw.
+# KNEELING_LAT_PULLDOWN gewählt, gym_plan.json nutzt _30_DEGREE_LAT_PULLDOWN.
+_rule("latziehen_einarmig", "Latziehen einarmig", "Rücken",
+      r"_30_DEGREE_LAT_PULLDOWN|KNEELING(_UNDERHAND_GRIP)?_LAT_PULLDOWN|SINGLE_ARM.*PULLDOWN", (8, 12), False, 2.5, 2.5)
 _rule("latziehen", "Latziehen", "Rücken", r"PULLDOWN|PULL_DOWN", (6, 10), True, 2.5, 2.5)
 # „Pull Up“ ohne Enum: mit Zusatzgewicht am Gerät = Latziehen (Annahme), sonst Klimmzug
 _rule("latziehen", "Latziehen", "Rücken", r"^(PULL_UP|CHIN_UP)$", (6, 10), True, 2.5, 2.5,

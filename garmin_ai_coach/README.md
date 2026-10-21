@@ -28,6 +28,13 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.27.0
+
+- Gym-Pläne von Alex als Garmin-Kraft-Workouts (`gym_plan.json`): Mo Push A, Di Lower (Do, wenn am Di geschwommen wird), Mi Pull A, Fr Push & Pull B. Je Übung 2 Sätze mit 12 Wdh. und Gewicht vorbelegt; auf der Uhr nur noch die Wiederholungen anpassen.
+- Lower ist flexibel: Ist der Dienstag vorbei oder wurde am Dienstag geschwommen und Lower ist noch offen, wird das Workout auf Donnerstag verschoben (altes Kalender-Workout wird gelöscht).
+- Garmin hat nicht jede Übung: Beinstrecken → Banded Leg Extension, Crunch am Gerät → Weighted Crunch, einarmiges Lat-Ziehen → 30-Degree Lat Pulldown, Flyings am hohen Kabel → Cable Crossover. Die Auswertung (`exercise_names.py`) ordnet sie wieder richtig zu; einarmiges Latziehen und Crunch am Gerät sind jetzt eigene Übungen (Gewichte nicht vergleichbar mit Latziehen breit bzw. Kabel-Crunch).
+- Progression: Zielbereich kommt aus dem Plan (12 Wdh. → 8–12), nicht mehr aus den Standardbereichen.
+
 ### 0.26.0
 
 - Hauptrennen: Challenge Almere-Amsterdam Mitteldistanz am Sa 11.09.2027 statt Ironman 70.3 (29.08.). Phasen Almere-Aufbau 17.05.–08.08., Almere-Peak 09.08.–29.08., Almere-Taper 30.08.–11.09.; zwei zusätzliche Aufbauwochen (längste Radeinheit in Aeroposition, Entlastung).

@@ -15,8 +15,11 @@ Format gym_plan.json:
          "sets": 3, "reps": 8, "weight_kg": 80, "rest_s": 120, "note": "2 Wdh. Reserve"},
         {"name": "Plank", "category": "PLANK", "exercise": "PLANK", "sets": 3, "seconds": 45, "rest_s": 60}]}},
      "schedule": {"0": "push", "2": "pull", "4": "pp", "3": "legs"}}
-    schedule: Wochentag (0 = Montag) -> Einheit. Beine liegen am Donnerstag, weil das
-    Schwimm-Workout auf Dienstag gelegt wird; in Garmin per Drag & Drop tauschbar.
+    schedule: Wochentag (0 = Montag) -> Einheit.
+    flex: Einheit -> mögliche Tage. Seit 0.27.0 (Pläne von Alex, 21.10.2026):
+    Lower am Dienstag, außer Alex schwimmt am Dienstag - dann am Donnerstag.
+    Ist der Dienstag vorbei (oder heute schon geschwommen) und Lower noch offen,
+    wandert das Workout auf Donnerstag; das alte Kalender-Workout wird gelöscht.
 
 Garmin-JSON (Kraft): sportTypeId 5 "strength_training"; je Übung ein
 RepeatGroupDTO (Sätze) aus Übungsschritt (stepType interval, endCondition
@@ -169,50 +172,110 @@ def selftest(client) -> dict:
     return out
 
 
-def export_upcoming(client, today: datetime.date = None, done_dates: set = None) -> dict:
+def plan_rep_ranges(plan: dict = None) -> dict:
+    """Zielbereich je kanonischer Übung aus Alex' Plan: (Plan-Wdh. - 4, Plan-Wdh.),
+    bei 12 Wdh. also 8-12. Doppelprogression: alle Sätze bei 12 -> Gewicht hoch.
+    Hat Vorrang vor den Standardbereichen in exercise_names.py (nur Alias-Datei schlägt ihn)."""
+    import exercise_names
+    plan = plan if plan is not None else _load(PLAN_FILE, {})
+    out = {}
+    for w in (plan.get("workouts") or {}).values():
+        for ex in w.get("exercises") or []:
+            if not ex.get("reps"):
+                continue
+            sets = [{"reps": ex["reps"], "weight_kg": ex.get("weight_kg") or 0}]
+            c = exercise_names.classify(f"{ex['category']} ({ex.get('exercise', '')})", sets)
+            hi = int(ex["reps"])
+            out[c["id"]] = (max(1, hi - 4), hi)
+    return out
+
+
+def planned_days(plan: dict, monday: datetime.date, today: datetime.date, done_dates: set,
+                 swim_today: bool = False) -> dict:
+    """{datum: einheit} für eine Woche. Flexible Einheiten (Lower Di/Do) landen am
+    ersten möglichen Tag; erledigt gilt eine flexible Einheit, wenn an einem ihrer
+    Tage schon Kraft geloggt ist (Mo/Mi/Fr sind die anderen Gym-Tage)."""
+    schedule = plan.get("schedule") or {}
+    flex = plan.get("flex") or {}
+    days = {}
+    for wd, key in schedule.items():
+        if key in flex:
+            continue
+        days[monday + datetime.timedelta(days=int(wd))] = key
+    for key, options in flex.items():
+        cands = [monday + datetime.timedelta(days=int(d)) for d in options]
+        if any(d.isoformat() in done_dates for d in cands):
+            continue
+        for d in cands:
+            if d < today or (d == today and swim_today and d != cands[-1]):
+                continue
+            days[d] = key
+            break
+    return days
+
+
+def export_upcoming(client, today: datetime.date = None, done_dates: set = None,
+                    swim_today: bool = False) -> dict:
     """Plant die Gym-Einheiten der restlichen Woche und der nächsten Woche ein
     (wie garmin_swim: rollierendes Fenster, bei Planänderung ersetzt).
-    done_dates: Tage mit erledigter Krafteinheit - dort nichts mehr anlegen."""
+    done_dates: Tage mit erledigter Krafteinheit - dort nichts mehr anlegen.
+    swim_today: heute schon geschwommen -> flexible Einheit (Lower) auf den nächsten Tag."""
     plan = _load(PLAN_FILE, {})
     workouts = plan.get("workouts") or {}
-    schedule = plan.get("schedule") or {}
-    if not workouts or not schedule:
+    if not workouts or not plan.get("schedule"):
         return {"status": "kein Plan hinterlegt", "workouts": []}
     bad = validate(plan)
     if bad:
         print(f"[garmin_gym] Unbekannte Übungen, bitte gym_plan.json prüfen: {bad}")
     today = today or datetime.date.today()
+    done_dates = done_dates or set()
     monday = today - datetime.timedelta(days=today.weekday())
     state = _load(STATE_FILE, {})
-    result = []
+    wanted = {}
     for wk in (monday, monday + datetime.timedelta(days=7)):
-        for wd, key in sorted(schedule.items()):
-            day = wk + datetime.timedelta(days=int(wd))
-            w = workouts.get(key)
-            if not w or day < today or day.isoformat() in (done_dates or set()):
-                continue
-            payload = build_workout(w)
-            sig = hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
-            entry = state.get(day.isoformat()) or {}
-            action = "unverändert"
-            if entry.get("workout_id") and entry.get("sig") != sig:
-                try:
-                    client.delete_workout(entry["workout_id"])
-                except Exception as e:
-                    print(f"[garmin_gym] Löschen von {entry['workout_id']} fehlgeschlagen ({e})")
-                entry = {}
-            if not entry.get("workout_id"):
-                wid = _id(client.upload_workout(payload), "workoutId")
-                if not wid:
-                    raise RuntimeError("Garmin hat keine workoutId geliefert")
-                client.schedule_workout(wid, day.isoformat())
-                entry = {"workout_id": wid, "check": verify(client, wid, payload)}
-                action = "neu im Kalender"
-            entry.update({"sig": sig, "key": key, "name": w.get("name")})
-            state[day.isoformat()] = entry
-            result.append({"date": day.isoformat(), "name": w.get("name"), "action": action,
-                           "workout_id": entry["workout_id"], "check": entry.get("check", "")})
-            print(f"[garmin_gym] {day.isoformat()} {w.get('name')}: {action}")
+        wanted.update(planned_days(plan, wk, today, done_dates, swim_today if wk == monday else False))
+    # Kalender-Workouts, die nicht mehr gewollt sind (Lower verschoben, Plan geändert), entfernen -
+    # nur ab heute und nur, wenn an dem Tag nichts geloggt ist.
+    for d, entry in list(state.items()):
+        try:
+            day = datetime.date.fromisoformat(d)
+        except ValueError:
+            continue
+        if day < today or day in wanted or d in done_dates or not entry.get("workout_id"):
+            continue
+        try:
+            client.delete_workout(entry["workout_id"])
+            print(f"[garmin_gym] {d} {entry.get('name')}: aus dem Kalender entfernt")
+        except Exception as e:
+            print(f"[garmin_gym] Löschen von {entry['workout_id']} fehlgeschlagen ({e})")
+        state.pop(d, None)
+    result = []
+    for day, key in sorted(wanted.items()):
+        w = workouts.get(key)
+        if not w or day < today or day.isoformat() in done_dates:
+            continue
+        payload = build_workout(w)
+        sig = hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+        entry = state.get(day.isoformat()) or {}
+        action = "unverändert"
+        if entry.get("workout_id") and entry.get("sig") != sig:
+            try:
+                client.delete_workout(entry["workout_id"])
+            except Exception as e:
+                print(f"[garmin_gym] Löschen von {entry['workout_id']} fehlgeschlagen ({e})")
+            entry = {}
+        if not entry.get("workout_id"):
+            wid = _id(client.upload_workout(payload), "workoutId")
+            if not wid:
+                raise RuntimeError("Garmin hat keine workoutId geliefert")
+            client.schedule_workout(wid, day.isoformat())
+            entry = {"workout_id": wid, "check": verify(client, wid, payload)}
+            action = "neu im Kalender"
+        entry.update({"sig": sig, "key": key, "name": w.get("name")})
+        state[day.isoformat()] = entry
+        result.append({"date": day.isoformat(), "name": w.get("name"), "action": action,
+                       "workout_id": entry["workout_id"], "check": entry.get("check", "")})
+        print(f"[garmin_gym] {day.isoformat()} {w.get('name')}: {action}")
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=1, ensure_ascii=False)

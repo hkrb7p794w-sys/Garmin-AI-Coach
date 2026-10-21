@@ -1177,8 +1177,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         # Gym-Einheiten als Kraft-Workouts in den Garmin-Kalender (0.25.0, siehe
         # garmin_gym.py) - nur, wenn gym_plan.json Einheiten enthält.
         try:
+            # Lower: Di, außer Alex schwimmt am Di - dann Do (0.27.0)
+            swim_today = any("swim" in ((a.get("activityType") or {}).get("typeKey", "") or "").lower()
+                             and str(a.get("startTimeLocal", ""))[:10] == today_date.isoformat()
+                             for a in recent_activities or [])
             gym_res = garmin_gym.export_upcoming(
-                client, today_date, done_dates={s.get("date") for s in wellness["strength_exercises"] or []})
+                client, today_date, done_dates={s.get("date") for s in wellness["strength_exercises"] or []},
+                swim_today=swim_today)
             publish_json("export_gym", (f"{len(gym_res['workouts'])} im Garmin-Kalender"
                                         if gym_res.get("workouts") else gym_res.get("status", "–")), gym_res)
         except Exception as e:

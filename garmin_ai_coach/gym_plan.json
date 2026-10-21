@@ -1,1 +1,268 @@
-{"workouts": {}, "schedule": {"0": "push", "2": "pull", "3": "legs", "4": "pp"}}
+{
+ "_info": "Trainingspläne Alex (Screenshots 21.10.2026). Garmin-Übung = nächstliegender Katalogeintrag; Zuordnung für die Auswertung siehe exercise_names.py. Gewichte wie in der App (Kabel: Steckgewicht).",
+ "workouts": {
+  "push": {
+   "name": "Push A",
+   "description": "Mo · Home-Gym · nur Wiederholungen anpassen",
+   "exercises": [
+    {
+     "name": "Flyings am hohen Kabel",
+     "category": "FLYE",
+     "exercise": "CABLE_CROSSOVER",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 22.5,
+     "note": "Flyings am hohen Kabel"
+    },
+    {
+     "name": "Armstrecken am tiefen Kabel auf Schrägbank",
+     "category": "TRICEPS_EXTENSION",
+     "exercise": "CABLE_OVERHEAD_TRICEPS_EXTENSION",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 32.5,
+     "note": "Armstrecken am tiefen Kabel auf Schrägbank"
+    },
+    {
+     "name": "Bankdrücken mit Langhantel",
+     "category": "BENCH_PRESS",
+     "exercise": "BARBELL_BENCH_PRESS",
+     "sets": 2,
+     "rest_s": 120,
+     "reps": 12,
+     "weight_kg": 52.5,
+     "note": "Bankdrücken mit Langhantel"
+    },
+    {
+     "name": "Einarmiges Seitwärtsheben am tiefen Kabel",
+     "category": "LATERAL_RAISE",
+     "exercise": "ONE_ARM_CABLE_LATERAL_RAISE",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 13.75,
+     "note": "Einarmiges Seitheben am tiefen Kabel – je Seite"
+    },
+    {
+     "name": "Dips am Barren",
+     "category": "TRICEPS_EXTENSION",
+     "exercise": "BODY_WEIGHT_DIP",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "note": "Dips am Barren – Körpergewicht"
+    },
+    {
+     "name": "Planks",
+     "category": "PLANK",
+     "exercise": "PLANK",
+     "sets": 2,
+     "rest_s": 60,
+     "seconds": 60,
+     "note": "Planks"
+    }
+   ]
+  },
+  "pull": {
+   "name": "Pull A",
+   "description": "Mi · Home-Gym · nur Wiederholungen anpassen",
+   "exercises": [
+    {
+     "name": "Enges Rudern am Kabel sitzend",
+     "category": "ROW",
+     "exercise": "V_GRIP_CABLE_ROW",
+     "sets": 2,
+     "rest_s": 120,
+     "reps": 12,
+     "weight_kg": 110,
+     "note": "Enges Rudern am Kabel sitzend"
+    },
+    {
+     "name": "Curls am Kabel liegend",
+     "category": "CURL",
+     "exercise": "CABLE_BICEPS_CURL",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 50,
+     "note": "Curls am Kabel liegend"
+    },
+    {
+     "name": "Einarmiges Lat-Ziehen",
+     "category": "PULL_UP",
+     "exercise": "_30_DEGREE_LAT_PULLDOWN",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 52.5,
+     "note": "Einarmiges Lat-Ziehen – je Seite"
+    },
+    {
+     "name": "Curls in Hammerhaltung am Kabel",
+     "category": "CURL",
+     "exercise": "CABLE_HAMMER_CURL",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 22.5,
+     "note": "Curls in Hammerhaltung am Kabel"
+    },
+    {
+     "name": "Face-Pulls am Kabel sitzend",
+     "category": "ROW",
+     "exercise": "FACE_PULL",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 45,
+     "note": "Face-Pulls am Kabel sitzend"
+    },
+    {
+     "name": "Crunches am Kabel kniend",
+     "category": "CRUNCH",
+     "exercise": "KNEELING_CABLE_CRUNCH",
+     "sets": 2,
+     "rest_s": 60,
+     "reps": 12,
+     "weight_kg": 65,
+     "note": "Crunches am Kabel kniend"
+    }
+   ]
+  },
+  "pp": {
+   "name": "Push & Pull B",
+   "description": "Fr · Home-Gym · nur Wiederholungen anpassen",
+   "exercises": [
+    {
+     "name": "Curls in Hammerhaltung am Kabel",
+     "category": "CURL",
+     "exercise": "CABLE_HAMMER_CURL",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 22.5,
+     "note": "Curls in Hammerhaltung am Kabel"
+    },
+    {
+     "name": "Armstrecken am tiefen Kabel auf Schrägbank",
+     "category": "TRICEPS_EXTENSION",
+     "exercise": "CABLE_OVERHEAD_TRICEPS_EXTENSION",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 32.5,
+     "note": "Armstrecken am tiefen Kabel auf Schrägbank"
+    },
+    {
+     "name": "Lat-Ziehen mit breitem Griff",
+     "category": "PULL_UP",
+     "exercise": "WIDE_GRIP_LAT_PULLDOWN",
+     "sets": 2,
+     "rest_s": 120,
+     "reps": 12,
+     "weight_kg": 85,
+     "note": "Lat-Ziehen mit breitem Griff"
+    },
+    {
+     "name": "Bankdrücken mit Langhantel",
+     "category": "BENCH_PRESS",
+     "exercise": "BARBELL_BENCH_PRESS",
+     "sets": 2,
+     "rest_s": 120,
+     "reps": 12,
+     "weight_kg": 52.5,
+     "note": "Bankdrücken mit Langhantel"
+    },
+    {
+     "name": "Reverse-Flyings am hohen Kabel",
+     "category": "FLYE",
+     "exercise": "SINGLE_ARM_STANDING_CABLE_REVERSE_FLYE",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 7.5,
+     "note": "Reverse-Flyings am hohen Kabel"
+    },
+    {
+     "name": "Dips am Barren",
+     "category": "TRICEPS_EXTENSION",
+     "exercise": "BODY_WEIGHT_DIP",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "note": "Dips am Barren – Körpergewicht"
+    }
+   ]
+  },
+  "legs": {
+   "name": "Lower",
+   "description": "Di (oder Do, wenn Di geschwommen wird) · nur Wiederholungen anpassen",
+   "exercises": [
+    {
+     "name": "Beinbeugen sitzend",
+     "category": "LEG_CURL",
+     "exercise": "LEG_CURL",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 110,
+     "note": "Beinbeugen sitzend"
+    },
+    {
+     "name": "Beinstrecken",
+     "category": "BANDED_EXERCISES",
+     "exercise": "LEG_EXTENSION",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 120,
+     "note": "Beinstrecken am Gerät (Garmin hat nur die Band-Variante)"
+    },
+    {
+     "name": "Beinpressen sitzend",
+     "category": "SQUAT",
+     "exercise": "LEG_PRESS",
+     "sets": 2,
+     "rest_s": 120,
+     "reps": 12,
+     "weight_kg": 149,
+     "note": "Beinpressen sitzend"
+    },
+    {
+     "name": "Fersenheben am Gerät stehend",
+     "category": "CALF_RAISE",
+     "exercise": "WEIGHTED_STANDING_CALF_RAISE",
+     "sets": 2,
+     "rest_s": 90,
+     "reps": 12,
+     "weight_kg": 117,
+     "note": "Fersenheben am Gerät stehend"
+    },
+    {
+     "name": "Crunches am Gerät",
+     "category": "CRUNCH",
+     "exercise": "WEIGHTED_CRUNCH",
+     "sets": 2,
+     "rest_s": 60,
+     "reps": 12,
+     "weight_kg": 90,
+     "note": "Crunches am Gerät"
+    }
+   ]
+  }
+ },
+ "schedule": {
+  "0": "push",
+  "1": "legs",
+  "2": "pull",
+  "4": "pp"
+ },
+ "flex": {
+  "legs": [
+   1,
+   3
+  ]
+ }
+}

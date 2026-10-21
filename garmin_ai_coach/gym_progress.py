@@ -233,6 +233,12 @@ def build_progression(sessions, today=None, recovered=None):
     mehrere Wochen. Gibt Liste je Übung zurück, 'erhöhen' zuerst."""
     today = today or datetime.date.today()
     hist = history_by_exercise(sessions)
+    try:
+        import garmin_gym
+        plan_ranges = garmin_gym.plan_rep_ranges()
+    except Exception as e:
+        print(f"[gym_progress] Plan-Zielbereiche nicht lesbar ({e})")
+        plan_ranges = {}
     out = []
     for ex_id, h in hist.items():
         entries = h["entries"]
@@ -246,6 +252,8 @@ def build_progression(sessions, today=None, recovered=None):
         if info is None:
             info = exercise_names.classify(h["name"])
         info = dict(info)
+        if ex_id in plan_ranges:
+            info["reps"] = plan_ranges[ex_id]
         custom = exercise_names.user_rep_range(ex_id)
         if custom:
             info["reps"] = custom
