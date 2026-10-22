@@ -232,7 +232,7 @@ def run(client, activities: list, progression: list = None, today: datetime.date
         if detected and len(detected) == len(planned):
             for d, p_ in zip(detected, planned):
                 for f in ("repetitionCount", "startTime", "duration"):
-                    if d.get(f) is not None:
+                    if d.get(f) is not None and not (f == "repetitionCount" and not d[f]):
                         p_[f] = d[f]
         unconfirmed = False
         try:
