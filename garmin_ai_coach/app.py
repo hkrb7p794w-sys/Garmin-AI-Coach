@@ -52,6 +52,7 @@ import competition
 import pace_check
 import ha_settings
 import tagesform
+import energy
 
 DATA_DIR = "/data"
 TOKEN_DIR = os.path.join(DATA_DIR, "garmin_tokens")
@@ -1082,6 +1083,14 @@ def do_sync(force: bool = False, also_weekly: bool = False):
             publish_json("schlaf", f"{sl.get('sleep_h') or '–'} h Ø 28 Tage", sl)
         except Exception as e:
             print(f"[sleep] fehlgeschlagen: {e}")
+
+        # Energie/Training heute für die Ernährungs-App (0.29.0, siehe energy.py):
+        # ein Garmin-Request (Tageszusammenfassung), Profil max. 1x täglich.
+        try:
+            en = energy.build(client, recent_activities, today_date, DATA_DIR)
+            publish_json("energie_heute", en.get("active_kcal") if en.get("active_kcal") is not None else 0, en)
+        except Exception as e:
+            print(f"[energy] fehlgeschlagen: {e}")
 
         # Herzfrequenzzonen (v0.21.0, siehe hr_zones.py): Zonen der Uhr aus Garmin,
         # schwellenbasierte Coach-Zonen, Zeit-in-Zone-Verteilung. Eigener try-Block:

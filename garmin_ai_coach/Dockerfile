@@ -23,6 +23,7 @@ COPY gym_prefill.py /gym_prefill.py
 COPY sleep.py /sleep.py
 COPY competition.py /competition.py
 COPY pace_check.py /pace_check.py
+COPY energy.py /energy.py
 COPY run_plan.json /run_plan.json
 COPY gym_plan.json /gym_plan.json
 COPY gym_exercises.json /gym_exercises.json

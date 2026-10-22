@@ -28,6 +28,14 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.29.0
+- **Neuer Sensor `sensor.garmin_ai_coach_garmin_energie_heute`** für die Ernährungs-App
+  (eigenes Add-on „Ernährung“): Zustand = aktive kcal heute, Attribute = heutige Aktivitäten
+  (Typ, Dauer, kcal, Trainingslast), Grundumsatz/Gesamtumsatz laut Garmin sowie Gewicht, Größe,
+  Alter und Geschlecht aus dem Garmin-Profil. Daraus berechnet die Ernährungs-App die Tagesziele
+  (z. B. mehr Kohlenhydrate an harten Tagen). Zusätzliche Garmin-Abrufe: 1 je Sync
+  (Tageszusammenfassung) plus das Profil höchstens einmal täglich (`energy.py`).
+
 ### 0.28.2
 
 - Erinnerung: Sensor „Gym nachtragen“ (Anzahl heute vorbefüllter, noch nicht bearbeiteter Kraft-Aktivitäten). HA-Automation „Garmin Coach: Gym-Wiederholungen nachtragen“ schickt um 20:30 (nach dem 20-Uhr-Sync) eine Push-Nachricht.

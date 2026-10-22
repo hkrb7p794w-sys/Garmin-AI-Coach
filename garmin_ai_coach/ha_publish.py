@@ -421,6 +421,12 @@ SENSORS = {
         "unit": None,
         "icon": "mdi:sleep",
     },
+    # 0.29.0: Energie/Training heute für die Ernährungs-App
+    "energie_heute": {
+        "name": "Garmin Energie heute",
+        "unit": "kcal",
+        "icon": "mdi:fire",
+    },
     # 0.28.x
     "gym_vorbefuellt": {
         "name": "Garmin Gym vorbefüllt",
@@ -475,7 +481,7 @@ ATTRIBUTE_SENSORS = {
     "hrv_status", "plan", "empfehlung", "coach_status", "kraftwerte", "export_schwimmen",
     "gym_progression", "herzfrequenzzonen", "tagesform_leistung",
     "schwimm_ausruestung", "export_gym", "schlaf", "lauf_pace",
-    "gym_vorbefuellt", "gym_nachtragen",
+    "gym_vorbefuellt", "gym_nachtragen", "energie_heute",
 }
 
 
