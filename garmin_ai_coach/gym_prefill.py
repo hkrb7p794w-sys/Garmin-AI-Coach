@@ -66,13 +66,24 @@ def workout_for(day: datetime.date, plan: dict = None):
     return (key, (plan.get("workouts") or {}).get(key)) if key else (None, None)
 
 
+def _top_exercise(s: dict) -> dict:
+    """Wahrscheinlichste Übung eines Satzes. Die CIRQA liefert eine Liste mit
+    Wahrscheinlichkeiten, z. B. UNKNOWN 99,6 %, CURL 0 %, BENCH_PRESS 0 %."""
+    ex = [e for e in (s.get("exercises") or []) if isinstance(e, dict)]
+    if not ex:
+        return {}
+    return max(ex, key=lambda e: e.get("probability") if isinstance(e.get("probability"), (int, float)) else 100)
+
+
 def _named(sets_payload) -> bool:
+    """True, wenn mindestens ein Arbeitssatz eine erkannte Übung hat (wahrscheinlichste
+    Übung nicht UNKNOWN) - dann hat Alex oder die Forerunner schon etwas eingetragen."""
     for s in (sets_payload or {}).get("exerciseSets") or []:
         if str(s.get("setType") or "").upper() != "ACTIVE":
             continue
-        for e in s.get("exercises") or []:
-            if e.get("category") and str(e.get("category")).upper() not in ("UNKNOWN", "NONE"):
-                return True
+        top = _top_exercise(s)
+        if top.get("category") and str(top.get("category")).upper() not in ("UNKNOWN", "NONE"):
+            return True
     return False
 
 
@@ -198,7 +209,7 @@ def run(client, activities: list, progression: list = None, today: datetime.date
             except Exception:
                 pass
             continue
-        if entry:
+        if entry and entry.get("action") != "schon benannt - unverändert":
             continue
         try:
             current = client.get_activity_exercise_sets(aid)
@@ -208,6 +219,8 @@ def run(client, activities: list, progression: list = None, today: datetime.date
         if _named(current):
             state[key] = {"date": start, "action": "schon benannt - unverändert"}
             continue
+        if entry:
+            print(f"[gym_prefill] {start}: Aktivität {aid} war fälschlich als benannt markiert - fülle jetzt vor")
         wkey, workout = workout_for(day, plan)
         if not workout:
             state[key] = {"date": start, "action": f"kein Plan für {day:%A}"}
