@@ -8,7 +8,9 @@ Ablauf
    Verpackung) und dem BLS abgeglichen. Unter den Text-Treffern gewinnt der, dessen
    Nährwerte am besten zur Schätzung passen - das fängt z. B. "Nudeln roh" vs.
    "gekocht" (350 vs. 150 kcal/100 g) ab.
-3. Passt kein Datenbank-Eintrag, bleibt die KI-Schätzung (Quelle "KI") stehen.
+3. Ein zweiter, kurzer KI-Aufruf wählt unter den besten BLS-Kandidaten den passenden
+   (z. B. "Kaffee mit Milch" statt "Kaffee mit Alkohol") oder verwirft alle.
+4. Passt kein Datenbank-Eintrag, bleibt die KI-Schätzung (Quelle "KI") stehen.
    Alles ist vor dem Speichern änderbar; Alternativen werden mitgeliefert.
 
 Grenzen: Portionsgrößen vom Foto sind Schätzungen. Fridolfsson et al. (2025,
@@ -203,7 +205,7 @@ def match_item(raw: dict, personal: dict = None) -> dict:
     ranked.sort(key=lambda x: -x[0])
     item["candidates"] = [{"source": "bls", "ref": c["code"], "name": c["name"],
                            "kcal": c["per100"].get("kcal"), "distance": d,
-                           "per100": c["per100"]} for _s, d, c in ranked[:6]]
+                           "per100": c["per100"]} for _s, d, c in ranked[:8]]
     if ranked:
         _combined, d, best = ranked[0]
         if best["score"] >= 0.55 and d <= 0.5:
@@ -216,6 +218,56 @@ def match_item(raw: dict, personal: dict = None) -> dict:
     # 4) KI-Schätzung
     item.update(source="ki", food_id=None, ref=None, match_name=None, per100=est, distance=None)
     return item
+
+
+RERANK_PROMPT = """Ordne jeder Position den passenden Eintrag aus dem Bundeslebensmittelschlüssel zu.
+Regeln: gleiches Lebensmittel und gleiche Zubereitung wie beschrieben; keine Varianten mit Zutaten,
+die nicht genannt sind (z. B. "mit Alkohol", "mit Zucker", "paniert"); Mengenangaben ignorieren.
+Passt kein Kandidat, "code": null. Antworte NUR mit JSON: {{"wahl": [{{"i": 0, "code": "N410100"}}]}}
+
+Ursprüngliche Beschreibung: {text}
+Positionen:
+{items}
+"""
+RERANK_SCHEMA = {"type": "object", "properties": {"wahl": {"type": "array", "items": {
+    "type": "object", "properties": {"i": {"type": "integer"}, "code": {"type": ["string", "null"]}},
+    "required": ["i", "code"]}}}, "required": ["wahl"]}
+
+
+def rerank(items: list, text: str) -> int:
+    """Zweiter KI-Schritt: unter den Datenbank-Kandidaten den passenden wählen.
+    Gibt die Anzahl geänderter Positionen zurück; bei Fehler bleibt die Heuristik."""
+    todo = [(i, it) for i, it in enumerate(items) if it["source"] in ("bls", "ki") and it.get("candidates")]
+    if not todo:
+        return 0
+    lines = []
+    for i, it in todo:
+        cands = "; ".join(f'{c["ref"]} = {c["name"]} ({round(c["kcal"] or 0)} kcal)' for c in it["candidates"])
+        est = (it.get("estimate") or {}).get("kcal")
+        lines.append(f'{i}: "{it["name"]}" (Schätzung {round(est) if est is not None else "?"} kcal/100 g) -> {cands}')
+    try:
+        data = gemini.generate_json(RERANK_PROMPT.format(text=text or "(Foto)", items="\n".join(lines)),
+                                    schema=RERANK_SCHEMA, max_tokens=3000)
+    except gemini.GeminiError as e:
+        print(f"[analyze] Zuordnung per KI übersprungen: {e}")
+        return 0
+    changed = 0
+    by_index = {i: it for i, it in todo}
+    for w in (data or {}).get("wahl") or []:
+        it = by_index.get(w.get("i"))
+        if it is None:
+            continue
+        code = w.get("code")
+        if code:
+            c = next((c for c in it["candidates"] if c["ref"] == code), None)
+            if c and (it["source"] != "bls" or it.get("ref") != code):
+                it.update(source="bls", food_id=None, ref=code, match_name=c["name"], per100=c["per100"],
+                          distance=c["distance"])
+                changed += 1
+        elif it["source"] == "bls" and it.get("estimate", {}).get("kcal") is not None:
+            it.update(source="ki", food_id=None, ref=None, match_name=None, per100=it["estimate"], distance=None)
+            changed += 1
+    return changed
 
 
 def barcode_food(code: str):
@@ -256,6 +308,8 @@ def analyze(text: str = None, image_b64: str = None, mime: str = "image/jpeg") -
     if not isinstance(raw_items, list):
         raise gemini.GeminiError("KI-Antwort ohne Lebensmittel-Liste")
     items = [match_item(r, personal) for r in raw_items if isinstance(r, dict)]
+    if bls.count():
+        rerank(items, text)
     cat = data.get("kategorie") if data.get("kategorie") in CATEGORY_ENUM else None
     return {
         "title": (data.get("titel") or "").strip()[:60],

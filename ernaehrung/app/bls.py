@@ -61,10 +61,13 @@ def norm(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]+", " ", t).strip()
 
 
-SYNONYMS = {"ei": "huhnerei", "eier": "huhnerei", "spiegelei": "huhnerei gebraten",
-            "ruhrei": "huhnerei ruhrei", "nudeln": "teigwaren", "nudel": "teigwaren",
-            "pasta": "teigwaren", "mohre": "karotte", "mohren": "karotte", "hahnchen": "hahnchen",
-            "kartoffeln": "kartoffel", "haferflocken": "hafer flocken"}
+SYNONYMS = {"ei": "huhnerei", "eier": "huhnerei", "ruhreier": "ruhrei", "spiegeleier": "spiegelei",
+            "nudeln": "teigwaren", "nudel": "teigwaren", "pasta": "teigwaren", "mohre": "karotte",
+            "mohren": "karotte", "kartoffeln": "kartoffel", "haferflocken": "hafer flocken"}
+# Zusätze, die ein anderes Lebensmittel bedeuten, wenn sie nicht gesucht wurden
+STRONG_EXTRAS = {"alkohol", "zucker", "gezuckert", "gesusst", "honig", "schokolade", "sahne",
+                 "kondensmilch", "salz", "gesalzen", "panade", "paniert", "frittiert", "kase", "speck",
+                 "pulver", "getrocknet", "konserve", "sirup", "likor"}
 # Zubereitungs-/Zustandswörter zählen weniger als das eigentliche Lebensmittel
 STATE_WORDS = {"roh", "gekocht", "gegart", "gebraten", "gedunstet", "gedampft", "gebacken", "frisch",
                "getrocknet", "konserve", "abgetropft", "tiefgefroren", "gegrillt", "geschalt",
@@ -115,8 +118,13 @@ def score_name(terms, name_norm: str) -> float:
         return 0.0
     coverage = hits / weight_sum
     first_bonus = 0.15 if words and terms[0] in words[0] else 0.0
-    length_pen = min(len(words), 12) * 0.015
-    return coverage + first_bonus - length_pen
+    # Zusätzliche Inhaltswörter im Treffer, die nicht gesucht wurden ("Kaffee mit Alkohol")
+    extra = 0.0
+    for w in set(words):
+        if len(w) < 4 or w in STOPWORDS or w in STATE_WORDS or any(t in w or w in t for t in terms):
+            continue
+        extra += 0.12 if w in STRONG_EXTRAS else 0.04
+    return coverage + first_bonus - min(extra, 0.3)
 
 
 def search(query: str, limit: int = 20):

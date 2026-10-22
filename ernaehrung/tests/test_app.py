@@ -104,8 +104,23 @@ def test_match_personal_food():
     assert it["source"] == "custom" and it["food_id"] == f["id"]
 
 
+def test_rerank_switches_and_rejects(monkeypatch):
+    items = [analyze.match_item({"name": "Reis", "suchbegriff": "Reis gekocht", "menge_g": 200,
+                                 "naehrwerte_100g": est(130, 2.7, 28, 0.3)}, personal={}),
+             analyze.match_item({"name": "Lachs", "suchbegriff": "Lachs", "menge_g": 120,
+                                 "naehrwerte_100g": est(200, 20, 0, 13)}, personal={})]
+    raw_code = next(c["ref"] for c in items[0]["candidates"] if "roh" in c["name"])
+    monkeypatch.setattr(gemini, "generate_json",
+                        lambda *a, **k: {"wahl": [{"i": 0, "code": raw_code}, {"i": 1, "code": None}]})
+    assert analyze.rerank(items, "Reis und Lachs") == 2
+    assert items[0]["ref"] == raw_code
+    assert items[1]["source"] == "ki"
+
+
 def test_analyze_end_to_end(monkeypatch):
     def fake(prompt, image_b64=None, mime=None, schema=None, max_tokens=None):
+        if "Bundeslebensmittelschlüssel zu" in prompt:
+            return {"wahl": []}
         assert "Rühreier" in prompt
         return {"titel": "Rührei mit Brot", "kategorie": "fruehstueck", "hinweis": "",
                 "items": [

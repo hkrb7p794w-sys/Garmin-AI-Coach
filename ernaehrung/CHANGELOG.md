@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+- Bessere Zuordnung zur Datenbank: ein zweiter KI-Schritt wählt unter den BLS-Kandidaten den passenden
+  Eintrag; Treffer mit nicht genannten Zusätzen („mit Alkohol“, „mit Zucker“) werden abgewertet.
+  Anlass: Live-Test „Kaffee mit Milch“ landete bei „Kaffee (Getränk) mit Alkohol“.
+
 ## 0.1.2
 - BLS-Download: Links auf blsdb.de sind als HTML-Entities kodiert (`&#47;` …) – werden jetzt dekodiert.
 
