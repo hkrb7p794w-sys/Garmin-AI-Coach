@@ -1,0 +1,1 @@
+bls_extract.csv: Auszug (178 Lebensmittel, Werte unverändert) aus Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0. Karlsruhe. DOI 10.25826/Data20251217-134202-0. Lizenz CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.de).

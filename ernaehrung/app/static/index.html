@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2c38">
+<title>Ernährung</title>
+<link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="datebar">
+    <button class="icon" id="prevDay" aria-label="Vorheriger Tag">‹</button>
+    <button class="date" id="dateLabel" aria-label="Datum wählen"></button>
+    <input type="date" id="datePicker" hidden>
+    <button class="icon" id="nextDay" aria-label="Nächster Tag">›</button>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-view="heute" aria-selected="true">Heute</button>
+    <button role="tab" data-view="woche">Woche</button>
+    <button role="tab" data-view="favoriten">Favoriten</button>
+    <button role="tab" data-view="einstellungen">Einstellungen</button>
+  </nav>
+</header>
+
+<main id="view"></main>
+
+<nav class="capture" aria-label="Mahlzeit erfassen">
+  <button data-cap="foto"><span class="glyph">◉</span>Foto</button>
+  <button data-cap="text"><span class="glyph">✎</span>Text</button>
+  <button data-cap="barcode"><span class="glyph">▥</span>Barcode</button>
+  <button data-cap="suche"><span class="glyph">⌕</span>Suchen</button>
+  <button data-cap="wasser" class="water"><span class="glyph">◖</span>+250 ml</button>
+</nav>
+
+<input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="barcodeInput" accept="image/*" capture="environment" hidden>
+
+<div class="sheet-backdrop" id="backdrop" hidden></div>
+<section class="sheet" id="sheet" hidden aria-modal="true" role="dialog"></section>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="static/vendor/zxing.min.js"></script>
+<script src="static/app.js"></script>
+</body>
+</html>

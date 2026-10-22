@@ -1,0 +1,7 @@
+configuration:
+  gemini_api_key:
+    name: Gemini API Key
+    description: Für Foto- und Texterkennung. Kostenlos unter aistudio.google.com („Get API key“). Ohne Key funktionieren Barcode, Suche und manuelle Eingabe.
+  gemini_model:
+    name: Gemini-Modell
+    description: Standardmodell. Ist es abgekündigt, wechselt die App automatisch auf das von Google genannte Nachfolgemodell.
