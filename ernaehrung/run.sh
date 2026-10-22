@@ -3,7 +3,7 @@
 
 bashio::log.info "Ernährung startet."
 export PYTHONUNBUFFERED=1
-export APP_VERSION="$(bashio::addon.version 2>/dev/null || echo 0.1.0)"
+export APP_VERSION="$(bashio::app.version 2>/dev/null || echo 0.1.0)"
 export GEMINI_API_KEY="$(bashio::config 'gemini_api_key')"
 export GEMINI_MODEL="$(bashio::config 'gemini_model')"
 export NUTRITION_DB="/data/ernaehrung.db"

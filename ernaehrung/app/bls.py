@@ -328,18 +328,38 @@ def import_file(path: str) -> int:
 # --------------------------------------------------------------------------
 
 def find_download_link(html: str, page_url: str = DOWNLOAD_PAGE):
-    """Genau einen Download-Link (zip/xlsx mit Code-Parameter) auf blsdb.de finden."""
+    """Download-Link (zip/xlsx der BLS-Daten) auf derselben Domain finden.
+
+    Durchsucht href-Attribute und auch Weiterleitungen in Meta-Refresh/JavaScript
+    (window.location = '...')."""
     from urllib.parse import urljoin, urlparse
+    host = urlparse(page_url).netloc
+    raw = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.I)
+    raw += re.findall(r"""["'(=]\s*((?:https?://[^"'\s]+)?/[^"'\s<>]*BLS[^"'\s<>]*\.(?:zip|xlsx)[^"'\s<>]*)""", html, re.I)
     links = set()
-    for m in re.finditer(r"""href\s*=\s*["']([^"']+)["']""", html, re.I):
-        url = urljoin(page_url, m.group(1).replace("&amp;", "&"))
+    for href in raw:
+        url = urljoin(page_url, href.replace("&amp;", "&").strip())
         u = urlparse(url)
-        if u.scheme == "https" and u.netloc == urlparse(page_url).netloc and \
-                re.search(r"/BLS_4[^/]*\.(zip|xlsx)$", u.path, re.I):
+        if u.scheme == "https" and u.netloc == host and \
+                re.search(r"/BLS[^/]*\.(zip|xlsx)$", u.path, re.I) and "doku" not in u.path.lower():
             links.add(url)
     # Datendatei bevorzugen (es gibt auch Doku-Links)
     ranked = sorted(links, key=lambda x: (0 if "daten" in x.lower() or x.lower().split("?")[0].endswith(".zip") else 1, x))
     return ranked[0] if ranked else None
+
+
+def _mask(text: str) -> str:
+    return re.sub(r"(=[A-Za-z0-9]{4})[A-Za-z0-9-]+", lambda m: m.group(1) + "…", text)
+
+
+def _diagnose(html: str, url: str) -> str:
+    """Kurzbeschreibung der Seite fürs Log (Codes gekürzt)."""
+    title = re.search(r"<title>(.*?)</title>", html, re.I | re.S)
+    hrefs = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.I)
+    interesting = [_mask(h) for h in hrefs if re.search(r"bls|download|upload|files|\.zip|\.xlsx", h, re.I)]
+    title_text = (title.group(1).strip() if title else "-")[:60]
+    return (f"URL {_mask(url)}, Titel '{title_text}', {len(hrefs)} Links, "
+            f"relevant: {interesting[:12]}, {len(html)} Zeichen")
 
 
 def download(target_dir: str) -> str:
@@ -351,6 +371,7 @@ def download(target_dir: str) -> str:
         raise RuntimeError("blsdb.de zeigt eine Bot-Sperre/Anmeldung - wird bewusst nicht umgangen")
     link = find_download_link(r.text, r.url)
     if not link:
+        print(f"[bls] Download-Seite: {_diagnose(r.text, r.url)}")
         raise RuntimeError("Kein Download-Link auf blsdb.de/download gefunden")
     f = s.get(link, timeout=300, stream=True)
     f.raise_for_status()
