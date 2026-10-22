@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2
+- BLS-Download: Links auf blsdb.de sind als HTML-Entities kodiert (`&#47;` …) – werden jetzt dekodiert.
+
 ## 0.1.1
 - BLS-Download: Link wird auch in Weiterleitungen (Meta-Refresh/JavaScript) gesucht; bei Fehlschlag
   beschreibt das Log die Download-Seite (Codes gekürzt).

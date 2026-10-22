@@ -333,12 +333,14 @@ def find_download_link(html: str, page_url: str = DOWNLOAD_PAGE):
     Durchsucht href-Attribute und auch Weiterleitungen in Meta-Refresh/JavaScript
     (window.location = '...')."""
     from urllib.parse import urljoin, urlparse
+    import html as htmllib
     host = urlparse(page_url).netloc
+    html = htmllib.unescape(html)  # blsdb.de kodiert Links als Entities (&#47; usw.)
     raw = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.I)
     raw += re.findall(r"""["'(=]\s*((?:https?://[^"'\s]+)?/[^"'\s<>]*BLS[^"'\s<>]*\.(?:zip|xlsx)[^"'\s<>]*)""", html, re.I)
     links = set()
     for href in raw:
-        url = urljoin(page_url, href.replace("&amp;", "&").strip())
+        url = urljoin(page_url, href.strip())
         u = urlparse(url)
         if u.scheme == "https" and u.netloc == host and \
                 re.search(r"/BLS[^/]*\.(zip|xlsx)$", u.path, re.I) and "doku" not in u.path.lower():
@@ -354,6 +356,8 @@ def _mask(text: str) -> str:
 
 def _diagnose(html: str, url: str) -> str:
     """Kurzbeschreibung der Seite fürs Log (Codes gekürzt)."""
+    import html as htmllib
+    html = htmllib.unescape(html)
     title = re.search(r"<title>(.*?)</title>", html, re.I | re.S)
     hrefs = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, re.I)
     interesting = [_mask(h) for h in hrefs if re.search(r"bls|download|upload|files|\.zip|\.xlsx", h, re.I)]

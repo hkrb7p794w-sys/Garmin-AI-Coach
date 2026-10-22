@@ -73,6 +73,10 @@ def test_download_link():
     assert bls.find_download_link(html, "https://blsdb.de/download") == \
         "https://blsdb.de/assets/uploads/BLS_4_0_2025_DE.zip?token=ABCD-1234"
     assert bls.find_download_link('<a href="https://evil.example/BLS_4_0.zip">x</a>') is None
+    # so liefert blsdb.de die Links aus (HTML-Entities, live 22.10.2026)
+    enc = '<a href="&#47;assets&#47;uploads&#47;BLS&#95;4&#95;0&#95;2025&#95;DE&#46;zip?token=ASXD-1">D</a>'
+    assert bls.find_download_link(enc, "https://blsdb.de/download") == \
+        "https://blsdb.de/assets/uploads/BLS_4_0_2025_DE.zip?token=ASXD-1"
 
 
 # ---------------------------------------------------------------- Abgleich
