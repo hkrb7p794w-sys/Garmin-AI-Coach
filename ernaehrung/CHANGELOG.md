@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+- Sensoren bekommen feste IDs `sensor.ernaehrung_*` (MQTT `default_entity_id`) und kürzere Namen
+  („Zucker“, „Gesättigte Fettsäuren“, „Heute“, „Woche“).
+
 ## 0.1.4
 - Gemini: bei Kontingent-Fehler (429) sofort auf ein Ausweichmodell, statt zu warten; bei Überlastung
   (503) nur ein kurzer zweiter Versuch. Nicht mehr verfügbare Modelle werden gemerkt.

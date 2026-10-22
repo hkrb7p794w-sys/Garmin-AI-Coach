@@ -35,6 +35,7 @@ SLUGS = {
     "magnesium_mg": "magnesium", "calcium_mg": "calcium", "iron_mg": "eisen", "zinc_mg": "zink",
     "vitd_ug": "vitamin_d", "b12_ug": "vitamin_b12", "vitc_mg": "vitamin_c",
 }
+SENSOR_NAMES = {"sugar_g": "Zucker", "satfat_g": "Gesättigte Fettsäuren"}
 ICONS = {"kcal": "mdi:fire", "protein_g": "mdi:food-steak", "carbs_g": "mdi:bread-slice",
          "fat_g": "mdi:water-opacity", "fiber_g": "mdi:leaf", "water_ml": "mdi:cup-water",
          "sugar_g": "mdi:cube-outline"}
@@ -68,15 +69,17 @@ def discovery():
     for key, slug in SLUGS.items():
         name, unit, _grp = N.NUTRIENTS[key]
         cfg = {
-            "name": name, "unique_id": f"{PREFIX}_{slug}", "object_id": f"{PREFIX}_{slug}",
+            "name": SENSOR_NAMES.get(key, name), "unique_id": f"{PREFIX}_{slug}",
+            # HA >= 2025.10: default_entity_id (ersetzt object_id) -> sensor.ernaehrung_<slug>
+            "default_entity_id": f"sensor.{PREFIX}_{slug}",
             "state_topic": f"{PREFIX}/{slug}/state", "json_attributes_topic": f"{PREFIX}/{slug}/attr",
             "unit_of_measurement": unit, "state_class": "measurement",
             "icon": ICONS.get(key, "mdi:nutrition"), "device": DEVICE,
         }
         c.publish(f"homeassistant/sensor/{PREFIX}_{slug}/config", json.dumps(cfg), retain=True)
-    for slug, name, icon, unit in (("tag", "Ernährung heute", "mdi:food-apple", "%"),
-                                   ("woche", "Ernährung Woche", "mdi:calendar-week", None)):
-        cfg = {"name": name, "unique_id": f"{PREFIX}_{slug}", "object_id": f"{PREFIX}_{slug}",
+    for slug, name, icon, unit in (("tag", "Heute", "mdi:food-apple", "%"),
+                                   ("woche", "Woche", "mdi:calendar-week", None)):
+        cfg = {"name": name, "unique_id": f"{PREFIX}_{slug}", "default_entity_id": f"sensor.{PREFIX}_{slug}",
                "state_topic": f"{PREFIX}/{slug}/state", "json_attributes_topic": f"{PREFIX}/{slug}/attr",
                "icon": icon, "device": DEVICE}
         if unit:
