@@ -436,6 +436,18 @@ def _has_unknown_exercise(entry: dict) -> bool:
     return False
 
 
+def _deleted_ids(cache: dict, activities: list) -> list:
+    """Schlüssel (activityId) gecachter Einheiten, die in Garmin gelöscht wurden: Datum
+    innerhalb des Zeitraums der Aktivitätenliste (älteste bis heute), Id aber nicht darin."""
+    acts = [a for a in (activities or []) if a.get("activityId") is not None and a.get("startTimeLocal")]
+    if len(acts) < 5:
+        return []  # Liste unvollständig/fehlerhaft - lieber nichts löschen
+    ids = {str(a["activityId"]) for a in acts}
+    oldest = min(str(a["startTimeLocal"])[:10] for a in acts)
+    return [k for k, v in cache.items()
+            if k.isdigit() and k not in ids and (v.get("date") or "") > oldest]
+
+
 def _update_strength_exercises(client, activities: list) -> list:
     """Lädt Kraft-Aktivitäten (Übungsdaten über Garmins exerciseSets-API, siehe
     fit_exercises.py - die normale Aktivitätenliste liefert nur Aggregatwerte).
@@ -454,6 +466,12 @@ def _update_strength_exercises(client, activities: list) -> list:
     Übungsnamen (exercise_names.canonical_sessions); ältere bleiben im Cache
     (dort mit Garmin-Rohnamen, damit Regeländerungen rückwirkend gelten)."""
     cache = _load_strength_cache()
+    # In Garmin gelöschte Einheiten entfernen (seit 0.28.5): Liegt eine gecachte Einheit im
+    # Zeitraum der aktuellen Aktivitätenliste, fehlt dort aber, wurde sie gelöscht.
+    gone = _deleted_ids(cache, activities)
+    for k in gone:
+        print(f"[strength] Einheit {k} ({cache[k].get('date')}) in Garmin gelöscht - entfernt")
+        del cache[k]
     broken_keys = [k for k, v in cache.items() if _is_broken_strength_entry(v)]
     for k in broken_keys:
         del cache[k]
@@ -463,7 +481,7 @@ def _update_strength_exercises(client, activities: list) -> list:
     today = now.date()
     window_start = now - datetime.timedelta(days=7)
     fetch_start = now - datetime.timedelta(days=STRENGTH_FETCH_DAYS)
-    changed = bool(broken_keys)
+    changed = bool(broken_keys) or bool(gone)
     budget = STRENGTH_MAX_FETCH
 
     for act in activities or []:

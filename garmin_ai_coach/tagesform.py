@@ -322,6 +322,15 @@ def update_sessions(client, activities: list) -> dict:
     # holt nur die letzten 50, das reicht für 4 Vergleichseinheiten je Art
     # erst nach Wochen. Ein einziger zusätzlicher Garmin-Aufruf.
     activities = list(activities or [])
+    # In Garmin gelöschte Einheiten entfernen (0.28.5): im Zeitraum der Liste, aber nicht mehr darin
+    acts = [a for a in activities if a.get("activityId") is not None and a.get("startTimeLocal")]
+    if len(acts) >= 5:
+        ids = {str(a["activityId"]) for a in acts}
+        oldest = min(str(a["startTimeLocal"])[:10] for a in acts)
+        for k in [k for k, v in cache.items() if k.isdigit() and k not in ids and (v.get("date") or "") > oldest]:
+            print(f"[tagesform] Einheit {k} ({cache[k].get('date')}) in Garmin gelöscht - entfernt")
+            del cache[k]
+            changed = True
     if not meta.get("backfilled"):
         try:
             older = client.get_activities(BACKFILL_START, BACKFILL_LIMIT) or []

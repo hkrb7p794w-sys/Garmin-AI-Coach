@@ -180,6 +180,14 @@ def run(client, activities: list, progression: list = None, today: datetime.date
     plan = garmin_gym._load(garmin_gym.PLAN_FILE, {})
     if plan.get("prefill") is False:
         return {"status": "aus", "activities": []}
+    # In Garmin gelöschte Aktivitäten vergessen (sonst Erinnerung für eine gelöschte Einheit)
+    acts = [a for a in (activities or []) if a.get("activityId") is not None and a.get("startTimeLocal")]
+    if len(acts) >= 5:
+        ids = {str(a["activityId"]) for a in acts}
+        oldest = min(str(a["startTimeLocal"])[:10] for a in acts)
+        for k in [k for k, v in state.items() if k not in ids and (v.get("date") or "") > oldest]:
+            print(f"[gym_prefill] Aktivität {k} in Garmin gelöscht - entfernt")
+            state.pop(k)
     done = []
     for act in activities or []:
         tk = ((act.get("activityType") or {}).get("typeKey", "") or "").lower()
