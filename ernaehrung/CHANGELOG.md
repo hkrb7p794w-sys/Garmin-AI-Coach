@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+- Gemini: bei Kontingent-Fehler (429) sofort auf ein Ausweichmodell, statt zu warten; bei Überlastung
+  (503) nur ein kurzer zweiter Versuch. Nicht mehr verfügbare Modelle werden gemerkt.
+  Anlass: Live-Test – gemini-3.6-flash lieferte 429, die erste Analyse dauerte dadurch über 30 s.
+
 ## 0.1.3
 - Bessere Zuordnung zur Datenbank: ein zweiter KI-Schritt wählt unter den BLS-Kandidaten den passenden
   Eintrag; Treffer mit nicht genannten Zusätzen („mit Alkohol“, „mit Zucker“) werden abgewertet.

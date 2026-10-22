@@ -270,3 +270,32 @@ def test_analyze_endpoint_errors(client, monkeypatch):
     monkeypatch.setattr(gemini, "generate_json", boom)
     r = client.post("/api/v1/analyze", json={"text": "Apfel"})
     assert r.status_code == 502 and "KI-Analyse" in r.json["error"]
+
+
+def test_gemini_quota_falls_back_fast(monkeypatch):
+    calls = []
+
+    class R:
+        def __init__(self, code, body=None, text=""):
+            self.status_code, self._b, self.text = code, body, text
+
+        def json(self):
+            return self._b
+
+    def post(url, **kw):
+        model = url.split("/models/")[1].split(":")[0]
+        calls.append(model)
+        if model == gemini.MODEL:
+            return R(429, text="quota")
+        if model == "old-lite":
+            return R(404, text="no longer available, use models/new-lite instead")
+        return R(200, {"candidates": [{"content": {"parts": [{"text": '{"ok": 1}'}]}}]})
+    monkeypatch.setattr(gemini.requests, "post", post)
+    monkeypatch.setattr(gemini, "_list_flash_models", lambda: ["old-lite"])
+    monkeypatch.setattr(gemini.time, "sleep", lambda s: None)
+    gemini._state.update(fallback=None, primary_down_until=0.0, dead=set())
+    assert gemini.generate_json("x") == {"ok": 1}
+    assert calls == [gemini.MODEL, "old-lite", "new-lite"]
+    calls.clear()
+    assert gemini.generate_json("y") == {"ok": 1}
+    assert calls == ["new-lite"]  # Abkühlphase: direkt das funktionierende Ausweichmodell

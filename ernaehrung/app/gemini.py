@@ -23,8 +23,8 @@ FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "").strip()
 TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT", 90))
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 RETRYABLE = {429, 500, 502, 503, 504}
-RETRY_DELAYS = [0, 4, 10]
-_state = {"fallback": None, "primary_down_until": 0.0, "schema_ok": True, "last_model": None}
+RETRY_DELAYS = [0, 3]
+_state = {"fallback": None, "primary_down_until": 0.0, "schema_ok": True, "last_model": None, "dead": set()}
 
 
 class GeminiError(RuntimeError):
@@ -66,7 +66,7 @@ def _pick_fallback(current):
         return FALLBACK_MODEL
     if _state["fallback"] and _state["fallback"] != current:
         return _state["fallback"]
-    cands = [n for n in _list_flash_models() if n != current]
+    cands = [n for n in _list_flash_models() if n != current and n not in _state["dead"]]
     cands.sort(key=lambda n: (0 if "lite" in n else 1, "preview" in n, n))
     _state["fallback"] = cands[0] if cands else None
     return _state["fallback"]
@@ -120,9 +120,14 @@ def _try(model, parts, schema, max_tokens):
             last.retryable = True
             continue
         if r.status_code == 404:
+            _state["dead"].add(model)
+            if _state["fallback"] == model:
+                _state["fallback"] = None
             succ = _successor_from_404(r.text, model)
             if succ:
                 print(f"[gemini] Modell {model} nicht verfügbar, nehme {succ}")
+                if model != MODEL:
+                    _state["fallback"] = succ
                 return _try(succ, parts, schema, max_tokens)
         if r.status_code == 400 and schema is not None and _state["schema_ok"] and \
                 ("responseJsonSchema" in r.text or "response_json_schema" in r.text):
@@ -134,12 +139,14 @@ def _try(model, parts, schema, max_tokens):
             last = GeminiError(f"Gemini HTTP {r.status_code} ({model})")
             last.retryable = True
             print(f"[gemini] Versuch {attempt + 1} mit {model}: HTTP {r.status_code}")
+            if r.status_code == 429 or attempt >= 1:
+                break  # Kontingent erschöpft bzw. überlastet: sofort ausweichen statt warten
             continue
         if r.status_code >= 400:
             raise GeminiError(f"Gemini HTTP {r.status_code} ({model}): {r.text[:300]}")
         _state["last_model"] = model
         return _extract_text(r.json(), model)
-    raise last
+    raise last or GeminiError(f"Gemini ({model}) lieferte keine verwertbare Antwort")
 
 
 def generate_json(prompt: str, image_b64: str = None, mime: str = "image/jpeg",
