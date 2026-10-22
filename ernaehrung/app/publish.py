@@ -95,6 +95,7 @@ def _day_attrs(d: dict) -> dict:
         "totals": d["totals"], "targets": d["targets"], "progress": d["progress"],
         "target_kind": d.get("target_kind"), "training": d.get("training"), "energy": d.get("energy"),
         "incomplete_micros": d.get("incomplete"),
+        "protein_meals": d.get("protein_meals"), "protein_meal_min_g": d.get("protein_meal_min_g"),
         "meals": [{"category": c, "title": m.get("title"), "time": m.get("time"),
                    "kcal": (m.get("totals") or {}).get("kcal"),
                    "items": [f"{it['name']} {round(it['amount_g'])} g" for it in m["items"]]}

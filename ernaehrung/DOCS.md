@@ -17,7 +17,8 @@ Makros, Mikronährstoffen und Tageszielen, die sich nach deinem Training richten
 
 ## Erfassen
 
-- **Foto**: Mahlzeit fotografieren, optional einen Hinweis ergänzen („mit Olivenöl“), prüfen, speichern.
+- **Foto**: Mahlzeit fotografieren oder ein Bild aus der Mediathek wählen (iOS fragt nach). Bei älteren Fotos
+  übernimmt die App Datum und Uhrzeit der Aufnahme. Optional einen Hinweis ergänzen („mit Olivenöl“), prüfen, speichern.
 - **Text**: z. B. „2 Rühreier mit Vollkornbrot und ein Kaffee mit Milch“. Diktieren per iPhone-Tastatur geht auch.
 - **Barcode**: Barcode fotografieren (oder live scannen, wenn HA über HTTPS läuft) oder Nummer eintippen.
   Produktdaten von Open Food Facts; einmal gescannte Produkte sind danach offline verfügbar.
@@ -34,15 +35,16 @@ Quellen-Kennzeichnung: **BLS** (Datenbank), **Produkt** (Open Food Facts), **Eig
 
 | Wert | Grundlage |
 |---|---|
-| Kalorien | Grundumsatz (Mifflin-St Jeor) × Alltagsaktivität (PAL 1,4) + Netto-kcal der heutigen Garmin-Aktivitäten |
+| Kalorien | Grundumsatz (Mifflin-St Jeor) × Alltagsaktivität (PAL 1,4) + Netto-kcal der heutigen Garmin-Aktivitäten. Der Garmin-Gesamtumsatz wird nur zum Vergleich angezeigt: Uhren-Schätzungen des Energieverbrauchs streuen stark (O'Driscoll 2020). Beim Abnehmen nie unter 30 kcal je kg fettfreie Masse plus Training (Energieverfügbarkeit, IOC-Konsensus REDs 2023) |
 | Kohlenhydrate | g/kg nach Tagestyp: Ruhetag 3, leicht 4, moderat 6, hart 8, sehr hart 10 (ACSM/AND/DC 2016: 3–5 / 5–7 / 6–10 / 8–12) |
-| Protein | 1,8 g/kg (ACSM 2016: 1,2–2,0; ISSN: 1,4–2,0) |
+| Protein | nach Ziel: halten 1,8 · aufbauen 2,0 · abnehmen 2,2 g/kg (Ausdauer: Bedarf ~1,8–1,9 g/kg, Williamson 2023; Muskelaufbau: Plateau ~1,6, Spanne bis 2,2, Morton 2018; Defizit: 1,9–3,2, ISSN 2026). Verteilt auf ≥ 3–4 Mahlzeiten mit je ≥ 0,25 g/kg (ISSN 2017) – die App zählt sie mit |
 | Fett | Rest der Energie, 20–35 % |
 | Zucker, gesättigte Fette | Obergrenze je 10 % der Energie (Orientierung; Zucker = Gesamtzucker inkl. Obst/Milch) |
 | Mikronährstoffe, Ballaststoffe | DGE-Referenzwerte 25 bis < 51 Jahre |
 | Flüssigkeit | 35 ml/kg (DGE-Gesamtwasser inkl. Wasser aus Lebensmitteln) + ca. 0,6 l je Stunde Ausdauertraining |
 
-Tagestyp aus Garmin: ≥ 4 h Ausdauer = sehr hart, ≥ 90 min Ausdauer oder Trainingslast ≥ 150 = hart,
+Tagestyp: Solange heute noch kein Training aufgezeichnet ist, gilt der Tagestyp aus dem Wochenplan des Coach
+(Kohlenhydrate gehören vor die Einheit, „fuel for the work required“, Impey 2018). Danach aus Garmin: ≥ 4 h Ausdauer = sehr hart, ≥ 90 min Ausdauer oder Trainingslast ≥ 150 = hart,
 ≥ 45 min Ausdauer / ≥ 75 min Training / Last ≥ 80 = moderat, ≥ 20 min = leicht, sonst Ruhetag.
 Manuell änderbar („Tagestyp ändern“). Ziel „Abnehmen“ (−15 %) wirkt nur an Ruhe-/leichten Tagen voll,
 an moderaten halb und an harten gar nicht.
@@ -88,6 +90,13 @@ REST-API im internen Netz: `GET /api/v1/day?date=YYYY-MM-DD`, `GET /api/v1/week`
 - Thomas DT, Erdman KA, Burke LM (2016): Nutrition and Athletic Performance. Med Sci Sports Exerc 48(3):543–568.
 - Jäger R et al. (2017): ISSN Position Stand: Protein and Exercise. J Int Soc Sports Nutr 14:20.
 - Fridolfsson J et al. (2025): Performance Evaluation of 3 Large Language Models for Nutritional Content Estimation from Food Images. Curr Dev Nutr 9(10):107556. doi:10.1016/j.cdnut.2025.107556
+- Morton RW et al. (2018): Protein supplementation and resistance training. Br J Sports Med 52(6):376–384. doi:10.1136/bjsports-2017-097608
+- Williamson E et al. (2023): Protein requirements are increased in endurance-trained athletes. Med Sci Sports Exerc 55(10):1866–1875. doi:10.1249/MSS.0000000000003219
+- Aragon AA et al. (2026): ISSN position stand: diets for body weight reduction. J Int Soc Sports Nutr 23(1). doi:10.1080/15502783.2026.2740266
+- Kerksick CM et al. (2017): ISSN position stand: nutrient timing. J Int Soc Sports Nutr 14:33. doi:10.1186/s12970-017-0189-4
+- Mountjoy M et al. (2023): IOC consensus statement on REDs. Br J Sports Med 57(17):1073–1097. doi:10.1136/bjsports-2023-106994
+- Impey SG et al. (2018): Fuel for the work required. Sports Med 48(5):1031–1048. doi:10.1007/s40279-018-0867-7
+- O'Driscoll R et al. (2020): How well do activity monitors estimate energy expenditure? Br J Sports Med 54(6):332–340. doi:10.1136/bjsports-2018-099643
 - Mifflin MD, St Jeor ST et al. (1990): A new predictive equation for resting energy expenditure. Am J Clin Nutr 51(2):241–247.
 - Deutsche Gesellschaft für Ernährung: Referenzwerte für die Nährstoffzufuhr, https://www.dge.de/wissenschaft/referenzwerte/
 - Barcode-Erkennung im Browser: ZXing (Apache-2.0).

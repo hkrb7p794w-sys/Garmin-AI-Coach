@@ -299,3 +299,26 @@ def test_gemini_quota_falls_back_fast(monkeypatch):
     calls.clear()
     assert gemini.generate_json("y") == {"ok": 1}
     assert calls == ["new-lite"]  # Abkühlphase: direkt das funktionierende Ausweichmodell
+
+
+def test_planned_day_type_before_training():
+    s = {"profile": {"weight_kg": 80, "height_cm": 183, "age": 38, "sex": "male"}}
+    plan = [{"type": "bike", "text": "Lange Radeinheit + Koppellauf (Sa oder So)"}]
+    r = targets.compute(s, {"activities": [], "plan_items": plan})
+    assert r["day_type"] == "hart" and r["day_source"] == "geplant"
+    # sobald trainiert wurde, zählt das Aufgezeichnete
+    r = targets.compute(s, {"activities": [{"type": "strength_training", "duration_min": 50, "kcal": 300}],
+                            "plan_items": plan})
+    assert r["day_type"] == "leicht" and r["day_source"] == "garmin"
+
+
+def test_protein_by_goal_and_energy_availability_floor():
+    base = {"profile": {"weight_kg": 80, "height_cm": 183, "age": 38, "sex": "male"}}
+    assert targets.compute(base, {"activities": []})["protein_g_per_kg"] == 1.8
+    cut = dict(base, goal="abnehmen", goal_adjust_pct=-40)
+    r = targets.compute(cut, {"activities": []})
+    assert r["protein_g_per_kg"] == 2.2
+    assert r["energy"]["ea_floor"] is True
+    assert r["energy"]["energy_availability"] >= 29.9
+    own = dict(base, protein_g_per_kg=1.6)
+    assert targets.compute(own, {"activities": []})["targets"]["protein_g"] == 128

@@ -44,6 +44,14 @@ function sumItems(items) {
   for (const it of items) { const s = scale(it.per100, it.amount_g || 0); for (const k in NUT) t[k] += s[k] || 0; }
   return t;
 }
+function guessCategoryAt(hhmm) {
+  const [hh, mm] = String(hhmm || "12:00").split(":").map(Number);
+  const h = hh + (mm || 0) / 60;
+  if (h >= 4 && h < 10.5) return "fruehstueck";
+  if (h >= 10.5 && h < 14.5) return "mittagessen";
+  if (h >= 17.5 && h < 21.5) return "abendessen";
+  return "snack";
+}
 function guessCategory() {
   const d = new Date(), h = d.getHours() + d.getMinutes() / 60;
   if (h >= 4 && h < 10.5) return "fruehstueck";
@@ -146,6 +154,7 @@ async function renderDay(v) {
   const tr = d.training || {};
   let trainingText;
   if (d.day_source === "manuell") trainingText = "Tagestyp manuell gesetzt.";
+  else if (d.day_source === "geplant") trainingText = `Noch kein Training aufgezeichnet – Ziel nach Wochenplan: ${d.plan_text || ""}`;
   else if (d.activities && d.activities.length) trainingText = `Garmin: ${tr.training_min} min Training, davon ${tr.endurance_min} min Ausdauer, Trainingslast ${fmt(tr.training_load)}.`;
   else if (d.date === today() && d.day_source === "garmin") trainingText = "Garmin: heute noch kein Training.";
   else if (d.estimated_targets) trainingText = "Für diesen Tag liegen keine Trainingsdaten vor.";
@@ -188,6 +197,7 @@ async function renderDay(v) {
       <span class="small num ${rest < 0 ? "" : "muted"}" style="flex:none">${rest >= 0 ? `noch ${fmt(rest)} kcal` : `${fmt(-rest)} kcal über Ziel`}</span>
     </div>
     <div class="macros">${macroRows}</div>
+    <p class="small muted" style="margin:8px 0 0">Proteinreiche Mahlzeiten (ab ${fmt(d.protein_meal_min_g)} g): ${d.protein_meals} von 3–4 – über den Tag verteilt nutzt der Muskel Protein am besten.</p>
     <h2>Mikronährstoffe</h2>
     <div class="micros">${micros}</div>
     ${incomplete}
@@ -196,6 +206,8 @@ async function renderDay(v) {
       <p class="small">Grundumsatz ${fmt(d.energy?.bmr)} kcal (Mifflin-St Jeor, ${fmt(d.profile?.weight_kg)} kg) × ${fmt(d.energy?.pal, 2)} Alltag
       = ${fmt(d.energy?.base)} kcal, dazu ${fmt(d.energy?.exercise)} kcal Training (Garmin, netto).
       ${d.energy?.goal_pct_applied ? `Ziel „${esc(d.energy.goal)}“: ${fmt(d.energy.goal_pct_applied)} %. ` : ""}
+      ${d.energy?.ea_floor ? `Untergrenze Energieverfügbarkeit (30 kcal je kg fettfreie Masse) greift – weniger wäre auf Dauer riskant. ` : ""}
+      ${d.energy?.garmin_total_kcal ? `Zum Vergleich: Garmin schätzt bisher ${fmt(d.energy.garmin_total_kcal)} kcal Gesamtumsatz (bis jetzt, Uhren-Schätzungen schwanken stark). ` : ""}
       Kohlenhydrate ${fmt(g.carbs_g)} g ≈ ${fmt(g.carbs_g / d.profile.weight_kg, 1)} g/kg für „${esc(d.day_label)}“, Protein ${fmt(g.protein_g / d.profile.weight_kg, 1)} g/kg.
       Mikronährstoffe: DGE-Referenzwerte. Die Werte sind Orientierung, keine medizinische Beratung.</p>
       ${d.profile_source && Object.values(d.profile_source).includes("standard") ? `<p class="small err">Körperdaten fehlen teilweise – bitte unter Einstellungen eintragen.</p>` : ""}
@@ -388,9 +400,14 @@ async function runAnalyze(payload, method, photo) {
   try {
     const r = await api("analyze", { method: "POST", body: payload });
     S.editMealId = null;
+    const taken = method === "foto" ? S.photoTaken : null;
     S.draft = newDraft(method, r.items, { title: r.title || "", hint: r.hint || "", photo: photo || null,
       category: r.category || guessCategory(),
       ai: { model: r.model, text: payload.text || null } });
+    if (taken) {
+      S.draft.date = taken.date; S.draft.time = taken.time;
+      if (!r.category) S.draft.category = guessCategoryAt(taken.time);
+    }
     if (!r.items.length) S.draft.hint = "Keine Lebensmittel erkannt – füge sie manuell hinzu.";
     openEditor();
   } catch (e) {
@@ -415,11 +432,50 @@ function downscale(file, max = 1280, quality = 0.82) {
     img.src = URL.createObjectURL(file);
   });
 }
+/* Aufnahmezeit aus den EXIF-Daten (DateTimeOriginal) lesen - bei Fotos aus der
+   Mediathek wird die Mahlzeit damit automatisch dem richtigen Tag/der Uhrzeit zugeordnet. */
+async function photoTakenAt(file) {
+  try {
+    const buf = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (buf.getUint16(0) !== 0xFFD8) return null;
+    let off = 2;
+    while (off + 4 < buf.byteLength) {
+      const marker = buf.getUint16(off), len = buf.getUint16(off + 2);
+      if (marker === 0xFFE1 && buf.getUint32(off + 4) === 0x45786966) { // "Exif"
+        const tiff = off + 10, le = buf.getUint16(tiff) === 0x4949;
+        const u16 = o => buf.getUint16(o, le), u32 = o => buf.getUint32(o, le);
+        const findTag = (ifd, tag) => {
+          const n = u16(ifd);
+          for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === tag) return e; }
+          return null;
+        };
+        const exifPtr = findTag(tiff + u32(tiff + 4), 0x8769);
+        if (!exifPtr) return null;
+        const dto = findTag(tiff + u32(exifPtr + 8), 0x9003);
+        if (!dto) return null;
+        const at = tiff + u32(dto + 8);
+        let str = "";
+        for (let i = 0; i < 19; i++) str += String.fromCharCode(buf.getUint8(at + i));
+        const m = str.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2})/);
+        return m ? { date: `${m[1]}-${m[2]}-${m[3]}`, time: `${m[4]}:${m[5]}` } : null;
+      }
+      if ((marker & 0xFF00) !== 0xFF00) return null;
+      off += 2 + len;
+    }
+  } catch (e) { /* kein EXIF */ }
+  return null;
+}
+
 $("#photoInput").onchange = async e => {
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
+  const taken = await photoTakenAt(file);
   const { dataUrl } = await downscale(file);
+  // nur übernehmen, wenn das Foto nicht gerade eben aufgenommen wurde
+  const ageMin = taken ? (Date.now() - new Date(`${taken.date}T${taken.time}:00`).getTime()) / 60000 : 0;
+  S.photoTaken = taken && ageMin > 20 ? taken : null;
   openSheet(head("Foto") + `<img class="photo-preview" src="${dataUrl}" alt="">
+    ${S.photoTaken ? `<div class="hint">Aufgenommen ${esc(dateLabel(S.photoTaken.date))}, ${esc(S.photoTaken.time)} Uhr – die Mahlzeit wird dort eingetragen.</div>` : ""}
     <label class="f" for="ptxt">Ergänzung (optional)</label>
     <input type="text" id="ptxt" placeholder="z. B. mit Olivenöl, halbe Portion gegessen">
     <button class="btn wide" id="go">Analysieren</button><div id="out"></div>`);
@@ -670,12 +726,14 @@ async function renderSettings(v) {
     <h2>Ziel</h2>
     <div class="chips" id="goal">${[["halten", "Gewicht halten"], ["abnehmen", "Abnehmen (−15 %)"], ["aufbauen", "Aufbauen (+10 %)"]].map(([k, l]) =>
       `<button class="chip" data-g="${k}" aria-pressed="${(s.goal || "halten") === k}">${l}</button>`).join("")}</div>
-    <p class="small muted">Defizit bzw. Überschuss gilt voll an Ruhe- und leichten Tagen, halb an moderaten und nicht an harten Tagen.</p>
+    <p class="small muted">Defizit bzw. Überschuss gilt voll an Ruhe- und leichten Tagen, halb an moderaten und nicht an harten Tagen.
+      Protein je Ziel: halten 1,8, aufbauen 2,0, abnehmen 2,2 g/kg. Beim Abnehmen sinkt das Ziel nie unter 30 kcal je kg fettfreie Masse plus Trainingsverbrauch.</p>
     <div class="grid2">
       <div><label class="f" for="pal">Alltagsaktivität (PAL ohne Sport)</label><select id="pal">
         ${[[1.3, "1,3 – viel Sitzen"], [1.4, "1,4 – Büro, etwas Bewegung"], [1.5, "1,5 – viel auf den Beinen"], [1.6, "1,6 – körperliche Arbeit"]].map(([x, l]) =>
           `<option value="${x}" ${(s.pal_base || 1.4) == x ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div><label class="f" for="ppk">Protein (g je kg)</label><input type="number" step="0.1" id="ppk" value="${s.protein_g_per_kg ?? 1.8}"></div>
+      <div><label class="f" for="ppk">Protein (g je kg, leer = nach Ziel)</label><input type="number" step="0.1" id="ppk" value="${s.protein_g_per_kg ?? ""}" placeholder="${fmt(day.protein_g_per_kg, 1)}"></div>
+      <div><label class="f" for="pbf">Körperfett (%, optional)</label><input type="number" step="0.5" id="pbf" value="${s.body_fat_pct ?? ""}" placeholder="Schätzung ${fmt(day.energy?.body_fat_pct)}"></div>
     </div>
     <h2>Feste Ziele (optional)</h2>
     <p class="small muted">Überschreibt das berechnete Ziel. Leer = automatisch.</p>
@@ -702,7 +760,7 @@ async function renderSettings(v) {
     await api("settings", { method: "PUT", body: {
       profile: { weight_kg: num("#pw"), height_cm: num("#ph"), age: num("#pa"), sex: $("#ps").value || null },
       goal, goal_adjust_pct: { halten: 0, abnehmen: -15, aufbauen: 10 }[goal], pal_base: parseFloat($("#pal").value),
-      protein_g_per_kg: num("#ppk") || 1.8, target_overrides: overrides,
+      protein_g_per_kg: num("#ppk"), body_fat_pct: num("#pbf"), target_overrides: overrides,
       photo_ai: $("#pai").checked, keep_photos: $("#pkeep").checked } });
     S.day = null; toast("Gespeichert"); renderSettings(v);
   };

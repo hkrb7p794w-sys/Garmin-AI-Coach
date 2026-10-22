@@ -56,5 +56,8 @@ def training_today(max_age_s: int = 120):
     if plan and plan.get("state") not in (None, "unknown", "unavailable"):
         data = data or {}
         data["plan_text"] = plan.get("state")
+        pattrs = plan.get("attributes") or {}
+        if pattrs.get("date") == datetime.date.today().isoformat():
+            data["plan_items"] = pattrs.get("today_fixed") or []
     _cache.update(at=now, data=data)
     return data

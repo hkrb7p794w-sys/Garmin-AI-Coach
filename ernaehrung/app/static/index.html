@@ -33,8 +33,9 @@
   <button data-cap="wasser" class="water"><span class="glyph">◖</span>+250 ml</button>
 </nav>
 
-<input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
-<input type="file" id="barcodeInput" accept="image/*" capture="environment" hidden>
+<!-- ohne capture: iOS bietet "Foto aufnehmen", "Fotomediathek" und "Datei auswählen" an -->
+<input type="file" id="photoInput" accept="image/*" hidden>
+<input type="file" id="barcodeInput" accept="image/*" hidden>
 
 <div class="sheet-backdrop" id="backdrop" hidden></div>
 <section class="sheet" id="sheet" hidden aria-modal="true" role="dialog"></section>

@@ -29,6 +29,9 @@ DAY_LABELS = {"ruhetag": "Ruhetag", "leicht": "Leichter Tag", "moderat": "Modera
 # Energie-Defizit/-Überschuss wird an harten Tagen nicht angewendet ("fuel for the work")
 GOAL_SCALE = {"ruhetag": 1.0, "leicht": 1.0, "moderat": 0.5, "hart": 0.0, "sehr_hart": 0.0}
 GOALS = {"halten": 0, "abnehmen": -15, "aufbauen": 10}
+# Protein g/kg je Ziel: Ausdauer IAAO ~1,8-1,9 (Williamson 2023), Muskelaufbau Plateau ~1,6,
+# 95-%-KI bis 2,2 (Morton 2018), Defizit 1,9-3,2 bei trainierten Schlanken (ISSN 2026)
+PROTEIN_BY_GOAL = {"halten": 1.8, "aufbauen": 2.0, "abnehmen": 2.2}
 
 ENDURANCE_TYPES = ("running", "cycling", "swimming", "lap_swimming", "open_water", "trail", "treadmill",
                    "virtual_ride", "indoor_cycling", "rowing", "elliptical", "cross_country", "hiking",
@@ -73,6 +76,30 @@ def classify_day(training: dict):
     return t, {"endurance_min": round(endurance), "training_min": round(total), "training_load": round(load)}
 
 
+DAY_ORDER = ["ruhetag", "leicht", "moderat", "hart", "sehr_hart"]
+
+
+def planned_day_type(plan_items):
+    """Erwarteter Tagestyp aus dem Wochenplan des Coach (today_fixed), solange heute
+    noch keine Aktivität aufgezeichnet ist - Kohlenhydrate gehören VOR die Einheit
+    ("fuel for the work required", Impey et al. 2018)."""
+    best = None
+    for it in plan_items or []:
+        typ = (it.get("type") or "").lower()
+        text = (it.get("text") or "").lower()
+        if any(k in text for k in ("lange", "longrun", "koppel", "renn")):
+            t = "hart"
+        elif typ in ("bike", "run"):
+            t = "moderat"
+        elif typ in ("strength", "swim_or_legs", "swim"):
+            t = "leicht"
+        else:
+            continue
+        if best is None or DAY_ORDER.index(t) > DAY_ORDER.index(best):
+            best = t
+    return best
+
+
 def resolve_profile(settings_profile: dict, training: dict):
     """Einstellungen haben Vorrang, sonst Garmin, sonst Standardwerte."""
     prof, src = {}, {}
@@ -102,6 +129,10 @@ def compute(settings: dict, training: dict = None, date: str = None) -> dict:
     day_type, tstats = classify_day(training)
     override = settings.get("day_type_override") or {}
     day_source = "garmin" if training and training.get("activities") is not None else "keine Daten"
+    planned = planned_day_type((training or {}).get("plan_items"))
+    if planned and not (training or {}).get("activities") and \
+            DAY_ORDER.index(planned) > DAY_ORDER.index(day_type):
+        day_type, day_source = planned, "geplant"
     if override.get("date") == date and override.get("type") in CARBS_G_PER_KG:
         day_type, day_source = override["type"], "manuell"
 
@@ -118,7 +149,19 @@ def compute(settings: dict, training: dict = None, date: str = None) -> dict:
     goal_pct_applied = goal_pct * GOAL_SCALE[day_type]
     energy = (base_kcal + ex_kcal) * (1 + goal_pct_applied / 100)
 
-    protein = float(settings.get("protein_g_per_kg") or 1.8) * w
+    # Energieverfügbarkeit (Zufuhr minus Trainingsverbrauch je kg fettfreie Masse) bei
+    # Defizit nicht unter 30 kcal/kg FFM - gängige Schwelle für niedrige Energie-
+    # verfügbarkeit (IOC-Konsensus REDs 2023 betont individuelle Unterschiede).
+    bf = settings.get("body_fat_pct")
+    bf = float(bf) if bf not in (None, "") else (15.0 if prof["sex"] == "male" else 25.0)
+    ffm = w * (1 - bf / 100)
+    ea_floor = False
+    if goal_pct_applied < 0 and energy < 30 * ffm + ex_kcal:
+        energy, ea_floor = 30 * ffm + ex_kcal, True
+
+    ppk = settings.get("protein_g_per_kg")
+    protein_per_kg = float(ppk) if ppk not in (None, "") else PROTEIN_BY_GOAL.get(goal, 1.8)
+    protein = protein_per_kg * w
     carbs_per_kg = (settings.get("carbs_g_per_kg") or {}).get(day_type, CARBS_G_PER_KG[day_type])
     carbs = float(carbs_per_kg) * w
     rest = energy - 4 * protein - 4 * carbs
@@ -160,6 +203,12 @@ def compute(settings: dict, training: dict = None, date: str = None) -> dict:
         "profile": prof,
         "profile_source": prof_src,
         "energy": {"bmr": round(bmr), "pal": pal, "base": round(base_kcal), "exercise": round(ex_kcal),
-                   "goal": goal, "goal_pct_applied": round(goal_pct_applied, 1)},
+                   "goal": goal, "goal_pct_applied": round(goal_pct_applied, 1),
+                   "ffm_kg": round(ffm, 1), "body_fat_pct": bf, "ea_floor": ea_floor,
+                   "energy_availability": round((energy_total - ex_kcal) / ffm, 1),
+                   "garmin_total_kcal": (training or {}).get("total_kcal"),
+                   "garmin_bmr_kcal": (training or {}).get("bmr_kcal")},
+        "protein_g_per_kg": protein_per_kg,
+        "planned_day_type": planned,
         "carbs_g_per_kg": carbs_per_kg,
     }

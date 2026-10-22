@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+- Foto: auch Bilder aus der Mediathek; Datum/Uhrzeit der Aufnahme (EXIF) werden übernommen.
+- Tagestyp vor dem Training aus dem Wochenplan des Coach (Kohlenhydrate vor harten Einheiten).
+- Protein je Ziel (1,8 / 2,0 / 2,2 g/kg), Zähler für proteinreiche Mahlzeiten (≥ 0,25 g/kg).
+- Abnehmen: Untergrenze Energieverfügbarkeit 30 kcal/kg fettfreie Masse; optionales Körperfett-Feld.
+- Garmin-Gesamtumsatz zum Vergleich in „Wie das Ziel zustande kommt“.
+
 ## 0.1.5
 - Sensoren bekommen feste IDs `sensor.ernaehrung_*` (MQTT `default_entity_id`) und kürzere Namen
   („Zucker“, „Gesättigte Fettsäuren“, „Heute“, „Woche“).

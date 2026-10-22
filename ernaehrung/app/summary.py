@@ -9,6 +9,7 @@ import targets as T
 
 def settings_bundle() -> dict:
     keys = ("profile", "pal_base", "goal", "goal_adjust_pct", "protein_g_per_kg", "carbs_g_per_kg",
+            "body_fat_pct",
             "target_overrides", "day_type_override")
     return {k: db.get_setting(k) for k in keys}
 
@@ -90,6 +91,13 @@ def day(date: str) -> dict:
         "plan_text": tg.get("plan_text"),
         "estimated_targets": bool(tg.get("estimated")),
         "incomplete": missing_items,      # Nährstoff -> Anzahl Positionen ohne Wert
+        # Proteinverteilung: Mahlzeiten mit >= 0,25 g/kg (ISSN 2017: 0,25-0,4 g/kg bzw. 20-40 g
+        # alle 3-4 h; ISSN 2026: mind. 3 proteinreiche Mahlzeiten)
+        "protein_meals": sum(1 for m in meals
+                             if (m["totals"].get("protein_g") or 0) >= 0.25 * tg["profile"]["weight_kg"]),
+        "protein_meal_min_g": round(0.25 * tg["profile"]["weight_kg"]),
+        "protein_g_per_kg": tg.get("protein_g_per_kg"),
+        "planned_day_type": tg.get("planned_day_type"),
         "categories": {c: {"label": db.CATEGORY_LABELS[c], "kcal": round(v["kcal"]), "meals": v["meals"]}
                        for c, v in by_cat.items()},
     }

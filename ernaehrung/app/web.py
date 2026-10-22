@@ -97,6 +97,7 @@ def status():
 
 
 SETTING_KEYS = ("profile", "pal_base", "goal", "goal_adjust_pct", "protein_g_per_kg", "carbs_g_per_kg",
+                "body_fat_pct",
                 "target_overrides", "day_type_override", "keep_photos", "photo_ai")
 
 
