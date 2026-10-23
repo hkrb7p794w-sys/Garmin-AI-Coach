@@ -99,7 +99,7 @@ Gerät **Ernährung** per MQTT:
 - `sensor.ernaehrung_woche` – Anzahl wiederkehrender Lücken, Attribute: 7-Tage-Auswertung, Lebensmittelgruppen,
   Energiebilanz, `recommendations`
 
-Dashboard-Karte `custom:coach-nutrition` (in `coach-cards.js` ab 1.4.0). REST im internen Netz:
+Dashboard-Karte `custom:coach-nutrition` (`dashboard/www/coach/coach-nutrition.js`, eigene Ansicht „Ernährung“ im Coach-Dashboard). REST im internen Netz:
 `/api/v1/day`, `/api/v1/week`, `/api/v1/export.csv`.
 
 ## Quellen

@@ -197,7 +197,20 @@ def _gaps(totals, targets, frac, keys):
     return gaps
 
 
-def pick_foods(gaps, targets, remaining_kcal, pool, mode=None, n=3, limits=None):
+SLOT_TAGS = {"fruehstueck": {"fruehstueck", "snack", "obst", "vor", "nuesse"},
+             "snack": {"snack", "obst", "nuesse", "vor", "abend"}}
+
+
+def meal_slot(now: datetime.datetime) -> str:
+    h = now.hour + now.minute / 60
+    if 4 <= h < 10.5:
+        return "fruehstueck"
+    if 11 <= h < 14.5 or 17.5 <= h < 21:
+        return "hauptmahlzeit"
+    return "snack"
+
+
+def pick_foods(gaps, targets, remaining_kcal, pool, mode=None, n=3, limits=None, slot=None):
     """Gierige Auswahl: jeweils das Lebensmittel, das die größten Lücken je Kalorie füllt."""
     gaps = dict(gaps)
     limits = dict(limits or {})
@@ -230,6 +243,8 @@ def pick_foods(gaps, targets, remaining_kcal, pool, mode=None, n=3, limits=None)
             tags = f["tags"]
             if mode and mode in tags:
                 benefit *= 1.4
+            if slot in SLOT_TAGS and not (tags & SLOT_TAGS[slot]):
+                benefit *= 0.25  # z. B. kein Brokkoli zum Frühstück
             if mode == "vor" and ("ballast" in tags and "kh" not in tags or (f["nutr"].get("fat_g") or 0) > 15):
                 benefit *= 0.4   # vor dem Training leicht verdaulich
             if tags & used_tags & {"protein", "kh", "obst", "nuesse", "gemuese"}:
@@ -345,7 +360,7 @@ def day_recommendations(d: dict, diet="pescetarisch", now: datetime.datetime = N
     gaps = _gaps(t, g, frac, keys)
     if is_today and pool and remaining > 80 and gaps:
         limits = {k: (g.get(k) or 0) - (t.get(k) or 0) for k in ("sugar_g", "satfat_g")}
-        foods = pick_foods(gaps, g, remaining, pool, mode=mode, n=3, limits=limits)
+        foods = pick_foods(gaps, g, remaining, pool, mode=mode, n=3, limits=limits, slot=meal_slot(now))
         if foods:
             main = sorted(gaps, key=lambda k: -gaps[k] / (g.get(k) or 1) * GAP_WEIGHTS.get(k, 0.3))[:3]
             labels = ", ".join(N.NUTRIENTS[k][0] for k in main)
@@ -357,7 +372,7 @@ def day_recommendations(d: dict, diet="pescetarisch", now: datetime.datetime = N
 
     # 4) Flüssigkeit
     wt, wg = t.get("water_ml") or 0, g.get("water_ml") or 0
-    if is_today and wg and wt < wg * frac * 0.75:
+    if is_today and wg and now.hour >= 10 and wt < wg * frac * 0.75:
         missing = round((wg * frac - wt) / 50) * 50
         recs.append({"id": "wasser", "type": "wie", "icon": "cupWater", "title": "Etwas trinken",
                      "text": f"Gut {missing} ml hinter dem Tagesverlauf. Wasser oder ungesüßter Tee "

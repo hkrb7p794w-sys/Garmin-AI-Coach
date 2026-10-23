@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+- Dashboard-Karte `coach-nutrition` als eigenes Modul `coach-nutrition.js` (coach-cards.js bleibt unverändert);
+  neue Ansicht **Ernährung** im Coach-Dashboard, Karte und Navigationspunkt auf „Heute“.
+- Vorschläge passen zur Tageszeit (morgens Frühstückliches statt Brokkoli); Trink-Hinweis erst ab 10 Uhr.
+
 ## 0.3.0
 - **Design wie das Garmin-AI-Coach-Dashboard**: Karten, Ring, Balken, Navigation und Farben übernehmen das aktive
   HA-Theme (hell/dunkel); neue Dashboard-Karte `coach-nutrition` (coach-cards.js 1.4.0).

@@ -29,8 +29,23 @@
           "type": "grid",
           "cards": [
             {
+              "type": "custom:coach-nutrition",
+              "max_recs": 2,
+              "max_week": 0
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
               "type": "custom:coach-nav",
               "items": [
+                {
+                  "icon": "foodAppleOutline",
+                  "label": "Ernährung",
+                  "path": "/garmin-coach/ernaehrung"
+                },
                 {
                   "icon": "heartPulse",
                   "label": "Erholung",
@@ -51,6 +66,25 @@
                   "label": "Sync"
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Ernährung",
+      "path": "ernaehrung",
+      "icon": "mdi:food-apple-outline",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:coach-nutrition",
+              "max_recs": 4,
+              "max_week": 4
             }
           ]
         }
