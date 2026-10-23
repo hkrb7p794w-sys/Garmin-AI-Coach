@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.3
+- Nach einem Neustart erscheinen die Sensoren erst, wenn der BLS geöffnet ist (vorher kurz leere Empfehlungen).
+
 ## 0.3.2
 - Morgens schlägt die App nur Frühstückstaugliches vor (Skyr, Haferflocken, Obst, Nüsse …) – kein Thunfisch um 7 Uhr.
 

@@ -27,7 +27,12 @@ def publish_now():
         _pub_lock.release()
 
 
+_bls_thread = None
+
+
 def publish_loop():
+    if _bls_thread is not None:
+        _bls_thread.join(timeout=60)   # erst veröffentlichen, wenn der BLS geöffnet ist (sonst leere Vorschläge)
     try:
         if publish.discovery():
             print("[mqtt] Discovery gesendet")
@@ -63,7 +68,9 @@ def main():
     db.init()
     _remove_photo_store()
     bls.after_import.append(_after_bls_import)
-    threading.Thread(target=bls.ensure, daemon=True, name="bls").start()
+    global _bls_thread
+    _bls_thread = threading.Thread(target=bls.ensure, daemon=True, name="bls")
+    _bls_thread.start()
     web.on_change.append(publish_now)
     threading.Thread(target=publish_loop, daemon=True, name="mqtt").start()
     from waitress import serve
