@@ -1,4 +1,16 @@
 configuration:
+  ki_anbieter:
+    name: AI provider
+    description: "gemini = Google Gemini; lokal = own OpenAI-compatible server on the home network (e.g. Ollama). Photos are never stored."
+  lokal_url:
+    name: Local AI server URL
+    description: e.g. http://192.168.1.20:11434
+  lokal_modell:
+    name: Local model
+    description: Must support images, e.g. qwen2.5vl:7b
+  lokal_api_key:
+    name: Local API key (optional)
+    description: Only if your server requires one.
   gemini_api_key:
     name: Gemini API key
     description: Used for photo and text recognition. Free at aistudio.google.com.

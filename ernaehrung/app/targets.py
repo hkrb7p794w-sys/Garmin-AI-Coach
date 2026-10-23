@@ -13,7 +13,9 @@ Quellen
   (WHO-Wert gilt für *freie* Zucker - hier wird Gesamtzucker inkl. Obst/Milch gezählt,
   daher nur Hinweis, kein Ziel).
 - Mikronährstoffe, Ballaststoffe, Wasser: DGE-Referenzwerte für 25 bis < 51 Jahre
-  (Stand der Werte siehe dge.de/wissenschaft/referenzwerte).
+  (Stand der Werte siehe dge.de/wissenschaft/referenzwerte). Zink 14 mg = mittlere
+  Phytatzufuhr (DGE-FAQ Zink 2019: vollwertig mit Fisch, Vollkorn und Hülsenfrüchten).
+  Jod 150 µg (DGE/ÖGE 2025, vorher 200 µg). Omega-3 EPA+DHA 250 mg (EFSA 2012, AI).
 - Flüssigkeit: DGE-Gesamtwasserzufuhr ~35 ml/kg (inkl. Wasser aus fester Nahrung)
   + ~0,6 l je Stunde Ausdauertraining (Schweißverlust typ. 0,5-2 l/h, ACSM 2016).
 """
@@ -40,9 +42,11 @@ STRENGTH_TYPES = ("strength", "fitness_equipment", "hiit", "yoga", "pilates", "t
 
 MICRO_DGE = {
     "male": {"sodium_mg": 1500, "potassium_mg": 4000, "magnesium_mg": 350, "calcium_mg": 1000,
-             "iron_mg": 11, "zinc_mg": 14, "vitd_ug": 20, "b12_ug": 4.0, "vitc_mg": 110, "fiber_g": 30},
+             "iron_mg": 11, "zinc_mg": 14, "vitd_ug": 20, "b12_ug": 4.0, "vitc_mg": 110, "fiber_g": 30,
+             "iodine_ug": 150, "omega3_mg": 250},
     "female": {"sodium_mg": 1500, "potassium_mg": 4000, "magnesium_mg": 300, "calcium_mg": 1000,
-               "iron_mg": 16, "zinc_mg": 8, "vitd_ug": 20, "b12_ug": 4.0, "vitc_mg": 95, "fiber_g": 30},
+               "iron_mg": 16, "zinc_mg": 8, "vitd_ug": 20, "b12_ug": 4.0, "vitc_mg": 95, "fiber_g": 30,
+               "iodine_ug": 150, "omega3_mg": 250},
 }
 
 
@@ -108,7 +112,7 @@ def resolve_profile(settings_profile: dict, training: dict):
         if v not in (None, ""):
             prof[k], src[k] = v, "einstellung"
         elif (training or {}).get(k) not in (None, ""):
-            prof[k], src[k] = training[k], "garmin"
+            prof[k], src[k] = training[k], (training or {}).get(f"{k}_source") or "garmin"
         else:
             prof[k], src[k] = default, "standard"
     prof["weight_kg"] = float(prof["weight_kg"])

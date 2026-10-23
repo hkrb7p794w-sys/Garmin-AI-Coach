@@ -41,8 +41,11 @@ _HEADER_RE = re.compile(r"^([A-Z0-9:]+)\s.*\[([^\]/]+)/100\s*g\]\s*$")
 _CHALLENGE_RE = re.compile(r"pow-challenge|captcha|cf-chl|just a moment|type=[\"']?password", re.I)
 
 _lock = threading.Lock()
+after_import = []   # Callbacks (z. B. gespeicherte BLS-Lebensmittel um neue Nährstoffe ergänzen)
 _index = []          # [(code, name, norm_name, per100, is_liquid)]
 status = {"state": "leer", "count": 0, "message": "", "updated": None}
+# Bei neuen Nährstoffen erhöhen: dann wird der BLS beim Start neu importiert.
+SCHEMA = 2
 
 
 # --------------------------------------------------------------------------
@@ -90,7 +93,19 @@ def _terms(query: str):
     return [t for t in out if t not in STATE_WORDS] + [t for t in out if t in STATE_WORDS]
 
 
-def score_name(terms, name_norm: str) -> float:
+def _variants(t: str):
+    """Singular-/Pluralvarianten: "linsen" ~ "linse", "bohnen" ~ "bohne", "eier" ~ "ei"."""
+    out = []
+    if len(t) > 4 and t.endswith("n"):
+        out.append(t[:-1])
+    if len(t) > 5 and t.endswith(("en", "er")):
+        out.append(t[:-2])
+    if len(t) > 3 and t.endswith("s"):
+        out.append(t[:-1])
+    return out
+
+
+def score_name(terms, name_norm: str, code: str = "") -> float:
     if not terms:
         return 0.0
     words = name_norm.split()
@@ -100,7 +115,8 @@ def score_name(terms, name_norm: str) -> float:
     for i, t in enumerate(terms):
         w = 0.4 if t in STATE_WORDS else (1.2 if i == 0 else 1.0)
         weight_sum += w
-        if t in words:
+        variants = _variants(t)
+        if t in words or any(v in words for v in variants):
             h = w
         elif t in name_norm:
             h = w * 0.8
@@ -124,7 +140,10 @@ def score_name(terms, name_norm: str) -> float:
         if len(w) < 4 or w in STOPWORDS or w in STATE_WORDS or any(t in w or w in t for t in terms):
             continue
         extra += 0.12 if w in STRONG_EXTRAS else 0.04
-    return coverage + first_bonus - min(extra, 0.3)
+    # Zusammengesetzte Gerichte (X/Y) und Backwaren (D) nach hinten, wenn nicht ausdrücklich
+    # gesucht - "Quark" soll Speisequark finden, nicht "Quark-Mokka-Creme".
+    dish = 0.18 if code[:1] in ("X", "Y") else (0.1 if code[:1] == "D" else 0.0)
+    return coverage + first_bonus - min(extra, 0.3) - dish
 
 
 def search(query: str, limit: int = 20):
@@ -135,7 +154,7 @@ def search(query: str, limit: int = 20):
     scored = []
     with _lock:
         for code, name, nn, per100, liquid in _index:
-            s = score_name(terms, nn)
+            s = score_name(terms, nn, code)
             if s > 0.3:
                 scored.append((s, code, name, per100, liquid))
     scored.sort(key=lambda x: -x[0])
@@ -149,6 +168,11 @@ def get(code: str):
             if c == code:
                 return {"code": c, "name": name, "per100": per100, "is_liquid": liquid}
     return None
+
+
+def index_rows():
+    with _lock:
+        return list(_index)
 
 
 def count() -> int:
@@ -223,7 +247,13 @@ def rows_to_records(rows):
         for i, (key, unit, target_unit) in cols.items():
             if i < len(row):
                 v = parse_value(row[i])
-                per100[key] = None if v is None else round(convert(v, unit, target_unit), 6)
+                if v is None:
+                    continue
+                v = convert(v, unit, target_unit)
+                if v is None:
+                    continue
+                # mehrere Codes je Schlüssel (EPA + DHA) addieren
+                per100[key] = round((per100[key] or 0) + v, 6)
         records.append({
             "code": code,
             "name": name,
@@ -297,6 +327,7 @@ def store(records, origin: str):
                       [(r["code"], r["name"], r["name_en"], json.dumps(r["per100"]), int(r["is_liquid"]))
                        for r in records])
         c.execute("INSERT OR REPLACE INTO meta VALUES('origin', ?)", (origin,))
+        c.execute("INSERT OR REPLACE INTO meta VALUES('schema', ?)", (str(SCHEMA),))
         c.execute("INSERT OR REPLACE INTO meta VALUES('imported_at', ?)", (time.strftime("%Y-%m-%d %H:%M"),))
     c.close()
 
@@ -313,7 +344,8 @@ def load_index() -> int:
     with _lock:
         _index = idx
     status.update(state="bereit" if idx else "leer", count=len(idx),
-                  updated=meta.get("imported_at"), origin=meta.get("origin"))
+                  updated=meta.get("imported_at"), origin=meta.get("origin"),
+                  schema=int(meta.get("schema") or 1))
     return len(idx)
 
 
@@ -328,6 +360,11 @@ def import_file(path: str) -> int:
         msg += f" (Spalten fehlen: {', '.join(sorted(missing))})"
     status.update(message=msg)
     print(f"[bls] {msg}")
+    for cb in after_import:
+        try:
+            cb()
+        except Exception as e:
+            print(f"[bls] Nacharbeit nach Import fehlgeschlagen: {e}")
     return n
 
 
@@ -410,7 +447,7 @@ def local_candidates():
 
 def ensure(auto_download: bool = True, force: bool = False):
     """Beim Start: vorhandenen Index laden, sonst importieren (lokale Datei vor Download)."""
-    if not force and load_index() > 1000:
+    if not force and load_index() > 1000 and status.get("schema") == SCHEMA:
         return
     status.update(state="import", message="BLS wird importiert …")
     try:

@@ -17,8 +17,10 @@
  *   Abschnitt „Erledigt“ (gestern + zusätzliche Einheiten von heute), „Rest der Woche“ mit allen kommenden
  *   Einheiten mit festem Tag; die Läufe ohne festen Tag stehen getrennt unter „Ohne festen Tag“.
  * 1.3.1 (21.10.2026): Challenge Almere (11.09.2027) statt Ironman 70.3 – Countdown, Phasenfarben Almere-*.
+ * 1.4.0 (23.10.2026): coach-nutrition – Ernährung heute (Add-on „Ernährung“): kcal-Ring, Makros, Empfehlungen,
+ *   Wochenhinweise; Tippen öffnet die Ernährungs-App (Seitenleisten-Panel, sonst Ingress-Seite).
  */
-const CC_VERSION = '1.3.1';
+const CC_VERSION = '1.4.0';
 const ICONS = {};
 
 const E = {
@@ -38,7 +40,10 @@ const E = {
   gym: 'sensor.garmin_ai_coach_garmin_gym_progression',
   strength: 'sensor.garmin_ai_coach_garmin_krafttraining_uebungen',
   kraft: 'sensor.garmin_ai_coach_garmin_kraftwerte',
+  nutDay: 'sensor.ernaehrung_tag',
+  nutWeek: 'sensor.ernaehrung_woche',
 };
+const NUT_SLUG = '1c76c417_ernaehrung';
 const SPORT = {
   swim: { label: 'Schwimmen', icon: 'swim' },
   bike: { label: 'Rad', icon: 'bike' },
@@ -787,6 +792,56 @@ class CoachMetrics extends CoachBase {
   }
 }
 
+
+/* ================= Ernährung (Add-on „Ernährung“) ================= */
+const NUT_COL = { light: { protein_g: '#2a78d6', carbs_g: '#eda100', fat_g: '#eb6834', fiber_g: '#1baf7a', water_ml: '#3987e5' },
+  dark: { protein_g: '#3987e5', carbs_g: '#c98500', fat_g: '#d95926', fiber_g: '#199e70', water_ml: '#6aa3f0' } };
+const NUT_LBL = { protein_g: ['Protein', 'g'], carbs_g: ['Kohlenhydrate', 'g'], fat_g: ['Fett', 'g'], fiber_g: ['Ballaststoffe', 'g'], water_ml: ['Flüssigkeit', 'ml'] };
+const REC_IC = { timing: ['lightningBolt', 'strength'], essen: ['silverwareForkKnife', 'run'], wie: ['dumbbell', 'swim'],
+  hinweis: ['alertCircleOutline', 'serious'], lob: ['thumbUpOutline', 'good'], dge: ['leaf', 'run'], naehrstoff: ['nutrition', 'swim'],
+  training: ['run', 'bike'], info: ['informationOutline', 'neutral'] };
+class CoachNutrition extends CoachBase {
+  _entities() { return [E.nutDay, E.nutWeek]; }
+  _css() { return `.mlist{flex:1;min-width:0;display:grid;gap:8px}
+    .ml{font-size:13px;display:flex;align-items:baseline;gap:6px}.ml b{font-size:15px;font-weight:600}.ml .t{margin-left:auto;font-size:12px;color:var(--secondary-text-color)}
+    .item{display:flex;gap:12px;align-items:flex-start;padding:9px 0}.item + .item{border-top:1px solid var(--divider-color,var(--cc-track))}
+    .item .t{font-weight:600;font-size:14px}.item .c{font-size:13px;color:var(--secondary-text-color)}
+    .open{display:flex;justify-content:space-between;align-items:center;margin-top:12px;color:var(--primary-color);font-weight:500;font-size:13px}`; }
+  _path() { return this._hass?.panels?.[NUT_SLUG] ? `/${NUT_SLUG}` : `/hassio/ingress/${NUT_SLUG}`; }
+  _render() {
+    const st = this._st(E.nutDay);
+    if (!st || ['unknown', 'unavailable'].includes(st.state)) {
+      return `<div class="card"><div class="eyebrow">Ernährung</div><div class="small muted" style="margin-top:6px">Noch keine Daten – Add-on „Ernährung“ starten.</div></div>`;
+    }
+    const a = st.attributes || {}; const t = a.totals || {}; const g = a.targets || {}; const c = this._c();
+    const col = this._dark() ? NUT_COL.dark : NUT_COL.light;
+    const kcal = t.kcal || 0; const goal = g.kcal || 1; const pct = (100 * kcal) / goal; const rest = Math.round(goal - kcal);
+    const rows = ['protein_g', 'carbs_g', 'fat_g', 'water_ml'].map((k) => {
+      const p = g[k] ? (100 * (t[k] || 0)) / g[k] : 0;
+      return `<div><div class="ml"><span class="dot" style="background:${col[k]}"></span><b>${fmtNum(t[k])}</b><span class="muted">${NUT_LBL[k][1]} ${NUT_LBL[k][0]}</span><span class="t">von ${fmtNum(g[k])}</span></div>
+        <div class="bar" style="margin-top:3px"><i style="width:${clamp(p, 0, 100)}%;background:${col[k]}"></i></div></div>`;
+    }).join('');
+    const recs = (a.recommendations || []).slice(0, this._config?.max_recs ?? 2);
+    const weekRecs = (this._attr(E.nutWeek, 'recommendations') || []).filter((r) => !['lob', 'info'].includes(r.type)).slice(0, this._config?.max_week ?? 2);
+    const item = (r) => { const [ic, kind] = REC_IC[r.type] || REC_IC.info; const bg = c[kind] || c.neutral;
+      return `<div class="item"><span class="sport-ic" style="background:${bg}">${icon(ic, 18)}</span><div style="flex:1;min-width:0"><div class="t">${esc(r.title)}</div>
+        <div class="c">${esc((r.foods || []).length ? r.foods.join(' · ') : r.text)}</div></div></div>`; };
+    const dotKind = !a.meals_count ? 'neutral' : rest >= -0.1 * goal ? 'good' : 'warn';
+    return `<div class="card tap" data-nav="${this._path()}">
+      <div class="top" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div class="eyebrow">Ernährung · ${esc(a.day_label || '')}</div>
+        <span class="chip">${icon('dumbbell', 14)}${a.protein_meals ?? 0}/3 Protein-Mahlzeiten</span></div>
+      <div style="margin-top:10px"><span class="pill" style="background:${dotKind === 'neutral' ? c.track : `${c[dotKind]}22`}"><span class="dot" style="background:${c[dotKind] || c.neutral}"></span>${!a.meals_count ? 'Noch nichts erfasst' : rest >= 0 ? `Noch ${fmtNum(rest)} kcal` : `${fmtNum(-rest)} kcal über Ziel`}</span></div>
+      <div class="row" style="gap:14px;margin-top:12px;align-items:center">
+        ${this._ring(pct, pct > 110 ? c.warn : 'var(--primary-color)', 88, 9, `<div><div style="font-size:20px;font-weight:650;line-height:1">${fmtNum(kcal)}</div><div class="small muted" style="line-height:1.2">von ${fmtNum(goal)}<br>kcal</div></div>`)}
+        <div class="mlist">${rows}</div></div>
+      ${recs.length ? `<div class="hr"></div><div class="eyebrow">Heute</div>${recs.map(item).join('')}` : ''}
+      ${weekRecs.length ? `<div class="hr"></div><div class="eyebrow">Diese Woche</div>${weekRecs.map(item).join('')}` : ''}
+      <div class="open"><span>${icon('silverwareForkKnife', 16, 'inl')} Mahlzeit erfassen</span>${icon('chevronRight', 18)}</div>
+    </div>`;
+  }
+}
+
 const defs = [
   ['coach-hero', CoachHero, 'Coach: Heute'],
   ['coach-week', CoachWeek, 'Coach: Woche'],
@@ -798,6 +853,7 @@ const defs = [
   ['coach-metrics', CoachMetrics, 'Coach: Kennzahlen'],
   ['coach-lifts', CoachLifts, 'Coach: Kraftwerte'],
   ['coach-hr', CoachHr, 'Coach: Herzfrequenzzonen'],
+  ['coach-nutrition', CoachNutrition, 'Coach: Ernährung'],
 ];
 window.customCards = window.customCards || [];
 for (const [tag, cls, name] of defs) {

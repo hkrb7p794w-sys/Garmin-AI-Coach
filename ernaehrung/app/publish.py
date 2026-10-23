@@ -34,9 +34,10 @@ SLUGS = {
     "water_ml": "fluessigkeit", "sodium_mg": "natrium", "potassium_mg": "kalium",
     "magnesium_mg": "magnesium", "calcium_mg": "calcium", "iron_mg": "eisen", "zinc_mg": "zink",
     "vitd_ug": "vitamin_d", "b12_ug": "vitamin_b12", "vitc_mg": "vitamin_c",
+    "iodine_ug": "jod", "omega3_mg": "omega_3",
 }
 SENSOR_NAMES = {"sugar_g": "Zucker", "satfat_g": "Gesättigte Fettsäuren"}
-ICONS = {"kcal": "mdi:fire", "protein_g": "mdi:food-steak", "carbs_g": "mdi:bread-slice",
+ICONS = {"kcal": "mdi:fire", "protein_g": "mdi:egg-outline", "carbs_g": "mdi:bread-slice",
          "fat_g": "mdi:water-opacity", "fiber_g": "mdi:leaf", "water_ml": "mdi:cup-water",
          "sugar_g": "mdi:cube-outline"}
 
@@ -96,6 +97,9 @@ def _day_attrs(d: dict) -> dict:
         "target_kind": d.get("target_kind"), "training": d.get("training"), "energy": d.get("energy"),
         "incomplete_micros": d.get("incomplete"),
         "protein_meals": d.get("protein_meals"), "protein_meal_min_g": d.get("protein_meal_min_g"),
+        "recommendations": [{k: r.get(k) for k in ("id", "type", "icon", "title", "text", "source")}
+                            | {"foods": [f"{f['name']}, {f['portion']}" for f in r.get("foods") or []]}
+                            for r in d.get("recommendations") or []],
         "meals": [{"category": c, "title": m.get("title"), "time": m.get("time"),
                    "kcal": (m.get("totals") or {}).get("kcal"),
                    "items": [f"{it['name']} {round(it['amount_g'])} g" for it in m["items"]]}
@@ -117,5 +121,11 @@ def publish(day: dict, week: dict) -> bool:
         c.publish(f"{PREFIX}/tag/state", str(day["progress"].get("kcal") or 0), retain=True)
         c.publish(f"{PREFIX}/tag/attr", json.dumps(_day_attrs(day), ensure_ascii=False, default=str), retain=True)
         c.publish(f"{PREFIX}/woche/state", str(len(week.get("gaps") or [])), retain=True)
-        c.publish(f"{PREFIX}/woche/attr", json.dumps(week, ensure_ascii=False, default=str), retain=True)
+        wk = dict(week)
+        wk["recommendations"] = [{k: r.get(k) for k in ("id", "type", "title", "text", "source")}
+                                 | {"foods": [f"{f['name']}, {f['portion']}" for f in r.get("foods") or []]}
+                                 for r in week.get("recommendations") or []]
+        for dd in wk.get("days", []):   # Attribute klein halten (HA-Recorder)
+            dd.pop("targets", None)
+        c.publish(f"{PREFIX}/woche/attr", json.dumps(wk, ensure_ascii=False, default=str), retain=True)
         return True

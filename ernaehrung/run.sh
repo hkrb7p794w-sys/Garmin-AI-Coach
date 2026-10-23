@@ -4,11 +4,14 @@
 bashio::log.info "Ernährung startet."
 export PYTHONUNBUFFERED=1
 export APP_VERSION="$(bashio::app.version 2>/dev/null || echo 0.1.0)"
+export KI_ANBIETER="$(bashio::config 'ki_anbieter')"
 export GEMINI_API_KEY="$(bashio::config 'gemini_api_key')"
+export LOKAL_URL="$(bashio::config 'lokal_url' 2>/dev/null)"
+export LOKAL_MODELL="$(bashio::config 'lokal_modell' 2>/dev/null)"
+export LOKAL_API_KEY="$(bashio::config 'lokal_api_key' 2>/dev/null)"
 export GEMINI_MODEL="$(bashio::config 'gemini_model')"
 export NUTRITION_DB="/data/ernaehrung.db"
 export BLS_DB="/data/bls.db"
-export PHOTO_DIR="/data/photos"
 export NUTRITION_SHARE="/share/ernaehrung"
 mkdir -p /share/ernaehrung
 

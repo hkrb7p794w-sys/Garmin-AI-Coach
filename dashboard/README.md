@@ -6,7 +6,7 @@ Stand: Karten 1.3.0, passend zu Add-on 0.25.x.
 
 | Datei hier | Liegt in Home Assistant unter | Inhalt |
 |---|---|---|
-| `www/coach/coach-cards.js` | `/config/www/coach/coach-cards.js` | eigene Karten: coach-hero, -week, -nav, -trend, -metrics, -zones, -hr, -gym, -lifts, -phases |
+| `www/coach/coach-cards.js` | `/config/www/coach/coach-cards.js` | eigene Karten: coach-hero, -week, -nav, -trend, -metrics, -zones, -hr, -gym, -lifts, -phases, -nutrition |
 | `custom_templates/*.jinja` | `/config/custom_templates/` | Saisonplan (`coach_plan`), Tages-/Wochenlogik (`coach_app`), Texte der Sport-Reiter (`coach_ui`, `coach_sub`, `coach_list`, `coach_views`), Gym/HF (`coach_gym_hf`, `coach_hf5`), Wochenrahmen (`coach_days`) |
 | `garmin-coach.dashboard.json` | Dashboard `garmin-coach` (UI-Modus) | alle Ansichten und Karten |
 
@@ -64,3 +64,10 @@ ersetzt ältere offene KI-Vorschläge. Die Karte „Übungsnamen zusammengeführ
 - **Qualitätslauf:** nur noch Schwelle und 4×4 min (90–95 % HFmax) – keine 1000er-Intervalle mehr (`coach_plan.jinja`).
 - **Automation „Garmin Coach: Schwimm-Ausrüstung am Vorabend“** (20:30): Push, wenn die Schwimmeinheit morgen Ausrüstung braucht
   (Sensor `sensor.garmin_ai_coach_garmin_schwimm_equipment`).
+
+## Ernährung (23.10.2026, Karten 1.4.0, Add-on „Ernährung“ 0.3.0)
+
+Neue Karte `custom:coach-nutrition` (Reiter **Ernährung** und unten auf **Heute**): kcal-Ring, Makros, Empfehlungen
+des Tages und Wochenhinweise aus `sensor.ernaehrung_tag` / `sensor.ernaehrung_woche`. Antippen öffnet die
+Ernährungs-App (Seitenleisten-Panel `/1c76c417_ernaehrung`, sonst `/hassio/ingress/1c76c417_ernaehrung`).
+Optionen: `max_recs` (Standard 2), `max_week` (Standard 2).

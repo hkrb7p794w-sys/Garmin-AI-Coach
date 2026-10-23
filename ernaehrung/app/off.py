@@ -38,14 +38,21 @@ MAP = {
     "vitamin-d": ("vitd_ug", "g"),
     "vitamin-b12": ("b12_ug", "g"),
     "vitamin-c": ("vitc_mg", "g"),
+    "iodine": ("iodine_ug", "g"),
+    "eicosapentaenoic-acid": ("omega3_mg", "g"),
+    "docosahexaenoic-acid": ("omega3_mg", "g"),
 }
 _TARGET_UNIT = {"kcal": "kcal", "protein_g": "g", "carbs_g": "g", "sugar_g": "g", "fat_g": "g",
                 "satfat_g": "g", "fiber_g": "g", "sodium_mg": "mg", "potassium_mg": "mg",
                 "magnesium_mg": "mg", "calcium_mg": "mg", "iron_mg": "mg", "zinc_mg": "mg",
-                "vitd_ug": "µg", "b12_ug": "µg", "vitc_mg": "mg"}
+                "vitd_ug": "µg", "b12_ug": "µg", "vitc_mg": "mg", "iodine_ug": "µg", "omega3_mg": "mg"}
 
 _lock = threading.Lock()
 _calls = []  # Zeitstempel der letzten Abfragen (Rate-Limit 15/min)
+_search_calls = []  # Textsuche: max. 10/min laut OFF
+SEARCH_URL = "https://search.openfoodfacts.org/search"
+LEGACY_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+SEARCH_FIELDS = "code,product_name,product_name_de,brands,quantity,nutriments,serving_quantity,serving_size,product_quantity_unit,categories_tags"
 
 
 def valid_barcode(code: str) -> bool:
@@ -58,17 +65,29 @@ def valid_barcode(code: str) -> bool:
     return (10 - total % 10) % 10 == check
 
 
-def _rate_limit():
+def _rate_limit(calls=None, limit=14, what="Barcode-Abfragen"):
+    calls = _calls if calls is None else calls
     with _lock:
         now = time.time()
-        while _calls and now - _calls[0] > 60:
-            _calls.pop(0)
-        if len(_calls) >= 14:
-            raise RuntimeError("Zu viele Barcode-Abfragen in kurzer Zeit - bitte eine Minute warten")
-        _calls.append(now)
+        while calls and now - calls[0] > 60:
+            calls.pop(0)
+        if len(calls) >= limit:
+            raise RuntimeError(f"Zu viele {what} in kurzer Zeit - bitte eine Minute warten")
+        calls.append(now)
+
+
+def _txt(v):
+    """Search-a-licious liefert Textfelder teils als {"de": ..., "main": ...} oder Liste."""
+    if isinstance(v, dict):
+        return v.get("de") or v.get("main") or v.get("en") or next(iter(v.values()), "")
+    if isinstance(v, list):
+        return ", ".join(str(x) for x in v)
+    return v
 
 
 def parse_product(p: dict) -> dict:
+    p = {k: (_txt(v) if k in ("product_name", "product_name_de", "generic_name_de", "brands", "quantity",
+                              "serving_size") else v) for k, v in p.items()}
     n = p.get("nutriments") or {}
     per100 = {k: None for k in KEYS}
     for off_key, (key, unit) in MAP.items():
@@ -79,7 +98,10 @@ def parse_product(p: dict) -> dict:
             v = float(v) if v not in (None, "") else None
         except (TypeError, ValueError):
             v = None
-        per100[key] = None if v is None else round(convert(v, unit, _TARGET_UNIT[key]), 6)
+        if v is None:
+            continue
+        v = round(convert(v, unit, _TARGET_UNIT[key]), 6)
+        per100[key] = v if per100[key] is None else round(per100[key] + v, 6)  # EPA + DHA
     if per100["sodium_mg"] is None and n.get("salt_100g") not in (None, ""):
         try:
             per100["sodium_mg"] = round(float(n["salt_100g"]) / 2.5 * 1000, 3)  # Salz = Na x 2,5
@@ -123,3 +145,35 @@ def lookup(barcode: str):
     if data.get("status") in (0, "failure") or not data.get("product"):
         return None
     return parse_product(data["product"])
+
+
+def search(query: str, limit: int = 12):
+    """Textsuche nach Markenprodukten (Search-a-licious, Ersatz: klassische Suche).
+    Ergebnisse ohne Nährwerte werden ausgelassen."""
+    _rate_limit(_search_calls, 9, "Produktsuchen")
+    headers = {"User-Agent": USER_AGENT}
+    products = []
+    try:
+        r = requests.get(SEARCH_URL, params={"q": query, "langs": "de,en", "page_size": 30,
+                                             "fields": SEARCH_FIELDS}, headers=headers, timeout=20)
+        r.raise_for_status()
+        products = r.json().get("hits") or []
+    except Exception as e:
+        print(f"[off] search-a-licious nicht verfügbar ({e}), nutze klassische Suche")
+        r = requests.get(LEGACY_SEARCH_URL, params={"search_terms": query, "search_simple": 1, "json": 1,
+                                                    "page_size": 30, "fields": SEARCH_FIELDS,
+                                                    "lc": "de", "cc": "de"},
+                         headers=headers, timeout=25)
+        r.raise_for_status()
+        products = r.json().get("products") or []
+    out = []
+    for p in products:
+        try:
+            parsed = parse_product(p)
+        except Exception:
+            continue
+        if parsed["has_nutrition"] and parsed.get("barcode"):
+            out.append(parsed)
+        if len(out) >= limit:
+            break
+    return out

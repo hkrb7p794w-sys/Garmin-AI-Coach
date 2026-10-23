@@ -1,4 +1,16 @@
 configuration:
+  ki_anbieter:
+    name: KI für Foto- und Texterkennung
+    description: "gemini = Google Gemini (Fotos verlassen dafür das Heimnetz). lokal = eigener KI-Server im Heimnetz mit OpenAI-kompatibler Schnittstelle (z. B. Ollama mit Bildmodell wie qwen2.5vl auf einem PC) – dann bleibt alles zu Hause. Fotos werden in keinem Fall gespeichert."
+  lokal_url:
+    name: Adresse des lokalen KI-Servers
+    description: "z. B. http://192.168.1.20:11434 (Ollama). Nur für ki_anbieter: lokal."
+  lokal_modell:
+    name: Modell des lokalen KI-Servers
+    description: "z. B. qwen2.5vl:7b oder gemma3:12b – muss Bilder verstehen."
+  lokal_api_key:
+    name: API-Key des lokalen Servers (optional)
+    description: Nur falls der Server einen verlangt.
   gemini_api_key:
     name: Gemini API Key
     description: Für Foto- und Texterkennung. Kostenlos unter aistudio.google.com („Get API key“). Ohne Key funktionieren Barcode, Suche und manuelle Eingabe.

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0
+- **Design wie das Garmin-AI-Coach-Dashboard**: Karten, Ring, Balken, Navigation und Farben übernehmen das aktive
+  HA-Theme (hell/dunkel); neue Dashboard-Karte `coach-nutrition` (coach-cards.js 1.4.0).
+- **Fotos werden nie gespeichert** (nur im Arbeitsspeicher während der Analyse); alte Fotos gelöscht.
+  Neu: `ki_anbieter: lokal` für einen eigenen KI-Server im Heimnetz (OpenAI-kompatibel, z. B. Ollama).
+- **Empfehlungen**: was und wie noch essen (vor/nach dem Training, Proteinverteilung, Lücken füllen mit konkreten
+  Lebensmitteln, Trinken, Grenzen) sowie Wochenmuster nach DGE 2024 (Fisch, Hülsenfrüchte, Nüsse, Obst/Gemüse,
+  Vollkorn) und Nährstofflücken; Ernährungsweise einstellbar (Standard pescetarisch).
+- Neue Nährstoffe **Jod** (DGE/ÖGE 2025: 150 µg) und **Omega-3 EPA+DHA** (EFSA: 250 mg); BLS wird dafür neu importiert.
+- Lebensmittelgruppen je Position (KI, BLS-Gruppe, Stichwörter); Energiebilanz aus Gewichtsverlauf.
+- Nach Vergleich mit Yazio, MyFitnessPal, Cronometer, MacroFactor: Markenprodukt-Suche (Open Food Facts),
+  Schnelleintrag nur Kalorien, Portionsauswahl („1 Scheibe“, „2 Eier“), „wie gestern“, „Heute nochmal“,
+  Datum im Prüf-Fenster, Rezepte mit Portionen, zuletzt Gegessenes in der Suche, Gewicht von Waage-Sensor,
+  „Alle Daten löschen“.
+- Suche: Plural/Singular („Linsen“ findet „Linse“), Gerichte nach hinten („Quark“ findet Speisequark).
+
 ## 0.2.0
 - Foto: auch Bilder aus der Mediathek; Datum/Uhrzeit der Aufnahme (EXIF) werden übernommen.
 - Tagestyp vor dem Training aus dem Wochenplan des Coach (Kohlenhydrate vor harten Einheiten).

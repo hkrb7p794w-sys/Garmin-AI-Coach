@@ -36,10 +36,48 @@ def get_state(entity_id: str):
         return None
 
 
-def training_today(max_age_s: int = 120):
+def all_states():
+    if not TOKEN:
+        return []
+    try:
+        r = requests.get(f"{API}/states", headers={"Authorization": f"Bearer {TOKEN}"}, timeout=15)
+        return r.json() if r.status_code == 200 else []
+    except (requests.RequestException, ValueError):
+        return []
+
+
+def weight_sensors():
+    """Sensoren mit Einheit kg, die nach Körpergewicht aussehen (Waage, Garmin, Fit Coach)."""
+    out = []
+    for st in all_states():
+        eid = st.get("entity_id", "")
+        a = st.get("attributes") or {}
+        if not eid.startswith("sensor.") or a.get("unit_of_measurement") != "kg":
+            continue
+        name = f"{eid} {a.get('friendly_name', '')}".lower()
+        if any(k in name for k in ("gewicht", "weight", "waage", "scale")):
+            try:
+                val = float(st.get("state"))
+            except (TypeError, ValueError):
+                val = None
+            out.append({"entity_id": eid, "name": a.get("friendly_name") or eid, "value": val,
+                        "updated": st.get("last_updated")})
+    return out
+
+
+def weight_from(entity_id: str):
+    st = get_state(entity_id) if entity_id else None
+    try:
+        v = float((st or {}).get("state"))
+    except (TypeError, ValueError):
+        return None
+    return v if 30 <= v <= 250 else None
+
+
+def training_today(max_age_s: int = 120, weight_entity: str = None):
     """Energie-/Trainingsdaten von heute oder None."""
     now = datetime.datetime.now()
-    if _cache["at"] and (now - _cache["at"]).total_seconds() < max_age_s:
+    if _cache["at"] and _cache.get("we") == weight_entity and (now - _cache["at"]).total_seconds() < max_age_s:
         return _cache["data"]
     data = None
     st = get_state(ENERGY_ENTITY)
@@ -59,5 +97,9 @@ def training_today(max_age_s: int = 120):
         pattrs = plan.get("attributes") or {}
         if pattrs.get("date") == datetime.date.today().isoformat():
             data["plan_items"] = pattrs.get("today_fixed") or []
-    _cache.update(at=now, data=data)
+    w = weight_from(weight_entity)
+    if w is not None:
+        data = data or {}
+        data["weight_kg"], data["weight_kg_source"] = round(w, 1), "Waage"
+    _cache.update(at=now, data=data, we=weight_entity)
     return data

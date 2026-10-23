@@ -4,24 +4,33 @@ import datetime
 import db
 import garmin_bridge
 import nutrients as N
+import recommend
 import targets as T
 
 
 def settings_bundle() -> dict:
     keys = ("profile", "pal_base", "goal", "goal_adjust_pct", "protein_g_per_kg", "carbs_g_per_kg",
-            "body_fat_pct",
+            "body_fat_pct", "weight_entity",
             "target_overrides", "day_type_override")
     return {k: db.get_setting(k) for k in keys}
 
 
 def targets_for(date: str) -> dict:
     today = datetime.date.today().isoformat()
+    sb = settings_bundle()
     if date == today:
-        res = T.compute(settings_bundle(), garmin_bridge.training_today(), date)
+        res = T.compute(sb, garmin_bridge.training_today(weight_entity=sb.get("weight_entity")), date)
         db.save_day_targets(date, res)
         return res
     stored = db.get_day_targets(date)
     if stored:
+        # Ziele für Nährstoffe, die es beim Speichern noch nicht gab (Jod, Omega-3), ergänzen
+        missing = [k for k in N.KEYS if k not in stored["targets"]]
+        if missing:
+            fresh = T.compute(sb, None, date)["targets"]
+            for k in missing:
+                if k in fresh:
+                    stored["targets"][k] = fresh[k]
         return stored
     res = T.compute(settings_bundle(), None, date)
     res["estimated"] = True  # Tag ohne gespeicherte Trainingsdaten
@@ -103,6 +112,16 @@ def day(date: str) -> dict:
     }
 
 
+def day_with_recommendations(date: str) -> dict:
+    d = day(date)
+    try:
+        d["recommendations"] = recommend.day_recommendations(d, db.get_setting("diet") or "pescetarisch")
+    except Exception as e:  # Empfehlungen dürfen die Tagesansicht nie verhindern
+        print(f"[recommend] Tag: {e!r}")
+        d["recommendations"] = []
+    return d
+
+
 def status_of(key: str, pct, kind: str = None) -> str:
     if pct is None:
         return "?"
@@ -117,9 +136,11 @@ def week(end_date: str = None, days: int = 7) -> dict:
     end = datetime.date.fromisoformat(end_date) if end_date else datetime.date.today()
     start = end - datetime.timedelta(days=days - 1)
     rows = []
+    meals_by_day = {}
     for i in range(days):
         d = (start + datetime.timedelta(days=i)).isoformat()
         ds = day(d)
+        meals_by_day[d] = [m for c in ds["categories"].values() for m in c.get("meals", [])]
         for c in ds["categories"].values():   # Wochenansicht ohne Mahlzeiten-Details
             c.pop("meals", None)
         rows.append(ds)
@@ -153,7 +174,9 @@ def week(end_date: str = None, days: int = 7) -> dict:
         "protein_pct_training_days": round(sum(r["progress"]["protein_g"] or 0 for r in training_days)
                                            / len(training_days)) if training_days else None,
     }
-    return {
+    complete_dates = {r["date"] for r in complete}
+    fg = recommend.week_food_groups({d: m for d, m in meals_by_day.items() if d in complete_dates})
+    result = {
         "start": start.isoformat(),
         "end": end.isoformat(),
         "days": [{k: r[k] for k in ("date", "meals_count", "totals", "targets", "progress", "day_type",
@@ -164,4 +187,60 @@ def week(end_date: str = None, days: int = 7) -> dict:
         "hit_rate": hit_rate,
         "gaps": gaps,
         "fueling": fueling,
+        "food_groups": fg,
+        "energy_balance": energy_balance(end),
     }
+    try:
+        result["recommendations"] = recommend.week_recommendations(result, fg, db.get_setting("diet") or
+                                                                   "pescetarisch", end)
+    except Exception as e:
+        print(f"[recommend] Woche: {e!r}")
+        result["recommendations"] = []
+    return result
+
+
+KCAL_PER_KG = 7700  # gängige Näherung für Körpergewebe (Fett + etwas Magermasse)
+
+
+def energy_balance(end: datetime.date, window: int = 28):
+    """Tatsächlichen Energieverbrauch aus Gewichtsverlauf und erfasster Zufuhr schätzen
+    (Prinzip wie MacroFactor: Zufuhr - Gewichtsänderung x Energiedichte). Braucht mindestens
+    14 vollständig erfasste Tage und Gewichtswerte über mindestens 14 Tage."""
+    start = end - datetime.timedelta(days=window - 1)
+    weights, intakes, targets = [], [], []
+    for i in range(window):
+        d = (start + datetime.timedelta(days=i)).isoformat()
+        tg = db.get_day_targets(d)
+        if tg and (tg.get("profile_source") or {}).get("weight_kg") in ("Waage", "garmin", "einstellung"):
+            weights.append((i, tg["profile"]["weight_kg"]))
+        meals = db.meals_between(d, d)
+        if meals and tg:
+            kcal = sum((it["per100"].get("kcal") or 0) * it["amount_g"] / 100 for m in meals for it in m["items"])
+            if kcal >= 0.7 * tg["targets"]["kcal"]:
+                intakes.append(kcal)
+                targets.append(tg["targets"]["kcal"])
+    distinct = {w for _i, w in weights}
+    if len(intakes) < 14 or len(weights) < 4 or len(distinct) < 2 or weights[-1][0] - weights[0][0] < 14:
+        return {"ready": False, "days_logged": len(intakes), "weights": len(weights),
+                "text": "Braucht mind. 14 vollständig erfasste Tage und regelmäßige Gewichtswerte "
+                        "(Waage in den Einstellungen wählen)."}
+    n = len(weights)
+    mx = sum(i for i, _ in weights) / n
+    my = sum(w for _, w in weights) / n
+    sxx = sum((i - mx) ** 2 for i, _ in weights)
+    slope = sum((i - mx) * (w - my) for i, w in weights) / sxx if sxx else 0  # kg/Tag
+    avg_in = sum(intakes) / len(intakes)
+    tdee = avg_in - slope * KCAL_PER_KG
+    avg_target = sum(targets) / len(targets)
+    diff = tdee - avg_target
+    res = {"ready": True, "days_logged": len(intakes), "weight_change_kg_per_week": round(slope * 7, 2),
+           "avg_intake": round(avg_in), "estimated_expenditure": round(tdee), "avg_target": round(avg_target),
+           "difference": round(diff)}
+    if abs(diff) > 0.08 * avg_target:
+        res["suggest_pal"] = True
+        res["text"] = (f"Gewichtsverlauf ({res['weight_change_kg_per_week']:+.2f} kg/Woche) und Zufuhr "
+                       f"(Ø {res['avg_intake']} kcal) ergeben einen Verbrauch von etwa {res['estimated_expenditure']} kcal "
+                       f"– {abs(res['difference'])} kcal {'mehr' if diff > 0 else 'weniger'} als berechnet. "
+                       f"Alltagsaktivität in den Einstellungen {'erhöhen' if diff > 0 else 'senken'} oder das Ziel "
+                       "anpassen. Schätzung, schwankt mit Wassereinlagerungen.")
+    return res

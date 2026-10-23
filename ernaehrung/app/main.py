@@ -20,7 +20,7 @@ def publish_now():
         return
     try:
         today = datetime.date.today().isoformat()
-        publish.publish(summary.day(today), summary.week(today))
+        publish.publish(summary.day_with_recommendations(today), summary.week(today))
     except Exception as e:
         print(f"[mqtt] Veröffentlichen fehlgeschlagen: {e}")
     finally:
@@ -42,8 +42,27 @@ def publish_loop():
         time.sleep(PUBLISH_INTERVAL)
 
 
+def _remove_photo_store():
+    """Bis 0.2.x wurden Fotos unter /data/photos gespeichert - seit 0.3.0 nie mehr: löschen."""
+    import shutil
+    path = os.environ.get("PHOTO_DIR", "/data/photos")
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+        print(f"[privacy] gespeicherte Fotos gelöscht ({path})")
+
+
+def _after_bls_import():
+    import recommend
+    recommend.reset_cache()
+    n = db.merge_missing_nutrients(lambda code: (bls.get(code) or {}).get("per100"))
+    if n:
+        print(f"[bls] {n} gespeicherte Lebensmittel um neue Nährstoffe ergänzt")
+
+
 def main():
     db.init()
+    _remove_photo_store()
+    bls.after_import.append(_after_bls_import)
     threading.Thread(target=bls.ensure, daemon=True, name="bls").start()
     web.on_change.append(publish_now)
     threading.Thread(target=publish_loop, daemon=True, name="mqtt").start()

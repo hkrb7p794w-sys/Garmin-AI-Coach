@@ -117,7 +117,48 @@ def init(path: str = None):
         _local.conn = None
     c = conn()
     c.executescript(SCHEMA)
+    _migrate(c)
     c.commit()
+
+
+def _columns(c, table):
+    return {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+
+
+def _migrate(c):
+    """Schema-Erweiterungen für bestehende Datenbanken (idempotent)."""
+    if "food_group" not in _columns(c, "meal_items"):
+        c.execute("ALTER TABLE meal_items ADD COLUMN food_group TEXT")
+    if "servings" not in _columns(c, "favorites"):
+        c.execute("ALTER TABLE favorites ADD COLUMN servings REAL DEFAULT 1")
+    if "food_group" not in _columns(c, "foods"):
+        c.execute("ALTER TABLE foods ADD COLUMN food_group TEXT")
+    # 0.3.0: Fotos werden nicht mehr gespeichert - Verweise entfernen
+    c.execute("UPDATE meals SET photo = NULL WHERE photo IS NOT NULL")
+
+
+def merge_missing_nutrients(lookup):
+    """Gespeicherte BLS-Lebensmittel und Mahlzeit-Positionen um Nährstoffe ergänzen,
+    die es beim Speichern noch nicht gab (z. B. Jod, Omega-3). Vorhandene Werte bleiben."""
+    c = conn()
+    changed = 0
+    for r in c.execute("SELECT id, source_ref, per100 FROM foods WHERE source='bls'").fetchall():
+        new = lookup(r["source_ref"])
+        if not new:
+            continue
+        old = json.loads(r["per100"])
+        add = {k: v for k, v in new.items() if old.get(k) is None and v is not None}
+        if not add:
+            continue
+        old.update(add)
+        c.execute("UPDATE foods SET per100=? WHERE id=?", (json.dumps(old), r["id"]))
+        for it in c.execute("SELECT id, per100 FROM meal_items WHERE food_id=?", (r["id"],)).fetchall():
+            ip = json.loads(it["per100"])
+            ip.update({k: v for k, v in add.items() if ip.get(k) is None})
+            c.execute("UPDATE meal_items SET per100=? WHERE id=?", (json.dumps(ip), it["id"]))
+        changed += 1
+    c.commit()
+    return changed
 
 
 # --------------------------------------------------------------------------
@@ -286,9 +327,9 @@ def save_meal(meal: dict, meal_id=None) -> dict:
     for pos, it in enumerate(meal.get("items") or []):
         c.execute(
             "INSERT INTO meal_items(meal_id, food_id, position, name, amount_g, amount_text, source, "
-            "confidence, per100) VALUES(?,?,?,?,?,?,?,?,?)",
+            "confidence, per100, food_group) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (meal_id, it.get("food_id"), pos, it["name"], float(it["amount_g"]), it.get("amount_text"),
-             it.get("source"), it.get("confidence"), json.dumps(it["per100"])))
+             it.get("source"), it.get("confidence"), json.dumps(it["per100"]), it.get("food_group")))
         if it.get("food_id"):
             mark_food_used(it["food_id"])
     c.commit()
@@ -361,16 +402,21 @@ def get_favorite(fav_id):
     return d
 
 
-def save_favorite(title, category, items, fav_id=None):
+def save_favorite(title, category, items, fav_id=None, servings=1):
+    """Favorit bzw. Rezept: `servings` > 1 = die Zutaten ergeben mehrere Portionen
+    (Eintragen rechnet dann standardmäßig eine Portion)."""
     c = conn()
-    clean_items = [{k: it.get(k) for k in ("food_id", "name", "amount_g", "amount_text", "source", "per100")}
+    clean_items = [{k: it.get(k) for k in ("food_id", "name", "amount_g", "amount_text", "source", "per100",
+                                           "food_group")}
                    for it in items]
+    servings = max(1.0, float(servings or 1))
     if fav_id:
-        c.execute("UPDATE favorites SET title=?, category=?, items=? WHERE id=?",
-                  (title, category, json.dumps(clean_items), fav_id))
+        c.execute("UPDATE favorites SET title=?, category=?, items=?, servings=? WHERE id=?",
+                  (title, category, json.dumps(clean_items), servings, fav_id))
     else:
-        fav_id = c.execute("INSERT INTO favorites(title, category, items, created_at) VALUES(?,?,?,?)",
-                           (title, category, json.dumps(clean_items), now_iso())).lastrowid
+        fav_id = c.execute("INSERT INTO favorites(title, category, items, servings, created_at) "
+                           "VALUES(?,?,?,?,?)",
+                           (title, category, json.dumps(clean_items), servings, now_iso())).lastrowid
     c.commit()
     return get_favorite(fav_id)
 
@@ -383,3 +429,27 @@ def use_favorite(fav_id):
 def delete_favorite(fav_id):
     conn().execute("DELETE FROM favorites WHERE id=?", (fav_id,))
     conn().commit()
+
+
+def copy_meals(src_date, dst_date, category=None, meal_ids=None, time=None):
+    """Mahlzeiten kopieren (z. B. "Frühstück wie gestern")."""
+    out = []
+    for m in meals_between(src_date, src_date):
+        if category and m["category"] != category:
+            continue
+        if meal_ids and m["id"] not in meal_ids:
+            continue
+        copy = {k: m.get(k) for k in ("category", "title", "note")}
+        copy.update(date=dst_date, time=time or m.get("time"), method="kopie", items=m["items"])
+        out.append(save_meal(copy))
+    return out
+
+
+def delete_all():
+    """Alle eigenen Daten löschen (Mahlzeiten, eigene Lebensmittel, Favoriten, Ziele, Einstellungen).
+    Die BLS-Datenbank bleibt."""
+    c = conn()
+    for t in ("meal_items", "meals", "favorites", "foods", "days", "settings"):
+        c.execute(f"DELETE FROM {t}")
+    c.commit()
+    c.execute("VACUUM")

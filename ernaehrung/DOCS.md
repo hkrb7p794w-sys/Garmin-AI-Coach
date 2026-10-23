@@ -1,102 +1,124 @@
 # Ernährung
 
-Mahlzeiten in wenigen Sekunden erfassen – per **Foto**, **Text**, **Barcode** oder **Suche** – mit
-Makros, Mikronährstoffen und Tageszielen, die sich nach deinem Training richten.
+Mahlzeiten in wenigen Sekunden erfassen – per **Foto**, **Text**, **Barcode** oder **Suche** – mit Makros,
+Mikronährstoffen, Tageszielen nach deinem Training und konkreten Empfehlungen, was du noch essen könntest.
+Optik wie das Garmin-AI-Coach-Dashboard (Farben und Schrift kommen aus dem aktiven Home-Assistant-Theme).
 
 ## Einrichten
 
-1. **Gemini API Key** (für Foto- und Texterkennung) in der Konfiguration eintragen –
-   derselbe kostenlose Key wie beim Garmin AI Coach (aistudio.google.com › „Get API key“).
-   Ohne Key funktionieren Barcode, Suche und manuelle Eingabe.
-2. App starten und über die Seitenleiste „Ernährung“ öffnen (auch in der HA-App auf dem iPhone).
-3. Beim ersten Start lädt die App den **Bundeslebensmittelschlüssel (BLS 4.0)** von blsdb.de
-   (~14 MB, ein bis zwei Minuten). Klappt das nicht, die Datei von https://blsdb.de/download
-   herunterladen und nach `/share/ernaehrung/` legen, dann in den Einstellungen „BLS neu laden“.
-4. Unter **Einstellungen** Körperdaten prüfen. Mit dem Garmin AI Coach ab 0.29.0 kommen Gewicht,
-   Größe, Alter und die heutigen Aktivitäten automatisch aus Garmin.
+1. **KI für Foto/Text** in der Konfiguration wählen:
+   - `ki_anbieter: gemini` + `gemini_api_key` (kostenlos unter aistudio.google.com, derselbe Key wie beim Coach), oder
+   - `ki_anbieter: lokal` + `lokal_url` + `lokal_modell`: eigener KI-Server im Heimnetz mit OpenAI-kompatibler
+     Schnittstelle, z. B. [Ollama](https://ollama.com) mit einem Bildmodell (`qwen2.5vl:7b`, `gemma3:12b`) auf einem
+     PC/Mac mit Grafikkarte bzw. Apple Silicon. Dann verlassen Fotos und Texte das Heimnetz nie.
+     Der Raspberry Pi selbst ist dafür zu schwach.
+   Ohne KI funktionieren Barcode, Suche, Schnelleintrag und manuelle Eingabe.
+2. App über die Seitenleiste „Ernährung“ öffnen (auch in der HA-App auf dem iPhone) oder über die Karte
+   „Ernährung“ im Garmin-Coach-Dashboard.
+3. Beim ersten Start lädt die App den **Bundeslebensmittelschlüssel (BLS 4.0)** von blsdb.de (~14 MB). Klappt das
+   nicht: Datei von https://blsdb.de/download nach `/share/ernaehrung/` legen und in den Einstellungen „BLS neu laden“.
+4. **Einstellungen**: Ernährungsweise (Standard: pescetarisch), Körperdaten prüfen, optional **Gewicht von Sensor**
+   (z. B. Körperwaage) wählen. Gewicht, Größe, Alter und Trainings kommen sonst aus dem Garmin AI Coach (ab 0.29.0).
 
 ## Erfassen
 
-- **Foto**: Mahlzeit fotografieren oder ein Bild aus der Mediathek wählen (iOS fragt nach). Bei älteren Fotos
-  übernimmt die App Datum und Uhrzeit der Aufnahme. Optional einen Hinweis ergänzen („mit Olivenöl“), prüfen, speichern.
-- **Text**: z. B. „2 Rühreier mit Vollkornbrot und ein Kaffee mit Milch“. Diktieren per iPhone-Tastatur geht auch.
-- **Barcode**: Barcode fotografieren (oder live scannen, wenn HA über HTTPS läuft) oder Nummer eintippen.
-  Produktdaten von Open Food Facts; einmal gescannte Produkte sind danach offline verfügbar.
-- **Suchen**: eigene Lebensmittel und BLS. Fehlt etwas, „Eigenes Lebensmittel anlegen“.
-- **+250 ml**: Wasser mit einem Tipp.
+- **Foto**: aufnehmen oder aus der Mediathek wählen. Bei älteren Fotos übernimmt die App Datum und Uhrzeit der
+  Aufnahme. Optional ergänzen („mit Olivenöl“).
+- **Text**: z. B. „2 Rühreier mit Vollkornbrot und ein Kaffee mit Milch“ (Diktieren per Tastatur geht auch).
+- **Barcode**: fotografieren/aus Fotos, live scannen (nur über HTTPS) oder Nummer eintippen. Daten von Open Food
+  Facts; einmal gescannte Produkte sind danach offline verfügbar.
+- **Suchen**: ohne Eingabe zuletzt/häufig Gegessenes, sonst eigene Lebensmittel + BLS. **Markenprodukte** sucht per
+  Knopfdruck in Open Food Facts. **Nur Kalorien** = Schnelleintrag ohne Lebensmittel.
+- **+250 ml**: Wasser mit einem Tipp. **Wie gestern** kopiert eine leere Mahlzeit vom Vortag, **Heute nochmal**
+  (im Bearbeiten-Fenster) trägt eine Mahlzeit erneut ein, **+** neben einer Mahlzeit fügt direkt dort hinzu.
 
-Jede Erfassung landet zuerst im Prüf-Fenster: Mengen ändern (±), Zuordnung tauschen („Andere Zuordnung“),
-Positionen entfernen oder ergänzen. Gespeicherte Mahlzeiten lassen sich jederzeit antippen und ändern.
+Alles landet zuerst im Prüf-Fenster: Menge (±, Portionen wie „1 Scheibe“, „2 Eier“), Zuordnung tauschen, Datum,
+Uhrzeit, Mahlzeit. **Als Favorit/Rezept merken** – bei Rezepten mit „ergibt Portionen“ trägt „Eintragen“ eine Portion ein.
 
-Quellen-Kennzeichnung: **BLS** (Datenbank), **Produkt** (Open Food Facts), **Eigenes**,
-**KI-Schätzung** (kein passender Datenbank-Eintrag – Werte sind von Gemini geschätzt).
+Quellen-Kennzeichnung: **BLS** (Datenbank), **Produkt** (Open Food Facts), **Eigenes**, **KI-Schätzung**.
+
+## Empfehlungen
+
+**Heute** (Karte „Empfehlungen für heute“, auch im Coach-Dashboard):
+- **Vor dem Training** (laut Wochenplan, noch nichts aufgezeichnet): 1–4 g Kohlenhydrate je kg 1–4 h vorher.
+- **Nach dem Training** (Einheit in den letzten 3 h beendet): 0,25–0,4 g/kg Protein plus Kohlenhydrate.
+- **Proteinverteilung**: 3–4 Mahlzeiten mit ≥ 0,25 g/kg; abends Quark/Skyr (Casein).
+- **Passt noch gut in den Tag**: 2–3 konkrete Lebensmittel, die die größten Lücken je Kalorie füllen – passend zur
+  Ernährungsweise, zum restlichen Kalorienbudget und zur Tageszeit. Antippen = eintragen.
+- Trinken, Zucker/gesättigte Fette über der Orientierung, deutlich über dem Kalorienziel.
+
+**Woche** (ab 3 vollständig erfassten Tagen): Fisch 1–2x (davon einmal fettreich), Hülsenfrüchte, Nüsse,
+Obst & Gemüse, Vollkornanteil (DGE 2024), wiederkehrende Lücken bei Eisen, Jod, Omega-3, Magnesium, Calcium,
+Kalium, Zink, Ballaststoffen, B12 – jeweils mit den nährstoffreichsten Vorschlägen; Vitamin D im Winterhalbjahr;
+Kohlenhydrate an harten Tagen, Protein an Trainingstagen.
+
+**Energiebilanz**: Ab 14 vollständig erfassten Tagen mit regelmäßigen Gewichtswerten schätzt die App deinen
+tatsächlichen Verbrauch (Zufuhr minus Gewichtsänderung × 7.700 kcal/kg) und schlägt vor, den Alltagsfaktor anzupassen.
 
 ## Tagesziele
 
 | Wert | Grundlage |
 |---|---|
-| Kalorien | Grundumsatz (Mifflin-St Jeor) × Alltagsaktivität (PAL 1,4) + Netto-kcal der heutigen Garmin-Aktivitäten. Der Garmin-Gesamtumsatz wird nur zum Vergleich angezeigt: Uhren-Schätzungen des Energieverbrauchs streuen stark (O'Driscoll 2020). Beim Abnehmen nie unter 30 kcal je kg fettfreie Masse plus Training (Energieverfügbarkeit, IOC-Konsensus REDs 2023) |
-| Kohlenhydrate | g/kg nach Tagestyp: Ruhetag 3, leicht 4, moderat 6, hart 8, sehr hart 10 (ACSM/AND/DC 2016: 3–5 / 5–7 / 6–10 / 8–12) |
-| Protein | nach Ziel: halten 1,8 · aufbauen 2,0 · abnehmen 2,2 g/kg (Ausdauer: Bedarf ~1,8–1,9 g/kg, Williamson 2023; Muskelaufbau: Plateau ~1,6, Spanne bis 2,2, Morton 2018; Defizit: 1,9–3,2, ISSN 2026). Verteilt auf ≥ 3–4 Mahlzeiten mit je ≥ 0,25 g/kg (ISSN 2017) – die App zählt sie mit |
+| Kalorien | Grundumsatz (Mifflin-St Jeor) × Alltag (PAL 1,4) + Netto-kcal der heutigen Garmin-Aktivitäten. Garmin-Gesamtumsatz nur zum Vergleich (Uhren-Schätzungen streuen stark). Beim Abnehmen nie unter 30 kcal je kg fettfreie Masse + Training |
+| Kohlenhydrate | g/kg nach Tagestyp: Ruhetag 3, leicht 4, moderat 6, hart 8, sehr hart 10 (ACSM/AND/DC 2016) |
+| Protein | halten 1,8 · aufbauen 2,0 · abnehmen 2,2 g/kg |
 | Fett | Rest der Energie, 20–35 % |
-| Zucker, gesättigte Fette | Obergrenze je 10 % der Energie (Orientierung; Zucker = Gesamtzucker inkl. Obst/Milch) |
-| Mikronährstoffe, Ballaststoffe | DGE-Referenzwerte 25 bis < 51 Jahre |
-| Flüssigkeit | 35 ml/kg (DGE-Gesamtwasser inkl. Wasser aus Lebensmitteln) + ca. 0,6 l je Stunde Ausdauertraining |
+| Zucker, gesättigte Fette | Obergrenze je 10 % der Energie (Orientierung) |
+| Mikronährstoffe | DGE 25 bis < 51 Jahre; Zink 14 mg (mittlere Phytatzufuhr: Mischkost mit Fisch, Vollkorn, Hülsenfrüchten); **Jod 150 µg** (DGE/ÖGE 2025) |
+| Omega-3 (EPA+DHA) | 250 mg (EFSA) |
+| Flüssigkeit | 35 ml/kg + ca. 0,6 l je Stunde Ausdauertraining |
 
-Tagestyp: Solange heute noch kein Training aufgezeichnet ist, gilt der Tagestyp aus dem Wochenplan des Coach
-(Kohlenhydrate gehören vor die Einheit, „fuel for the work required“, Impey 2018). Danach aus Garmin: ≥ 4 h Ausdauer = sehr hart, ≥ 90 min Ausdauer oder Trainingslast ≥ 150 = hart,
-≥ 45 min Ausdauer / ≥ 75 min Training / Last ≥ 80 = moderat, ≥ 20 min = leicht, sonst Ruhetag.
-Manuell änderbar („Tagestyp ändern“). Ziel „Abnehmen“ (−15 %) wirkt nur an Ruhe-/leichten Tagen voll,
-an moderaten halb und an harten gar nicht.
+Tagestyp: vor dem Training aus dem Coach-Wochenplan, danach aus Garmin (≥ 4 h Ausdauer sehr hart, ≥ 90 min oder
+Last ≥ 150 hart, ≥ 45 min / ≥ 75 min Training / Last ≥ 80 moderat, ≥ 20 min leicht). Manuell änderbar.
 
 ## Grenzen
 
-- **Foto-Portionen sind Schätzungen.** In einer Studie mit Standardfotos (Fridolfsson et al. 2025) lag der
-  mittlere Fehler der besten Bildmodelle bei rund 36 % für Gewicht und Energie; ältere Gemini-Versionen
-  lagen deutlich darüber, und große Portionen wurden von allen Modellen systematisch unterschätzt.
-  Die App nimmt deshalb die Nährwerte aus Datenbanken und nur die Mengen von der KI – die Mengen bitte
-  kurz prüfen. Für genaue Werte: Text mit Grammangaben, Küchenwaage oder Barcode.
-- Datenbankwerte sind Durchschnittswerte; einzelne Mikronährstoffe fehlen bei manchen Produkten
-  (Open Food Facts) – die App zeigt dann einen Hinweis, die Summe ist eine Untergrenze.
-- Vitamin D kommt überwiegend aus der Eigensynthese (Sonne); über die Nahrung ist das DGE-Ziel kaum erreichbar.
-- Keine medizinische Beratung.
+- **Foto-Portionen sind Schätzungen** (Studie Fridolfsson 2025: ~36 % mittlerer Fehler bei den besten Bildmodellen,
+  große Portionen werden unterschätzt). Nährwerte kommen deshalb aus Datenbanken, nur die Mengen von der KI.
+- Datenbankwerte sind Durchschnittswerte; bei Markenprodukten fehlen oft Mikronährstoffe (dann Untergrenze).
+- **Jodsalz** zählt die App nicht mit (Salzmenge ist kaum erfassbar) – die Jod-Summe ist also eine Untergrenze.
+- Vitamin D kommt überwiegend aus der Sonne; über Essen ist das Ziel kaum erreichbar.
+- Empfehlungen sind allgemeine Ernährungsregeln, keine medizinische Beratung.
 
 ## Datenschutz
 
-Alle Daten liegen lokal in der App (`/data`, Teil der HA-Backups; die BLS-Datenbank ist ausgenommen,
-sie lässt sich jederzeit neu laden). Nach außen gehen nur: Fotos/Texte zur Analyse an Google Gemini
-(im kostenlosen Kontingent darf Google sie zur Produktverbesserung nutzen – Fotos werden verkleinert,
-Standortdaten entfernt; Foto-Analyse in den Einstellungen abschaltbar) und Barcode-Nummern an Open Food Facts.
-Export aller Einträge als CSV in den Einstellungen.
+- **Fotos werden nie gespeichert** – weder auf dem Pi noch im Browser. Das Bild existiert nur während der Analyse im
+  Arbeitsspeicher; nach dem Speichern bzw. Schließen ist es weg. Fotos älterer Versionen wurden beim Update gelöscht.
+- Mit `ki_anbieter: gemini` geht das Foto zur Analyse an Google (im kostenlosen Kontingent darf Google Eingaben zur
+  Verbesserung nutzen). Mit `ki_anbieter: lokal` bleibt alles im Heimnetz. Foto-Analyse in den Einstellungen abschaltbar.
+- Barcode-Nummern bzw. Suchwörter für Markenprodukte gehen an Open Food Facts.
+- Alle anderen Daten liegen lokal in `/data` (Teil der HA-Backups). CSV-Export und „Alle Daten löschen“ in den Einstellungen.
 
 ## Home Assistant
 
-Per MQTT (Mosquitto) erscheinen das Gerät **Ernährung** und die Sensoren:
+Gerät **Ernährung** per MQTT:
+- `sensor.ernaehrung_<nährstoff>` (kalorien, protein, kohlenhydrate, fett, ballaststoffe, fluessigkeit, zucker,
+  gesaettigte_fettsaeuren, natrium, kalium, magnesium, calcium, eisen, zink, jod, omega_3, vitamin_d, vitamin_b12,
+  vitamin_c) – Tageswert, Attribute `ziel`, `prozent`, `art`
+- `sensor.ernaehrung_tag` – kcal-Fortschritt in %, Attribute: Tagesauswertung inkl. `recommendations`
+- `sensor.ernaehrung_woche` – Anzahl wiederkehrender Lücken, Attribute: 7-Tage-Auswertung, Lebensmittelgruppen,
+  Energiebilanz, `recommendations`
 
-- `sensor.ernaehrung_kalorien`, `_protein`, `_kohlenhydrate`, `_fett`, `_ballaststoffe`, `_fluessigkeit`,
-  `_zucker`, `_gesaettigte_fettsaeuren`, `_natrium`, `_kalium`, `_magnesium`, `_calcium`, `_eisen`, `_zink`,
-  `_vitamin_d`, `_vitamin_b12`, `_vitamin_c` – Tageswert, Attribute `ziel`, `prozent`, `art`
-- `sensor.ernaehrung_tag` – kcal-Fortschritt in %, Attribute: komplette Tagesauswertung
-- `sensor.ernaehrung_woche` – Anzahl wiederkehrender Lücken, Attribute: 7-Tage-Auswertung
-  (Durchschnitt, Trefferquote je Nährstoff, Lücken, Kohlenhydrate an harten Tagen, Protein an Trainingstagen)
-
-REST-API im internen Netz: `GET /api/v1/day?date=YYYY-MM-DD`, `GET /api/v1/week`, `GET /api/v1/export.csv`.
+Dashboard-Karte `custom:coach-nutrition` (in `coach-cards.js` ab 1.4.0). REST im internen Netz:
+`/api/v1/day`, `/api/v1/week`, `/api/v1/export.csv`.
 
 ## Quellen
 
-- Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0. Karlsruhe.
-  DOI 10.25826/Data20251217-134202-0. Lizenz CC BY 4.0.
-- Open Food Facts (ODbL), https://world.openfoodfacts.org
+- Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0. DOI 10.25826/Data20251217-134202-0. CC BY 4.0.
+- Open Food Facts (ODbL).
+- DGE (2024): Gut essen und trinken – lebensmittelbezogene Ernährungsempfehlungen. https://www.dge.de/gesunde-ernaehrung/gut-essen-und-trinken/dge-empfehlungen/
+- DGE/ÖGE (2025): Neue Referenzwerte für die Jodzufuhr (150 µg). https://www.dge.de/presse/meldungen/2025/neue-referenzwerte-fuer-die-jodzufuhr/
+- DGE: Referenzwerte (Eisen, Zink, Magnesium, Calcium, Kalium, Natrium, Vitamin C/D/B12, Ballaststoffe, Wasser); FAQ Zink 2019 (Phytatzufuhr); FAQ Nahrungsergänzungsmittel.
+- EFSA (2012): Adäquate Zufuhr langkettiger Omega-3-Fettsäuren 250 mg/Tag.
+- BfR: Ausgewählte Fragen und Antworten zu Vitamin D (Oktober–März kaum Eigensynthese).
 - Thomas DT, Erdman KA, Burke LM (2016): Nutrition and Athletic Performance. Med Sci Sports Exerc 48(3):543–568.
-- Jäger R et al. (2017): ISSN Position Stand: Protein and Exercise. J Int Soc Sports Nutr 14:20.
-- Fridolfsson J et al. (2025): Performance Evaluation of 3 Large Language Models for Nutritional Content Estimation from Food Images. Curr Dev Nutr 9(10):107556. doi:10.1016/j.cdnut.2025.107556
-- Morton RW et al. (2018): Protein supplementation and resistance training. Br J Sports Med 52(6):376–384. doi:10.1136/bjsports-2017-097608
-- Williamson E et al. (2023): Protein requirements are increased in endurance-trained athletes. Med Sci Sports Exerc 55(10):1866–1875. doi:10.1249/MSS.0000000000003219
-- Aragon AA et al. (2026): ISSN position stand: diets for body weight reduction. J Int Soc Sports Nutr 23(1). doi:10.1080/15502783.2026.2740266
 - Kerksick CM et al. (2017): ISSN position stand: nutrient timing. J Int Soc Sports Nutr 14:33. doi:10.1186/s12970-017-0189-4
-- Mountjoy M et al. (2023): IOC consensus statement on REDs. Br J Sports Med 57(17):1073–1097. doi:10.1136/bjsports-2023-106994
-- Impey SG et al. (2018): Fuel for the work required. Sports Med 48(5):1031–1048. doi:10.1007/s40279-018-0867-7
-- O'Driscoll R et al. (2020): How well do activity monitors estimate energy expenditure? Br J Sports Med 54(6):332–340. doi:10.1136/bjsports-2018-099643
-- Mifflin MD, St Jeor ST et al. (1990): A new predictive equation for resting energy expenditure. Am J Clin Nutr 51(2):241–247.
-- Deutsche Gesellschaft für Ernährung: Referenzwerte für die Nährstoffzufuhr, https://www.dge.de/wissenschaft/referenzwerte/
-- Barcode-Erkennung im Browser: ZXing (Apache-2.0).
+- Morton RW et al. (2018): Br J Sports Med 52(6):376–384. doi:10.1136/bjsports-2017-097608
+- Williamson E et al. (2023): Med Sci Sports Exerc 55(10):1866–1875. doi:10.1249/MSS.0000000000003219
+- Aragon AA et al. (2026): ISSN position stand: diets for body weight reduction. doi:10.1080/15502783.2026.2740266
+- Mountjoy M et al. (2023): IOC consensus statement on REDs. doi:10.1136/bjsports-2023-106994
+- Impey SG et al. (2018): Fuel for the work required. doi:10.1007/s40279-018-0867-7
+- O'Driscoll R et al. (2020): Activity monitors and energy expenditure. doi:10.1136/bjsports-2018-099643
+- Fridolfsson J et al. (2025): LLMs for nutritional estimation from food images. doi:10.1016/j.cdnut.2025.107556
+- Mifflin MD, St Jeor ST et al. (1990): Am J Clin Nutr 51(2):241–247.
+- Barcode-Erkennung: ZXing (Apache-2.0). Icons: Material Design Icons (Pictogrammers, Apache-2.0).

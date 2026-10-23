@@ -1,5 +1,5 @@
 name: "Ernährung"
-version: "0.2.0"
+version: "0.3.0"
 slug: "ernaehrung"
 description: "Mahlzeiten per Foto, Text oder Barcode erfassen – Makros, Mikros und Trainingsbezug"
 url: "https://github.com/hkrb7p794w-sys/Garmin-AI-Coach"
@@ -24,9 +24,17 @@ map:
 backup_exclude:
   - "bls.db"
   - "bls_download"
+  - "photos"
 options:
+  ki_anbieter: "gemini"
   gemini_api_key: ""
   gemini_model: "gemini-3.6-flash"
+  lokal_url: ""
+  lokal_modell: ""
 schema:
+  ki_anbieter: "list(gemini|lokal)"
   gemini_api_key: "password"
   gemini_model: "str"
+  lokal_url: "str?"
+  lokal_modell: "str?"
+  lokal_api_key: "password?"

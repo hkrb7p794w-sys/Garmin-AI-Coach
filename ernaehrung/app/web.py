@@ -4,7 +4,6 @@ Die REST-API ist dieselbe, die die Web-App nutzt - Home Assistant oder andere
 Add-ons können sie im internen Netz ebenfalls abfragen (Phase 2). Zugriff ist auf
 Ingress und das interne Supervisor-Netz (172.30.32.0/23) beschränkt.
 """
-import base64
 import csv
 import datetime
 import io
@@ -14,16 +13,18 @@ import threading
 
 from flask import Flask, Response, jsonify, request, send_from_directory, abort
 
+import ai
 import analyze
 import bls
 import db
-import gemini
+import garmin_bridge
+import groups
 import nutrients as N
 import off
+import recommend
 import summary
 
 VERSION = os.environ.get("APP_VERSION", "dev")
-PHOTO_DIR = os.environ.get("PHOTO_DIR", "/data/photos")
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 ALLOWED_NETS = [ipaddress.ip_network(n) for n in
                 os.environ.get("ALLOWED_NETS", "172.30.32.0/23,127.0.0.0/8,::1/128").split(",") if n]
@@ -91,24 +92,30 @@ def static_files(name):
 
 @app.get("/api/v1/status")
 def status():
-    return jsonify(version=VERSION, bls=bls.status, bls_count=bls.count(), gemini=gemini.configured(),
-                   gemini_model=gemini.last_model() or gemini.MODEL, attribution=bls.ATTRIBUTION,
-                   categories=db.CATEGORY_LABELS, nutrients={k: list(v) for k, v in N.NUTRIENTS.items()})
+    return jsonify(version=VERSION, bls=bls.status, bls_count=bls.count(), ai=ai.configured(),
+                   ai_provider=ai.provider(), ai_label=ai.describe(), attribution=bls.ATTRIBUTION,
+                   categories=db.CATEGORY_LABELS, nutrients={k: list(v) for k, v in N.NUTRIENTS.items()},
+                   diets=recommend.DIETS, groups=groups.GROUPS)
 
 
 SETTING_KEYS = ("profile", "pal_base", "goal", "goal_adjust_pct", "protein_g_per_kg", "carbs_g_per_kg",
-                "body_fat_pct",
-                "target_overrides", "day_type_override", "keep_photos", "photo_ai")
+                "body_fat_pct", "diet", "weight_entity",
+                "target_overrides", "day_type_override", "photo_ai")
 
 
 @app.get("/api/v1/settings")
 def get_settings():
     s = {k: db.get_setting(k) for k in SETTING_KEYS}
-    if s["keep_photos"] is None:
-        s["keep_photos"] = True
     if s["photo_ai"] is None:
         s["photo_ai"] = True
+    if not s["diet"]:
+        s["diet"] = "pescetarisch"
     return jsonify(s)
+
+
+@app.get("/api/v1/weight_sensors")
+def weight_sensors():
+    return jsonify(garmin_bridge.weight_sensors())
 
 
 @app.put("/api/v1/settings")
@@ -133,7 +140,7 @@ def bls_import():
 
 @app.get("/api/v1/day")
 def get_day():
-    return jsonify(summary.day(request.args.get("date") or _today()))
+    return jsonify(summary.day_with_recommendations(request.args.get("date") or _today()))
 
 
 @app.get("/api/v1/week")
@@ -156,12 +163,15 @@ def post_analyze():
         abort(400, "Text oder Foto fehlt")
     if image and db.get_setting("photo_ai") is False:
         abort(400, "Foto-Analyse ist in den Einstellungen ausgeschaltet")
-    if not gemini.configured():
-        abort(400, "Kein Gemini API Key hinterlegt (Add-on-Konfiguration)")
+    if not ai.configured():
+        abort(400, "Keine KI eingerichtet (Gemini API Key oder lokaler KI-Server in der Add-on-Konfiguration)")
     try:
+        # Das Foto existiert nur in dieser Anfrage im Arbeitsspeicher und wird nicht gespeichert.
         result = analyze.analyze(text=text, image_b64=image, mime=data.get("mime") or "image/jpeg")
-    except gemini.GeminiError as e:
+    except ai.AIError as e:
         abort(502, f"KI-Analyse fehlgeschlagen: {e}")
+    finally:
+        image = data = None
     result.pop("raw", None)
     return jsonify(result)
 
@@ -265,27 +275,19 @@ def _resolve_items(items):
             if b:
                 f = db.upsert_food("bls", b["code"], b["name"], b["per100"], is_liquid=b["is_liquid"])
                 food_id, per100 = f["id"], per100 or b["per100"]
-        if food_id and not per100:
+        ref = it.get("ref")
+        if food_id and (not per100 or not ref):
             f = db.get_food(food_id)
-            per100 = f["per100"] if f else None
+            per100 = per100 or (f["per100"] if f else None)
+            ref = ref or (f["source_ref"] if f and f["source"] == "bls" else None)
         if not per100:
             abort(400, f"Nährwerte fehlen bei {name or 'Position'}")
+        per100 = N.clean(per100)
+        grp = it.get("food_group") or groups.classify(name, source, ref, per100, it.get("ai_group"))
         out.append({"food_id": food_id, "name": name or "Unbekannt", "amount_g": max(0.0, amount),
                     "amount_text": it.get("amount_text"), "source": source,
-                    "confidence": it.get("confidence"), "per100": N.clean(per100)})
+                    "confidence": it.get("confidence"), "per100": per100, "food_group": grp})
     return out
-
-
-def _save_photo(meal_id, b64):
-    if not b64 or db.get_setting("keep_photos") is False:
-        return None
-    if "," in b64[:100]:
-        b64 = b64.split(",", 1)[1]
-    os.makedirs(PHOTO_DIR, exist_ok=True)
-    name = f"{meal_id}.jpg"
-    with open(os.path.join(PHOTO_DIR, name), "wb") as f:
-        f.write(base64.b64decode(b64))
-    return name
 
 
 def _meal_payload(d):
@@ -303,10 +305,6 @@ def create_meal():
     if not payload["items"]:
         abort(400, "Keine Lebensmittel")
     meal = db.save_meal(payload)
-    photo = _save_photo(meal["id"], d.get("photo"))
-    if photo:
-        payload["photo"] = photo
-        meal = db.save_meal(payload, meal["id"])
     if d.get("save_favorite"):
         db.save_favorite(d.get("favorite_title") or meal["title"] or "Favorit", meal["category"], meal["items"])
     _changed()
@@ -328,7 +326,6 @@ def update_meal(meal_id):
         abort(404)
     d = request.get_json(force=True) or {}
     payload = _meal_payload({**old, **d, "items": d.get("items", old["items"])})
-    payload["photo"] = old.get("photo")
     meal = db.save_meal(payload, meal_id)
     _changed()
     return jsonify(meal)
@@ -336,22 +333,56 @@ def update_meal(meal_id):
 
 @app.delete("/api/v1/meals/<int:meal_id>")
 def delete_meal(meal_id):
-    photo = db.delete_meal(meal_id)
-    if photo:
-        try:
-            os.remove(os.path.join(PHOTO_DIR, photo))
-        except OSError:
-            pass
+    db.delete_meal(meal_id)
     _changed()
     return jsonify(ok=True)
 
 
-@app.get("/api/v1/meals/<int:meal_id>/photo")
-def meal_photo(meal_id):
+@app.post("/api/v1/meals/<int:meal_id>/copy")
+def copy_meal(meal_id):
+    """Mahlzeit nochmal eintragen (Standard: heute, jetzt)."""
     m = db.get_meal(meal_id)
-    if not m or not m.get("photo"):
+    if not m:
         abort(404)
-    return send_from_directory(PHOTO_DIR, m["photo"])
+    d = request.get_json(force=True) or {}
+    out = db.copy_meals(m["date"], d.get("date") or _today(), meal_ids=[meal_id],
+                        time=d.get("time") or datetime.datetime.now().strftime("%H:%M"))
+    _changed()
+    return jsonify(out[0]), 201
+
+
+@app.post("/api/v1/copy_category")
+def copy_category():
+    """Alle Mahlzeiten einer Kategorie von einem Tag auf einen anderen kopieren ("wie gestern")."""
+    d = request.get_json(force=True) or {}
+    src = d.get("from") or (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    out = db.copy_meals(src, d.get("to") or _today(), category=d.get("category"))
+    if not out:
+        abort(404, "An dem Tag gibt es dort keine Einträge")
+    _changed()
+    return jsonify(out), 201
+
+
+@app.post("/api/v1/quick")
+def quick_add():
+    """Schnelleintrag ohne Lebensmittel: nur Kalorien (optional Makros)."""
+    d = request.get_json(force=True) or {}
+    try:
+        kcal = float(d.get("kcal"))
+    except (TypeError, ValueError):
+        abort(400, "Kalorien fehlen")
+    per100 = N.empty()
+    per100.update(kcal=kcal)
+    for k in ("protein_g", "carbs_g", "fat_g"):
+        if d.get(k) not in (None, ""):
+            per100[k] = float(d[k])
+    item = {"name": (d.get("name") or "Schnelleintrag").strip()[:60], "amount_g": 100, "source": "custom",
+            "per100": per100, "amount_text": "Schnelleintrag", "food_group": "sonstiges"}
+    meal = db.save_meal({"date": d.get("date") or _today(), "time": d.get("time") or datetime.datetime.now().strftime("%H:%M"),
+                         "category": d.get("category") or analyze.guess_category(), "title": item["name"],
+                         "method": "schnell", "items": _resolve_items([item])})
+    _changed()
+    return jsonify(meal), 201
 
 
 @app.post("/api/v1/water")
@@ -388,7 +419,8 @@ def create_favorite():
     items = _resolve_items(d.get("items"))
     if not items:
         abort(400, "Keine Lebensmittel")
-    return jsonify(db.save_favorite(d.get("title") or "Favorit", d.get("category"), items, d.get("id"))), 201
+    return jsonify(db.save_favorite(d.get("title") or "Favorit", d.get("category"), items, d.get("id"),
+                                    servings=d.get("servings") or 1)), 201
 
 
 @app.delete("/api/v1/favorites/<int:fav_id>")
@@ -403,12 +435,15 @@ def log_favorite(fav_id):
     if not fav:
         abort(404)
     d = request.get_json(force=True) or {}
-    factor = float(d.get("factor") or 1)
+    # Rezept mit mehreren Portionen: Standard ist eine Portion
+    factor = float(d.get("factor") or 1) / max(1.0, float(fav.get("servings") or 1))
     items = [{**it, "amount_g": it["amount_g"] * factor} for it in fav["items"]]
     meal = db.save_meal({"date": d.get("date") or _today(),
                          "time": d.get("time") or datetime.datetime.now().strftime("%H:%M"),
                          "category": d.get("category") or fav.get("category") or analyze.guess_category(),
-                         "title": fav["title"], "method": "favorit", "items": _resolve_items(items)})
+                         "title": fav["title"] + (f" (1/{fav['servings']:g})" if (fav.get("servings") or 1) > 1
+                                                  and not d.get("factor") else ""),
+                         "method": "favorit", "items": _resolve_items(items)})
     db.use_favorite(fav_id)
     _changed()
     return jsonify(meal), 201
@@ -433,3 +468,48 @@ def export_csv():
                        ["" if vals[k] is None else str(round(vals[k], 2)).replace(".", ",") for k in N.KEYS])
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=ernaehrung.csv"})
+
+
+@app.delete("/api/v1/data")
+def delete_all():
+    """Alle eigenen Daten löschen (Bestätigung im Body: {"confirm": "LÖSCHEN"})."""
+    d = request.get_json(force=True) or {}
+    if d.get("confirm") != "LÖSCHEN":
+        abort(400, "Bestätigung fehlt")
+    db.delete_all()
+    _changed()
+    return jsonify(ok=True)
+
+
+# --------------------------------------------------------------------------
+# Empfehlungen, Portionen, Markenprodukte
+# --------------------------------------------------------------------------
+
+@app.get("/api/v1/recommend/candidates")
+def rec_candidates():
+    diet = request.args.get("diet") or db.get_setting("diet") or "pescetarisch"
+    return jsonify([{k: f[k] for k in ("key", "name", "bls_code", "bls_name", "grams", "portion")}
+                    | {"kcal": round(f["nutr"].get("kcal") or 0)} for f in recommend.candidates(diet)])
+
+
+@app.get("/api/v1/portions")
+def portions_for():
+    import portions
+    return jsonify(portions.for_item(request.args.get("name") or "", request.args.get("code"),
+                                     float(request.args.get("serving_g") or 0) or None))
+
+
+@app.get("/api/v1/products")
+def product_search():
+    """Markenprodukte per Text in Open Food Facts suchen (nur auf ausdrücklichen Knopfdruck -
+    die OFF-Regeln verbieten Suche beim Tippen)."""
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 3:
+        abort(400, "Mindestens 3 Zeichen")
+    try:
+        return jsonify(off.search(q))
+    except RuntimeError as e:
+        abort(429, str(e))
+    except Exception as e:
+        print(f"[off] Suche {q!r}: {e}")
+        abort(502, "Open Food Facts gerade nicht erreichbar")

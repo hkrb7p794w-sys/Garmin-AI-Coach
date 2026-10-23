@@ -24,7 +24,9 @@ import datetime
 
 import bls
 import db
+import ai
 import gemini
+import groups
 import nutrients as N
 import off
 
@@ -51,6 +53,7 @@ SCHEMA = {
                     "getraenk": {"type": "boolean"},
                     "sicherheit": {"type": "string", "enum": ["hoch", "mittel", "niedrig"]},
                     "eigenes": {"type": ["string", "null"]},
+                    "gruppe": {"type": "string", "description": "|".join(groups.GROUPS)},
                     "barcode": {"type": ["string", "null"]},
                     "naehrwerte_100g": {"type": "object", "properties": _N100_PROPS,
                                         "required": ["kcal", "protein_g", "carbs_g", "fat_g"]},
@@ -83,7 +86,9 @@ Regeln:
   Scheibe Käse 25 g, Scheibe Wurst 15 g, Proteinshake-Pulver 30 g.
 - naehrwerte_100g: deine beste Schätzung je 100 g so wie verzehrt (kcal, protein_g, carbs_g,
   sugar_g, fat_g, satfat_g, fiber_g, water_g, sodium_mg, potassium_mg, magnesium_mg, calcium_mg,
-  iron_mg, zinc_mg, vitd_ug, b12_ug, vitc_mg). Unbekanntes als null.
+  iron_mg, zinc_mg, vitd_ug, b12_ug, vitc_mg, iodine_ug, omega3_mg = EPA+DHA). Unbekanntes als null.
+- gruppe: Lebensmittelgruppe, genau einer von: {groups}.
+  fisch_fett = Lachs, Hering, Makrele, Sardine u. ä.; vollkorn nur bei echtem Vollkorn.
 - sicherheit: "hoch" bei klaren Angaben, "mittel" bei Standardportion, "niedrig" bei Unsicherheit.
 - eigenes: wenn eine Position eindeutig zu einem der "eigenen Lebensmittel" unten passt, genau
   dessen Namen eintragen, sonst null.
@@ -93,7 +98,7 @@ Regeln:
   oder Supplements -> sonstiges. Sonst null (dann entscheidet die Uhrzeit). titel: kurzer deutscher Titel (max. 40 Zeichen).
 - hinweis: ein kurzer Satz zu Unsicherheiten (z. B. verdeckte Zutaten, Ölmenge), sonst "".
 {photo_rules}
-Eigene Lebensmittel des Nutzers: {personal}
+{diet_rule}Eigene Lebensmittel des Nutzers: {personal}
 
 Mahlzeit: {text}
 """
@@ -167,6 +172,7 @@ def match_item(raw: dict, personal: dict = None) -> dict:
         "amount_text": raw.get("menge_text") or "",
         "is_liquid": bool(raw.get("getraenk")),
         "confidence": raw.get("sicherheit") or "mittel",
+        "ai_group": raw.get("gruppe") if raw.get("gruppe") in groups.GROUPS else None,
         "estimate": est,
         "candidates": [],
     }
@@ -246,9 +252,9 @@ def rerank(items: list, text: str) -> int:
         est = (it.get("estimate") or {}).get("kcal")
         lines.append(f'{i}: "{it["name"]}" (Schätzung {round(est) if est is not None else "?"} kcal/100 g) -> {cands}')
     try:
-        data = gemini.generate_json(RERANK_PROMPT.format(text=text or "(Foto)", items="\n".join(lines)),
+        data = ai.generate_json(RERANK_PROMPT.format(text=text or "(Foto)", items="\n".join(lines)),
                                     schema=RERANK_SCHEMA, max_tokens=3000)
-    except gemini.GeminiError as e:
+    except ai.AIError as e:
         print(f"[analyze] Zuordnung per KI übersprungen: {e}")
         return 0
     changed = 0
@@ -286,27 +292,44 @@ def barcode_food(code: str):
                           is_liquid=p.get("is_liquid"))
 
 
+DIET_RULES = {
+    "pescetarisch": "- Der Nutzer isst überwiegend fleischfrei, aber Fisch. Bei unklaren Gerichten "
+                    "(Bolognese, Burger, Lasagne, Chili, Frikadelle) die vegetarische Variante annehmen "
+                    "und das im hinweis nennen; ausdrücklich genanntes Fleisch normal erfassen.",
+    "vegetarisch": "- Der Nutzer isst vegetarisch: bei unklaren Gerichten die vegetarische Variante annehmen "
+                   "und im hinweis nennen.",
+    "vegan": "- Der Nutzer isst vegan: bei unklaren Gerichten und Milchprodukten die pflanzliche Variante "
+             "annehmen und im hinweis nennen.",
+}
+
+
 def analyze(text: str = None, image_b64: str = None, mime: str = "image/jpeg") -> dict:
     personal_foods = db.personal_foods(60)
     personal = {}
     for f in personal_foods:
         personal.setdefault(bls.norm(f["name"]), f)
     names = ", ".join(f["name"] for f in personal_foods[:40]) or "(keine)"
+    diet = db.get_setting("diet") or "pescetarisch"
+    diet_rule = ""
+    if diet in DIET_RULES:
+        diet_rule = DIET_RULES[diet] + "\n"
     prompt = PROMPT.format(
+        groups=", ".join(groups.GROUPS),
+        diet_rule=diet_rule,
         photo_rules=PHOTO_RULES if image_b64 else "",
         personal=names,
         text=(text or "").strip() or ("(siehe Foto)" if image_b64 else ""),
     )
     try:
-        data = gemini.generate_json(prompt, image_b64=image_b64, mime=mime, schema=SCHEMA)
-    except gemini.GeminiError as e:
+        data = ai.generate_json(prompt, image_b64=image_b64, mime=mime, schema=SCHEMA)
+    except ai.AIError as e:
         if "Schema" in str(e):
-            data = gemini.generate_json(prompt + JSON_SHAPE_HINT, image_b64=image_b64, mime=mime)
+            data = ai.generate_json(prompt + JSON_SHAPE_HINT, image_b64=image_b64, mime=mime)
         else:
             raise
     raw_items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(raw_items, list):
-        raise gemini.GeminiError("KI-Antwort ohne Lebensmittel-Liste")
+        raise ai.AIError("KI-Antwort ohne Lebensmittel-Liste")
     items = [match_item(r, personal) for r in raw_items if isinstance(r, dict)]
     if bls.count():
         rerank(items, text)
@@ -317,6 +340,6 @@ def analyze(text: str = None, image_b64: str = None, mime: str = "image/jpeg") -
         "category_guess": guess_category(),
         "hint": data.get("hinweis") or "",
         "items": items,
-        "model": gemini.last_model(),
+        "model": ai.last_model(),
         "raw": data,
     }

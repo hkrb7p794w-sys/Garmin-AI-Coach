@@ -206,7 +206,7 @@ def test_profile_from_garmin_when_settings_empty():
 # ---------------------------------------------------------------- API
 
 def test_meal_flow(client, monkeypatch):
-    monkeypatch.setattr(garmin_bridge, "training_today", lambda max_age_s=120: None)
+    monkeypatch.setattr(garmin_bridge, "training_today", lambda max_age_s=120, weight_entity=None: None)
     today = datetime.date.today().isoformat()
     body = {"date": today, "time": "07:30", "category": "fruehstueck", "method": "text",
             "items": [{"name": "Haferflocken", "amount_g": 60, "source": "bls", "ref": "C133000"},
@@ -322,3 +322,148 @@ def test_protein_by_goal_and_energy_availability_floor():
     assert r["energy"]["energy_availability"] >= 29.9
     own = dict(base, protein_g_per_kg=1.6)
     assert targets.compute(own, {"activities": []})["targets"]["protein_g"] == 128
+
+
+# ---------------------------------------------------------------- 0.3.0
+
+import ai  # noqa: E402
+import groups  # noqa: E402
+import recommend  # noqa: E402
+import summary  # noqa: E402
+
+
+def test_bls_new_nutrients_and_plural_search():
+    lachs = bls.get("T410100")["per100"]
+    assert lachs["omega3_mg"] > 1000          # EPA + DHA addiert, g -> mg
+    assert lachs["iodine_ug"] is not None
+    assert bls.search("Linsen", 1)[0]["name"].startswith("Linse")
+    assert bls.search("Quark", 1)[0]["code"].startswith("M")   # kein Quark-Gericht vorn
+
+
+def test_groups():
+    assert groups.classify("Lachs roh", "bls", "T410100", bls.get("T410100")["per100"]) == "fisch_fett"
+    assert groups.classify("Dorsch/Kabeljau, roh", "bls", "T204100", bls.get("T204100")["per100"]) == "fisch"
+    assert groups.classify("Hafer Flocken", "bls", "C133000") == "vollkorn"
+    assert groups.classify("Reis poliert, roh", "bls", "C352000") == "getreide"
+    assert groups.classify("Tofu", "bls", "H861000") == "huelsenfruechte"
+    assert groups.classify("Walnuss", "bls", "H120100") == "nuesse"
+    assert groups.classify("Spaghetti Bolognese", "ki") == "fleisch"
+    assert groups.classify("Linsencurry", "ki", ai_group="huelsenfruechte") == "huelsenfruechte"
+    assert groups.classify("Gemischter Salat", "ki") == "gemuese"
+
+
+def test_candidates_resolve_from_codes():
+    c = {f["key"]: f for f in recommend.candidates("pescetarisch")}
+    assert "lachs" in c and "magerquark" in c and c["lachs"]["bls_code"] == "T410100"
+    veg = {f["key"] for f in recommend.candidates("vegetarisch")}
+    assert "lachs" not in veg and "magerquark" in veg
+    vegan = {f["key"] for f in recommend.candidates("vegan")}
+    assert "magerquark" not in vegan and "tofu" in vegan
+
+
+def _day(totals, targets, **kw):
+    d = {"date": datetime.date.today().isoformat(), "totals": totals, "targets": targets,
+         "target_kind": {"sugar_g": "max", "satfat_g": "max"}, "progress": {k: 0 for k in targets},
+         "profile": {"weight_kg": 78}, "meals_count": 2, "protein_meals": 0, "protein_meal_min_g": 20,
+         "categories": {}, "activities": [], "day_type": "leicht", "day_source": "garmin"}
+    d.update(kw)
+    return d
+
+
+def test_day_recommendations_evening_protein_gap():
+    tg = {"kcal": 2500, "protein_g": 140, "carbs_g": 300, "fat_g": 80, "fiber_g": 30, "water_ml": 2700,
+          "sugar_g": 60, "satfat_g": 27, "iron_mg": 11, "magnesium_mg": 350, "calcium_mg": 1000,
+          "potassium_mg": 4000, "zinc_mg": 14, "iodine_ug": 150, "omega3_mg": 250, "vitc_mg": 110, "b12_ug": 4}
+    tot = {k: 0 for k in tg} | {"kcal": 1500, "protein_g": 50, "carbs_g": 200, "water_ml": 2500, "fiber_g": 25}
+    now = datetime.datetime.combine(datetime.date.today(), datetime.time(19, 30))
+    recs = recommend.day_recommendations(_day(tot, tg), "pescetarisch", now)
+    ids = [r["id"] for r in recs]
+    assert "protein_verteilung" in ids and "essen" in ids
+    foods = next(r for r in recs if r["id"] == "essen")["foods"]
+    assert foods and any(f["protein_g"] >= 20 for f in foods)
+    assert sum(f["kcal"] for f in foods) <= 1000 + 150
+
+
+def test_day_recommendations_before_training():
+    tg = {"kcal": 3000, "protein_g": 140, "carbs_g": 500, "fat_g": 80, "fiber_g": 30, "water_ml": 3000}
+    tot = {k: 0 for k in tg} | {"kcal": 400, "carbs_g": 60, "protein_g": 20, "water_ml": 300}
+    now = datetime.datetime.combine(datetime.date.today(), datetime.time(10, 0))
+    d = _day(tot, tg, day_type="hart", day_source="geplant", plan_text="Lange Radeinheit")
+    recs = recommend.day_recommendations(d, "pescetarisch", now)
+    assert recs[0]["id"] == "vor_training"
+    essen = next(r for r in recs if r["id"] == "essen")
+    assert any(f["carbs_g"] >= 25 for f in essen["foods"])
+
+
+def test_week_recommendations_fish_and_legumes(client, monkeypatch):
+    monkeypatch.setattr(garmin_bridge, "training_today", lambda max_age_s=120, weight_entity=None: None)
+    base = datetime.date.today() - datetime.timedelta(days=1)
+    for i in range(3):
+        dd = (base - datetime.timedelta(days=i)).isoformat()
+        r = client.post("/api/v1/meals", json={"date": dd, "time": "12:00", "category": "mittagessen", "items": [
+            {"name": "Reis", "amount_g": 900, "source": "bls", "ref": "C352000"},
+            {"name": "Hühnerei", "amount_g": 300, "source": "bls", "ref": "E111100"}]})
+        assert r.status_code == 201
+    w = summary.week(base.isoformat())
+    ids = [r["id"] for r in w["recommendations"]]
+    assert "fisch" in ids and "huelsen" in ids
+    assert w["food_groups"]["grams"]["ei"] >= 900
+
+
+def test_copy_quick_and_no_photo(client):
+    today = datetime.date.today().isoformat()
+    r = client.post("/api/v1/meals", json={"date": today, "category": "snack", "photo": "data:image/jpeg;base64,AAAA",
+                                          "items": [{"name": "Banane", "amount_g": 120, "source": "bls",
+                                                     "ref": "F503100"}]})
+    m = r.json
+    assert m.get("photo") is None
+    assert not os.path.exists(os.path.join(TMP, "photos"))
+    c = client.post(f"/api/v1/meals/{m['id']}/copy", json={}).json
+    assert c["id"] != m["id"] and c["items"][0]["name"] == "Banane"
+    assert c["items"][0]["food_group"] == "obst"
+    q = client.post("/api/v1/quick", json={"kcal": 350, "protein_g": 20, "name": "Riegel"})
+    assert q.status_code == 201 and round(q.json["items"][0]["per100"]["kcal"]) == 350
+    y = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    r = client.post("/api/v1/copy_category", json={"from": y, "to": today, "category": "mittagessen"})
+    assert r.status_code == 201
+    d = client.get(f"/api/v1/day?date={today}").json
+    assert "recommendations" in d
+
+
+def test_local_ai_provider(monkeypatch):
+    calls = []
+
+    class R:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"choices": [{"message": {"content": '{"ok": true}'}}]}
+
+    def post(url, headers=None, json=None, timeout=None):
+        calls.append((url, json))
+        return R()
+    monkeypatch.setattr(ai, "PROVIDER", "lokal")
+    monkeypatch.setattr(ai, "LOCAL_URL", "http://192.168.1.20:11434")
+    monkeypatch.setattr(ai, "LOCAL_MODEL", "qwen2.5vl:7b")
+    monkeypatch.setattr(ai.requests, "post", post)
+    assert ai.generate_json("x", image_b64="AAAA", schema={"type": "object"}) == {"ok": True}
+    url, body = calls[0]
+    assert url == "http://192.168.1.20:11434/v1/chat/completions"
+    assert body["messages"][0]["content"][0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert body["response_format"]["type"] == "json_schema"
+
+
+def test_recipe_servings(client):
+    r = client.post("/api/v1/favorites", json={"title": "Linsencurry", "servings": 4, "items": [
+        {"name": "Linsen", "amount_g": 800, "source": "bls", "ref": "H861000"}]})
+    fav = r.json
+    assert fav["servings"] == 4
+    m = client.post(f"/api/v1/favorites/{fav['id']}/log", json={}).json
+    assert m["items"][0]["amount_g"] == 200
+
+
+def test_zz_delete_all(client):
+    assert client.delete("/api/v1/data", json={}).status_code == 400
+    assert client.delete("/api/v1/data", json={"confirm": "LÖSCHEN"}).status_code == 200
+    assert db.list_favorites() == []

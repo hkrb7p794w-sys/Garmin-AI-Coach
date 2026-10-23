@@ -25,13 +25,16 @@ NUTRIENTS = {
     "vitd_ug": ("Vitamin D", "µg", "mikro"),
     "b12_ug": ("Vitamin B12", "µg", "mikro"),
     "vitc_mg": ("Vitamin C", "mg", "mikro"),
+    "iodine_ug": ("Jod", "µg", "mikro"),
+    "omega3_mg": ("Omega-3 (EPA+DHA)", "mg", "mikro"),
 }
 
 KEYS = list(NUTRIENTS)
 MACRO_KEYS = [k for k, v in NUTRIENTS.items() if v[2] == "makro"]
 MICRO_KEYS = [k for k, v in NUTRIENTS.items() if v[2] == "mikro"]
 
-# BLS-4.0-Komponentencodes -> kanonischer Schlüssel und Ziel-Einheit
+# BLS-4.0-Komponentencodes -> kanonischer Schlüssel und Ziel-Einheit. Mehrere Codes mit
+# demselben Schlüssel werden addiert.
 # (Dokumentation BLS 4.0, Max Rubner-Institut 2025). WATER [g/100g] wird
 # 1:1 als ml gezählt (Dichte ~1) - "Flüssigkeit" umfasst damit auch das
 # Wasser aus fester Nahrung, wie bei der DGE-Gesamtwasserzufuhr.
@@ -53,6 +56,10 @@ BLS_CODES = {
     "VITD": ("vitd_ug", "µg"),
     "VITB12": ("b12_ug", "µg"),
     "VITC": ("vitc_mg", "mg"),
+    "ID": ("iodine_ug", "µg"),
+    # EPA + DHA werden addiert (marine Omega-3-Fettsäuren)
+    "F20:5CN3": ("omega3_mg", "mg"),
+    "F22:6CN3": ("omega3_mg", "mg"),
 }
 
 _UNIT_FACTORS = {  # Umrechnung in die kanonische Einheit
