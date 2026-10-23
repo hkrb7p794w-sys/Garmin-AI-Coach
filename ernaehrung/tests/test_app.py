@@ -467,3 +467,12 @@ def test_zz_delete_all(client):
     assert client.delete("/api/v1/data", json={}).status_code == 400
     assert client.delete("/api/v1/data", json={"confirm": "LÖSCHEN"}).status_code == 200
     assert db.list_favorites() == []
+
+
+def test_breakfast_slot_excludes_fish():
+    import recommend as r
+    pool = [{"tags": t, "nutr": {"kcal": 100, "protein_g": 25}, "key": k}
+            for k, t in [("thun", {"protein", "fisch"}), ("skyr", {"protein", "fruehstueck"}),
+                         ("apfel", {"obst", "snack"}), ("hafer", {"kh", "fruehstueck"})]]
+    keys = [f["key"] for f in r.pick_foods({"protein_g": 100}, {"protein_g": 140}, 2000, pool, slot="fruehstueck")]
+    assert "thun" not in keys and "skyr" in keys

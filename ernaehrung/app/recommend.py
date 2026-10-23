@@ -210,8 +210,15 @@ def meal_slot(now: datetime.datetime) -> str:
     return "snack"
 
 
+BREAKFAST_ONLY = {"fruehstueck", "obst", "nuesse"}   # morgens nur Frühstückstaugliches (kein Thunfisch, Brokkoli)
+
+
 def pick_foods(gaps, targets, remaining_kcal, pool, mode=None, n=3, limits=None, slot=None):
     """Gierige Auswahl: jeweils das Lebensmittel, das die größten Lücken je Kalorie füllt."""
+    if slot == "fruehstueck":
+        strict = [f for f in pool if f["tags"] & BREAKFAST_ONLY]
+        if len(strict) >= n:
+            pool = strict
     gaps = dict(gaps)
     limits = dict(limits or {})
     chosen = []

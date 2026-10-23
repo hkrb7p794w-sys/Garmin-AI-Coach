@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2
+- Morgens schlägt die App nur Frühstückstaugliches vor (Skyr, Haferflocken, Obst, Nüsse …) – kein Thunfisch um 7 Uhr.
+
 ## 0.3.1
 - Dashboard-Karte `coach-nutrition` als eigenes Modul `coach-nutrition.js` (coach-cards.js bleibt unverändert);
   neue Ansicht **Ernährung** im Coach-Dashboard, Karte und Navigationspunkt auf „Heute“.
