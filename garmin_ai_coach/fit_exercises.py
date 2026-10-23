@@ -99,6 +99,17 @@ def _exercise_label(category, name) -> str:
     return f"Übung ({name})"
 
 
+def _estimated(ex_list) -> bool:
+    """Nur eine Schätzung des Geräts (CIRQA): mehrere Kandidaten mit Wahrscheinlichkeit
+    < 100 und kein Übungsname, z. B. ROW 66 %, UNKNOWN 33 %, CURL 0 %. Solche Sätze
+    gelten als unbenannt, bis die Übung eingetragen ist (seit 0.29.1)."""
+    ex = [e for e in (ex_list or []) if isinstance(e, dict)]
+    if len(ex) < 2 or any(e.get("name") for e in ex):
+        return False
+    probs = [e.get("probability") for e in ex if isinstance(e.get("probability"), (int, float))]
+    return bool(probs) and max(probs) < 99.5
+
+
 def parse_exercise_sets(data) -> list:
     """Wandelt die Antwort von `Garmin.get_activity_exercise_sets()` in
     `[{"exercise": str, "sets": [{"reps": int|None, "weight_kg": float|None}, ...]}, ...]`
@@ -115,11 +126,15 @@ def parse_exercise_sets(data) -> list:
             set_type = str(s.get("setType") or s.get("type") or "").upper()
             if set_type == "REST":
                 continue
-            ex_list = s.get("exercises") or []
-            first = ex_list[0] if ex_list and isinstance(ex_list[0], dict) else {}
-            category = first.get("category") or s.get("category")
-            name = first.get("name") or s.get("exerciseName")
-            label = _exercise_label(category, name)
+            ex_list = [e for e in (s.get("exercises") or []) if isinstance(e, dict)]
+            if _estimated(ex_list):
+                label = _exercise_label(None, None)  # nur geschätzt -> „Unbekannte Übung“
+            else:
+                first = max(ex_list, key=lambda e: e.get("probability") if isinstance(
+                    e.get("probability"), (int, float)) else 100) if ex_list else {}
+                category = first.get("category") or s.get("category")
+                name = first.get("name") or s.get("exerciseName")
+                label = _exercise_label(category, name)
             reps = _first_present(s, "repetitionCount", "reps", "repCount")
             weight = _normalize_weight(_first_present(s, "weight", "weightValue", "volume"))
             entry = {"reps": reps, "weight_kg": weight}

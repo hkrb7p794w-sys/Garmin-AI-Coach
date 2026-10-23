@@ -28,6 +28,11 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.29.1
+
+- Vorbefüllen: Geschätzte Übungen der CIRQA (mehrere Kandidaten unter 100 %, z. B. ROW 66 %, UNKNOWN 33 %) gelten nicht mehr als eingetragen. Bisher blieb so eine Einheit unverändert („schon benannt“) und zeigte in Connect nur einen Satz „Rudern“ über die ganze Dauer. Als eingetragen zählt nur eine Übung mit Namen oder allein mit 100 %.
+- Kraft-Auswertung: Solche geschätzten Sätze erscheinen als „Unbekannte Übung“ statt als echte Übung und fließen nicht in die Progression ein.
+
 ### 0.29.0
 - **Neuer Sensor `sensor.garmin_ai_coach_garmin_energie_heute`** für die Ernährungs-App
   (eigenes Add-on „Ernährung“): Zustand = aktive kcal heute, Attribute = heutige Aktivitäten

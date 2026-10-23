@@ -75,14 +75,31 @@ def _top_exercise(s: dict) -> dict:
     return max(ex, key=lambda e: e.get("probability") if isinstance(e.get("probability"), (int, float)) else 100)
 
 
+def _confirmed(s: dict) -> bool:
+    """True, wenn die Übung eines Satzes von Hand (App/Web) oder per Workout eingetragen ist.
+
+    Die CIRQA schätzt nur: Sie liefert mehrere Kandidaten mit Wahrscheinlichkeit < 100,
+    z. B. ROW 66 %, UNKNOWN 33 %, CURL 0 % (23.10.) oder UNKNOWN 99,6 %, CURL 0 % (22.10.).
+    Eine eingetragene Übung steht allein mit 100 % da, meist mit Namen (V_GRIP_CABLE_ROW),
+    manchmal nur als Kategorie (FLYE, 19.10.). Ein Name zählt immer als eingetragen."""
+    ex = [e for e in (s.get("exercises") or []) if isinstance(e, dict)]
+    top = _top_exercise(s)
+    cat = str(top.get("category") or "").upper()
+    if not cat or cat in ("UNKNOWN", "NONE"):
+        return False
+    if top.get("name"):
+        return True
+    p = top.get("probability")
+    return len(ex) == 1 and (not isinstance(p, (int, float)) or p >= 99.5)
+
+
 def _named(sets_payload) -> bool:
-    """True, wenn mindestens ein Arbeitssatz eine erkannte Übung hat (wahrscheinlichste
-    Übung nicht UNKNOWN) - dann hat Alex oder die Forerunner schon etwas eingetragen."""
+    """True, wenn mindestens ein Arbeitssatz eine eingetragene Übung hat - dann hat Alex
+    oder die Forerunner schon etwas eingetragen. Geschätzte Kategorien der CIRQA zählen nicht."""
     for s in (sets_payload or {}).get("exerciseSets") or []:
         if str(s.get("setType") or "").upper() != "ACTIVE":
             continue
-        top = _top_exercise(s)
-        if top.get("category") and str(top.get("category")).upper() not in ("UNKNOWN", "NONE"):
+        if _confirmed(s):
             return True
     return False
 
