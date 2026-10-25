@@ -28,6 +28,13 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.29.3
+
+- Garmin-Bibliothek fest auf `garminconnect==0.3.20` gepinnt. Das Dockerfile installierte sie ohne Version; durch den Docker-Layer-Cache lief im Add-on dauerhaft das alte 0.3.2. Dessen Login-Verfahren scheiterten an Garmins Cloudflare-Schutz (HTTP 429/403, „All login strategies exhausted“); 0.3.20 hat aktualisierte Verfahren (u. a. wechselnde TLS-Fingerabdrücke über curl_cffi).
+- Anmeldung mit MFA: Fragt Garmin nach einem Bestätigungscode, erscheint ein zweites Formular (`/login-mfa`). Vorher scheiterte der Login bei Konten mit MFA.
+- Sperrschutz: Nach einer Sperre durch Garmin (429/403) werden Passwort-Logins 30 Minuten lang nicht abgeschickt, weil jeder weitere Versuch die Sperre verlängert.
+- Neue Seite `/import-tokens`: Tokens, die mit `scripts/garmin_token_export.py` auf einem anderen Rechner erzeugt wurden (anderes Netz, z. B. Handy-Hotspot), lassen sich einfügen. Sie werden sofort gegen Garmin geprüft; bei Fehlern bleiben die alten Tokens liegen.
+
 ### 0.29.2
 
 - Garmin-Login: Sind die gespeicherten Tokens ungültig (Meldung „Failed to retrieve social profile“, z. B. nach einer Wiederherstellung aus dem Backup), pausiert das Add-on die automatischen Syncs und zeigt in der Add-on-Ansicht wieder das Login-Formular. Vorher blieb die Seite auf „Verbunden mit Garmin ✅“ und jeder Sync lief in denselben Fehler.

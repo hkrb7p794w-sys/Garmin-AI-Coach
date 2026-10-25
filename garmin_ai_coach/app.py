@@ -1477,7 +1477,7 @@ set_chat_callback(_handle_chat_question)
 @app.route("/")
 def home():
     if not is_logged_in():
-        return LOGIN_FORM
+        return _login_page()
     if _auth_failed:
         return _login_page("<p style='color:#b00020'><b>Der gespeicherte Garmin-Login ist ungültig "
                            "oder abgelaufen.</b> Bitte neu anmelden - die automatischen Syncs "
@@ -1511,7 +1511,37 @@ Passwort wird nirgends gespeichert.</p>
 
 
 def _login_page(note: str = "") -> str:
-    return LOGIN_FORM.replace("</h1>", "</h1>" + note, 1)
+    links = ("<p style='margin-top:2rem'><small>Anmeldung vom Server aus klappt nicht (Garmin sperrt die IP)? "
+             "<a href='import-tokens'>Login-Tokens von einem anderen Rechner einfügen</a></small></p>")
+    return LOGIN_FORM.replace("</h1>", "</h1>" + note, 1).replace("</body>", links + "</body>", 1)
+
+
+# Nach einer Sperre durch Garmin (HTTP 429/403, Cloudflare) verlängert jeder weitere Versuch die Sperre.
+# Deshalb werden Passwort-Logins danach für 30 Minuten gar nicht erst abgeschickt.
+_login_block_until = 0.0
+_LOGIN_BLOCK_SECONDS = 1800
+_BLOCK_MARKERS = ("429", "427", "403", "rate limit", "too many", "blocked", "cloudflare", "exhausted")
+# Offene MFA-Anmeldung (Client + Zwischenstand), nur im Speicher
+_mfa_pending = {}
+
+
+def _is_login_block(e) -> bool:
+    text = str(e).lower()
+    return any(m in text for m in _BLOCK_MARKERS)
+
+
+def _restore_tokens(backup: str, moved: bool) -> None:
+    if moved:
+        shutil.rmtree(TOKEN_DIR, ignore_errors=True)
+        shutil.move(backup, TOKEN_DIR)
+
+
+def _login_success():
+    global _auth_failed, _login_block_until
+    _auth_failed = False
+    _login_block_until = 0.0
+    print("[login] Neuer Garmin-Login gespeichert - starte Sync.")
+    threading.Thread(target=lambda: do_sync(force=True), daemon=True).start()
 
 
 @app.route("/relogin")
@@ -1522,8 +1552,14 @@ def relogin():
 
 @app.route("/login", methods=["POST"])
 def login():
-    global _auth_failed
+    global _login_block_until
     from garminconnect import Garmin
+    wait = int(_login_block_until - time.time())
+    if wait > 0:
+        return (f"<p>Garmin hat diese IP gerade gesperrt. Pause noch ca. {wait // 60 + 1} min, "
+                "damit die Sperre nicht länger wird.</p>"
+                "<p>Alternative: Login-Tokens an einem anderen Netz erzeugen und "
+                "<a href='import-tokens'>hier einfügen</a>.</p><a href='relogin'>Zurück</a>")
     email = request.form["email"]
     password = request.form["password"]
     # Die Bibliothek lädt zuerst die Tokens aus GARMINTOKENS und nutzt Benutzername/Passwort nur,
@@ -1537,20 +1573,84 @@ def login():
             shutil.move(TOKEN_DIR, backup)
             moved = True
         os.makedirs(TOKEN_DIR, exist_ok=True)
-        client = Garmin(email, password)
-        client.login()
+        client = Garmin(email, password, return_on_mfa=True)
+        status, state = client.login(TOKEN_DIR)
+        if status == "needs_mfa":
+            _mfa_pending.clear()
+            _mfa_pending.update(client=client, state=state, backup=backup, moved=moved)
+            return ("<html><body style='font-family:sans-serif;padding:2rem;'><h1>Garmin AI Coach – MFA</h1>"
+                    "<p>Garmin hat einen Bestätigungscode gesendet (E-Mail oder App).</p>"
+                    "<form method='post' action='login-mfa'>Code: <input name='code' autocomplete='one-time-code' "
+                    "required> <button type='submit'>Bestätigen</button></form></body></html>")
+        client.client.dump(TOKEN_DIR)
         if not os.listdir(TOKEN_DIR):
             raise RuntimeError("Login ok, aber es wurden keine Tokens gespeichert")
         shutil.rmtree(backup, ignore_errors=True)
-        _auth_failed = False
-        print("[login] Neuer Garmin-Login gespeichert - starte Sync.")
-        threading.Thread(target=lambda: do_sync(force=True), daemon=True).start()
+        _login_success()
         return redirect(".")
     except Exception as e:
-        if moved:
-            shutil.rmtree(TOKEN_DIR, ignore_errors=True)
-            shutil.move(backup, TOKEN_DIR)
+        _restore_tokens(backup, moved)
+        if _is_login_block(e):
+            _login_block_until = time.time() + _LOGIN_BLOCK_SECONDS
         return f"<p>Login fehlgeschlagen: {html.escape(str(e))}</p><a href='relogin'>Zurück</a>"
+
+
+@app.route("/login-mfa", methods=["POST"])
+def login_mfa():
+    global _login_block_until
+    pend = dict(_mfa_pending)
+    if not pend:
+        return "<p>Keine offene Anmeldung - bitte neu starten.</p><a href='relogin'>Zurück</a>"
+    try:
+        pend["client"].resume_login(pend["state"], request.form["code"].strip())
+        pend["client"].client.dump(TOKEN_DIR)
+        if not os.listdir(TOKEN_DIR):
+            raise RuntimeError("Login ok, aber es wurden keine Tokens gespeichert")
+        shutil.rmtree(pend["backup"], ignore_errors=True)
+        _mfa_pending.clear()
+        _login_success()
+        return redirect(".")
+    except Exception as e:
+        _mfa_pending.clear()
+        _restore_tokens(pend["backup"], pend["moved"])
+        if _is_login_block(e):
+            _login_block_until = time.time() + _LOGIN_BLOCK_SECONDS
+        return f"<p>MFA fehlgeschlagen: {html.escape(str(e))}</p><a href='relogin'>Zurück</a>"
+
+
+@app.route("/import-tokens", methods=["GET", "POST"])
+def import_tokens():
+    """Garmin-Tokens übernehmen, die auf einem anderen Rechner erzeugt wurden
+    (scripts/garmin_token_export.py) - der Weg, wenn Garmin die Server-IP für Passwort-Logins sperrt."""
+    if request.method == "GET":
+        return ("<html><body style='font-family:sans-serif;padding:2rem;'><h1>Garmin-Tokens einfügen</h1>"
+                "<p>Auf einem Rechner in einem anderen Netz (z. B. per Handy-Hotspot) "
+                "<code>python3 garmin_token_export.py</code> ausführen und die ausgegebene JSON-Zeile hier einfügen.</p>"
+                "<form method='post'><textarea name='tokens' rows='8' style='width:100%' required></textarea><br><br>"
+                "<button type='submit'>Übernehmen</button></form><p><a href='relogin'>Zurück</a></p></body></html>")
+    from garminconnect import Garmin
+    backup = TOKEN_DIR + ".old"
+    moved = False
+    try:
+        data = json.loads(request.form["tokens"].strip())
+        if not all(data.get(k) for k in ("di_token", "di_refresh_token", "di_client_id")):
+            raise ValueError("Es fehlen di_token, di_refresh_token oder di_client_id")
+        if os.path.isdir(TOKEN_DIR) and os.listdir(TOKEN_DIR):
+            shutil.rmtree(backup, ignore_errors=True)
+            shutil.move(TOKEN_DIR, backup)
+            moved = True
+        os.makedirs(TOKEN_DIR, exist_ok=True)
+        path = os.path.join(TOKEN_DIR, "garmin_tokens.json")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({k: data[k] for k in ("di_token", "di_refresh_token", "di_client_id")}, f)
+        Garmin().login(TOKEN_DIR)  # lädt die Tokens und fragt das Profil ab - scheitert bei ungültigen Tokens
+        shutil.rmtree(backup, ignore_errors=True)
+        _login_success()
+        return redirect(".")
+    except Exception as e:
+        _restore_tokens(backup, moved)
+        return f"<p>Tokens nicht übernommen: {html.escape(str(e))}</p><a href='import-tokens'>Zurück</a>"
 
 
 @app.route("/sync")
