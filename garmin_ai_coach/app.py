@@ -1,4 +1,4 @@
-import os, json, datetime, threading, time
+import os, json, datetime, threading, time, shutil, html
 from flask import Flask, request, redirect, jsonify
 from ha_publish import (
     publish_discovery,
@@ -173,6 +173,21 @@ def days_to_race(today: datetime.date) -> int:
 # zwischen zwei Versuchen - auch für den manuellen "Jetzt synchronisieren"-Button.
 MIN_SYNC_INTERVAL = datetime.timedelta(minutes=15)
 _last_sync_attempt = None
+
+# Seit v0.29.2: Sind die gespeicherten Garmin-Tokens ungültig (z. B. nach Wiederherstellung aus
+# einem Backup, Passwortwechsel oder abgelaufenem Refresh-Token), meldet die Garmin-Bibliothek
+# "Failed to retrieve social profile". Früher lief dann jeder Sync erneut in denselben Fehler und
+# die Login-Seite blieb unsichtbar, weil das Token-Verzeichnis nicht leer war. Jetzt merkt sich
+# das Add-on den Zustand, pausiert die automatischen Syncs (kein Hämmern auf das Konto) und
+# zeigt in der Ingress-Ansicht wieder das Login-Formular.
+_auth_failed = False
+AUTH_ERROR_MARKERS = ("social profile", "authentication", "unauthorized", "401", "403",
+                      "username and password", "login failed")
+
+
+def _is_auth_error(e) -> bool:
+    text = f"{type(e).__name__} {e}".lower()
+    return any(m in text for m in AUTH_ERROR_MARKERS)
 
 
 def _safe_fetch(label, fn):
@@ -946,8 +961,12 @@ def do_sync(force: bool = False, also_weekly: bool = False):
     Wochenreport (siehe "Jetzt synchronisieren"-Button/Handler unten) -
     normalerweise läuft der Wochenreport nur montags automatisch mit.
     """
-    global _last_sync_attempt
+    global _last_sync_attempt, _auth_failed
     if not is_logged_in():
+        return None
+    if _auth_failed and not force:
+        print("[sync] übersprungen: Garmin-Login ungültig - bitte im Add-on neu anmelden "
+              "(Seitenleiste › Garmin AI Coach).")
         return None
 
     now = datetime.datetime.now()
@@ -1070,6 +1089,7 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         # Garmin-Daten sollen davon nicht aufgehalten oder mitgerissen werden.
         publish_state(wellness)
         publish_sync_status(ok=True)
+        _auth_failed = False
         publish_strength_exercises(wellness["strength_exercises"])
         publish_decoupling(wellness["decoupling_sessions"], skipped=_decoupling_skipped())
         if tagesform_result:
@@ -1309,7 +1329,13 @@ def do_sync(force: bool = False, also_weekly: bool = False):
         return wellness
     except Exception as e:
         print(f"[sync] Sync fehlgeschlagen: {e}")
-        publish_sync_status(ok=False, detail=str(e))
+        if _is_auth_error(e):
+            _auth_failed = True
+            print("[login] Garmin-Tokens ungültig - automatische Syncs pausiert, "
+                  "bitte im Add-on neu anmelden.")
+            publish_sync_status(ok=False, detail="Garmin-Login ungültig - im Add-on neu anmelden")
+        else:
+            publish_sync_status(ok=False, detail=str(e))
         return None
 
 
@@ -1452,6 +1478,10 @@ set_chat_callback(_handle_chat_question)
 def home():
     if not is_logged_in():
         return LOGIN_FORM
+    if _auth_failed:
+        return _login_page("<p style='color:#b00020'><b>Der gespeicherte Garmin-Login ist ungültig "
+                           "oder abgelaufen.</b> Bitte neu anmelden - die automatischen Syncs "
+                           "sind bis dahin pausiert.</p>")
     latest = {}
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE) as f:
@@ -1460,7 +1490,7 @@ def home():
     <html><body style="font-family:sans-serif;padding:2rem;">
     <h1>Garmin AI Coach</h1>
     <p>Verbunden mit Garmin ✅</p>
-    <p><a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a> &nbsp;|&nbsp; <a href="sync?force=1&weekly=1">Sync + Wochenreport erzwingen</a> &nbsp;|&nbsp; <a href="weekly">Wochenreport erzeugen</a></p>
+    <p><a href="relogin">Neu bei Garmin anmelden</a> &nbsp;|&nbsp; <a href="sync">Jetzt synchronisieren</a> &nbsp;|&nbsp; <a href="sync?force=1">Sync erzwingen</a> &nbsp;|&nbsp; <a href="sync?force=1&weekly=1">Sync + Wochenreport erzwingen</a> &nbsp;|&nbsp; <a href="weekly">Wochenreport erzeugen</a></p>
     <pre>{json.dumps(latest, indent=2, ensure_ascii=False)}</pre>
     </body></html>
     """
@@ -1480,17 +1510,47 @@ Passwort wird nirgends gespeichert.</p>
 """
 
 
+def _login_page(note: str = "") -> str:
+    return LOGIN_FORM.replace("</h1>", "</h1>" + note, 1)
+
+
+@app.route("/relogin")
+def relogin():
+    """Login-Formular auch dann zeigen, wenn noch (ungültige) Tokens liegen."""
+    return _login_page()
+
+
 @app.route("/login", methods=["POST"])
 def login():
+    global _auth_failed
     from garminconnect import Garmin
     email = request.form["email"]
     password = request.form["password"]
+    # Die Bibliothek lädt zuerst die Tokens aus GARMINTOKENS und nutzt Benutzername/Passwort nur,
+    # wenn das Laden scheitert. Alte, ungültige Tokens würden den neuen Login also blockieren:
+    # Sie werden beiseitegelegt und nur bei einem Fehlschlag zurückgeholt.
+    backup = TOKEN_DIR + ".old"
+    moved = False
     try:
+        if os.path.isdir(TOKEN_DIR) and os.listdir(TOKEN_DIR):
+            shutil.rmtree(backup, ignore_errors=True)
+            shutil.move(TOKEN_DIR, backup)
+            moved = True
+        os.makedirs(TOKEN_DIR, exist_ok=True)
         client = Garmin(email, password)
         client.login()
+        if not os.listdir(TOKEN_DIR):
+            raise RuntimeError("Login ok, aber es wurden keine Tokens gespeichert")
+        shutil.rmtree(backup, ignore_errors=True)
+        _auth_failed = False
+        print("[login] Neuer Garmin-Login gespeichert - starte Sync.")
+        threading.Thread(target=lambda: do_sync(force=True), daemon=True).start()
         return redirect(".")
     except Exception as e:
-        return f"<p>Login fehlgeschlagen: {e}</p><a href='.'>Zurück</a>"
+        if moved:
+            shutil.rmtree(TOKEN_DIR, ignore_errors=True)
+            shutil.move(backup, TOKEN_DIR)
+        return f"<p>Login fehlgeschlagen: {html.escape(str(e))}</p><a href='relogin'>Zurück</a>"
 
 
 @app.route("/sync")

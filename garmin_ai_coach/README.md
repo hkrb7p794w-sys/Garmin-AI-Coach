@@ -28,6 +28,11 @@ aktualisiert), nur die Coaching-Notiz zeigt dann einen Platzhaltertext.
 
 ## Changelog
 
+### 0.29.2
+
+- Garmin-Login: Sind die gespeicherten Tokens ungültig (Meldung „Failed to retrieve social profile“, z. B. nach einer Wiederherstellung aus dem Backup), pausiert das Add-on die automatischen Syncs und zeigt in der Add-on-Ansicht wieder das Login-Formular. Vorher blieb die Seite auf „Verbunden mit Garmin ✅“ und jeder Sync lief in denselben Fehler.
+- Neue Seite `/relogin` und Link „Neu bei Garmin anmelden“ in der Add-on-Ansicht. Beim Anmelden werden die alten Tokens beiseitegelegt (sonst lädt die Bibliothek sie zuerst und nutzt das Passwort gar nicht) und bei einem Fehlschlag zurückgeholt. Nach erfolgreichem Login startet sofort ein Sync.
+
 ### 0.29.1
 
 - Vorbefüllen: Geschätzte Übungen der CIRQA (mehrere Kandidaten unter 100 %, z. B. ROW 66 %, UNKNOWN 33 %) gelten nicht mehr als eingetragen. Bisher blieb so eine Einheit unverändert („schon benannt“) und zeigte in Connect nur einen Satz „Rudern“ über die ganze Dauer. Als eingetragen zählt nur eine Übung mit Namen oder allein mit 100 %.
