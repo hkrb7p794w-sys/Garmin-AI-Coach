@@ -38,6 +38,18 @@ Wochentage × Tagesampel × erledigt/offen durch und prüft die Regeln.
 Helfer (`input_*.coach_*`) und die Automation für den Morgen-Push liegen nur in Home Assistant
 und sind über die normalen HA-Backups gesichert.
 
+Für die Langzeit-Grafiken (Reiter Schwimmen/Rad/Laufen) braucht es drei Template-Helfer mit `state_class: measurement`
+(Einstellungen › Geräte & Dienste › Helfer › Template › Sensor):
+
+| Name | Zustand | Einheit |
+|---|---|---|
+| Coach FTP Zwift (`sensor.coach_ftp_zwift`) | `{% set v = states('input_number.ftp_zwift_w') \| float(0) %}{{ v if v > 0 else none }}` | W |
+| Coach CSS Sekunden (`sensor.coach_css_sekunden`) | `input_text.zielzeit_schwimm_pace_100m` (M:SS) in Sekunden | s |
+| Coach Lauf Schwelle Sekunden (`sensor.coach_lauf_schwelle_sekunden`) | `input_text.lauf_schwellenpace` (M:SS) in Sekunden | s |
+
+Stand 25.10.2026: `coach-cards.js` liegt in HA wegen der Schreibgrenze des Werkzeugs als fünf Teile
+(`coach-cards.part1.js` … `part5.js`) plus kleinem Lader `coach-cards.js`; Inhalt identisch mit der Datei im Repo.
+
 ## Gamification entfernt (18.10.2026)
 
 Level/XP, Wochenserie mit Joker und Pausenwoche, Abzeichen, Meilensteine und das adaptive Wochenziel sind raus
