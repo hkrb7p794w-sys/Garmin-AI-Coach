@@ -35,3 +35,9 @@ Daisy steht ganz oben in „Heute“ und reagiert nur auf die vorhandenen `senso
   Leitplanken: kein Lob fürs Hungern oder zu schnelles Abnehmen, kein Schimpfen wegen Gewicht oder Essen.
 - **Streicheln / Leckerli / Level**: Leckerli gibt es pro Training der Woche; gemerkt wird pro Gerät im Browser.
 - Option `name` (Standard: Vorname des HA-Benutzers).
+
+## Stand 25.10.2026 (nach HA-Neuaufbau)
+
+In Home Assistant liegen `fit-cards.js` (5 Teile) und `fit-daisy.js` (3 Teile) als `fit-cards.partN.js` / `fit-daisy.partN.js`
+plus kleinem Lader unter dem ursprünglichen Dateinamen (Grund: Schreibgrenze des Werkzeugs). Inhalt zusammen identisch mit den Dateien hier.
+Ressourcen: `/local/fit/fit-cards.js?v=0.1.0`, `/local/fit/fit-daisy.js?v=0.2.0`.
